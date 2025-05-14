@@ -16,7 +16,7 @@ stream = p.open(format=FORMAT,
                 frames_per_buffer=CHUNK)
 
 s = socket.socket()
-s.bind(('', PORT))
+s.bind(('0.0.0.0', PORT))
 s.listen(1)
 print("Waiting for connection...")
 

@@ -15,7 +15,7 @@ def run_script(role, ip=None):
             return
         script_name = f"client_{'windows' if 'windows' in os_type else 'linux'}.py"
         script_path = os.path.join(BASE_DIR, "client", script_name)
-        subprocess.Popen(["python", script_path], env={**os.environ, "SERVER_IP": ip})
+        subprocess.Popen(["python3", script_path], env={**os.environ, "SERVER_IP": ip})
     
     elif role == "server":
         script_name = f"server_{'windows' if 'windows' in os_type else 'linux'}.py"
