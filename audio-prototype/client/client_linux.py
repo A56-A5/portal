@@ -1,8 +1,9 @@
 import socket
 import subprocess
 import re
+import os
 
-SERVER_IP = '192.168.1.70'  # Replace this
+SERVER_IP = os.getenv("SERVER_IP", "127.0.0.1")  # fallback to localhost
 PORT = 50007
 CHUNK_SIZE = 4096
 
