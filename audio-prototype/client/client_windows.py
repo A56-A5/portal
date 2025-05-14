@@ -1,35 +1,55 @@
 import socket
 import pyaudio
 
-SERVER_IP = 'YOUR_LINUX_SERVER_IP'  # Replace with actual Linux server IP
+SERVER_IP = '192.168.1.74'  # Replace with your Linux server's IP
 PORT = 50007
 CHUNK_SIZE = 4096
-VIRTUAL_CABLE_DEVICE = "Cable Output (VB-Audio Virtual Cable)"  # Replace with your virtual cable device
+VIRTUAL_CABLE_DEVICE = "CABLE Output" # Exact match needed!
 
-# Setup PyAudio to capture from the virtual cable
+# Setup PyAudio
 p = pyaudio.PyAudio()
 
-# Find the device index for the virtual cable (system audio output)
+#  use this code to find a device with more than 0 input channels and replace the VIRTUAL_CABLE_DEVICE variable with the name of that device
+"""
+for i in range(p.get_device_count()):
+    info = p.get_device_info_by_index(i)
+    if info["maxInputChannels"] > 0:
+        print(f"{i}: {info['name']} - {info['maxInputChannels']} input channels")
+"""
+
+# Find virtual cable device
 device_index = None
 for i in range(p.get_device_count()):
-    if VIRTUAL_CABLE_DEVICE in p.get_device_info_by_index(i).get('name'):
+    device_info = p.get_device_info_by_index(i)
+    if VIRTUAL_CABLE_DEVICE in device_info.get('name'):
         device_index = i
         break
 
 if device_index is None:
     raise RuntimeError(f"Could not find device: {VIRTUAL_CABLE_DEVICE}")
 
+device_info = p.get_device_info_by_index(device_index)
+max_input_channels = device_info['maxInputChannels']
+print(f"Device {device_index} supports {max_input_channels} input channels")
+
+if max_input_channels < 1:
+    raise RuntimeError(f"Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
+channels = 1
+
+# Open stream
 stream = p.open(format=pyaudio.paInt16,
-                channels=1,
+                channels=channels,
                 rate=44100,
                 input=True,
                 input_device_index=device_index,
                 frames_per_buffer=CHUNK_SIZE)
 
+# Connect to server
 s = socket.socket()
 s.connect((SERVER_IP, PORT))
 print("Connected to server.")
 
+# Stream audio
 try:
     while True:
         data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
