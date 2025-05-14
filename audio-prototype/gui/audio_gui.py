@@ -14,13 +14,13 @@ def run_script(role, ip=None):
             messagebox.showerror("Error", "Please enter an IP address to connect to.")
             return
         script_name = f"client_{'windows' if 'windows' in os_type else 'linux'}.py"
-        Pathway = "python" if 'windows' in os_type else 'python3' 
+        Pathway = "python" if 'windows' in os_type else 'python3' #use correct python version
         script_path = os.path.join(BASE_DIR, "client", script_name)
         subprocess.Popen([Pathway, script_path], env={**os.environ, "SERVER_IP": ip})
     
     elif role == "server":
         script_name = f"server_{'windows' if 'windows' in os_type else 'linux'}.py"
-        Pathway = "python" if 'windows' in os_type else 'python3' 
+        Pathway = "python" if 'windows' in os_type else 'python3' #use correct python version
         script_path = os.path.join(BASE_DIR, "server", script_name)
         subprocess.Popen([Pathway, script_path])  
     else:
