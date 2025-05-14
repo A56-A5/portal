@@ -1,33 +1,44 @@
-# client.py (Linux)
 import socket
-import pyaudio
+import subprocess
+import re
 
-CHUNK = 1024
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
-RATE = 44100
-SERVER_IP = 'YOUR_WINDOWS_IP'  # Change this
+SERVER_IP = '192.168.1.70'  # Replace this
 PORT = 50007
+CHUNK_SIZE = 4096
 
-p = pyaudio.PyAudio()
-stream = p.open(format=FORMAT,
-                channels=CHANNELS,
-                rate=RATE,
-                input=True,
-                frames_per_buffer=CHUNK)
+def get_default_monitor():
+    # Get the default sink
+    result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
+    default_sink = result.stdout.strip()
+    if not default_sink:
+        raise RuntimeError("Could not determine default audio sink.")
 
-s = socket.socket()
-s.connect((SERVER_IP, PORT))
-print("Connected to server.")
+    # Monitor source is typically sink + ".monitor"
+    return f"{default_sink}.monitor"
 
-try:
-    while True:
-        data = stream.read(CHUNK, exception_on_overflow=False)
-        s.sendall(data)
-except KeyboardInterrupt:
-    print("Interrupted")
+def main():
+    monitor_source = get_default_monitor()
+    print(f"Using monitor source: {monitor_source}")
 
-stream.stop_stream()
-stream.close()
-p.terminate()
-s.close()
+    parec_cmd = ["parec", "--format=s16le", "--rate=44100", "--channels=1", "-d", monitor_source]
+
+    s = socket.socket()
+    s.connect((SERVER_IP, PORT))
+    print("Connected to server.")
+
+    proc = subprocess.Popen(parec_cmd, stdout=subprocess.PIPE)
+
+    try:
+        while True:
+            data = proc.stdout.read(CHUNK_SIZE)
+            if not data:
+                break
+            s.sendall(data)
+    except KeyboardInterrupt:
+        print("Stopped.")
+    finally:
+        proc.terminate()
+        s.close()
+
+if __name__ == "__main__":
+    main()
