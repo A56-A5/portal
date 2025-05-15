@@ -24,3 +24,10 @@ class Server:
                 threading.Thread(target=handle_client, args=(conn,), daemon=True).start()
 
         threading.Thread(target=accept_loop, daemon=True).start()
+
+    def broadcast(self, data: bytes):
+        for conn in self.connections:
+            try:
+                conn.send(data)
+            except Exception as e:
+                print(f"[Server] Failed to send to a client: {e}")

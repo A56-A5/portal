@@ -18,6 +18,12 @@ class Client:
         if self.conn:
             self.conn.send(data)
 
+    def receive(self) -> bytes:
+        if self.conn:
+            return self.conn.receive()
+        return b''
+
     def close(self):
         if self.conn:
             self.conn.close()
+
