@@ -1,7 +1,6 @@
 from common.protocol import decode_event
 from screen.edge_detector import EdgeMonitor
 from net.server import Server
-from input.mouse_handler import send_mouse_position
 import pickle
 
 def handle_client(conn):

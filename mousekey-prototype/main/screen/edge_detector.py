@@ -4,11 +4,14 @@ import platform
 
 if platform.system() == "Windows":
     import ctypes
+    from ctypes import wintypes
+
 
     def get_mouse_position():
-        pt = ctypes.wintypes.POINT()
+        pt = wintypes.POINT()
         ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
         return pt.x, pt.y
+    
 
     def get_screen_size():
         user32 = ctypes.windll.user32
