@@ -1,5 +1,8 @@
 from common.protocol import decode_event
+from screen.edge_detector import EdgeMonitor
 from net.server import Server
+from input.mouse_handler import send_mouse_position
+import pickle
 
 def handle_client(conn):
     buffer = ""
@@ -25,8 +28,15 @@ def handle_client(conn):
     conn.close()
     print("[Server] Client disconnected")
 
+def on_edge(direction):
+    print(f"[Server] Edge detected: {direction}")
+    # Send dummy mouse switch event
+    server.broadcast(pickle.dumps({"type": "switch", "edge": direction}))
+
 if __name__ == "__main__":
-    server = Server(port=24800)
+    server = Server(port=5051)
+    monitor = EdgeMonitor(on_edge_callback=on_edge)
+    monitor.start()
     server.start(handle_client)
 
     print("[Server] Running...")

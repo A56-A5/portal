@@ -4,7 +4,7 @@ import threading
 from net.network import NetworkConnection
 
 class Server:
-    def __init__(self, host='0.0.0.0', port=6060):
+    def __init__(self, host='0.0.0.0', port=5051):
         self.host = host
         self.port = port
         self.connections = []
