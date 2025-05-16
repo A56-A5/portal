@@ -51,6 +51,13 @@ except ImportError:
 mouse_sharing_thread = None
 mouse_sharing_running = False
 
+OPPOSITE_EDGE = {
+    'Left': 'Right',
+    'Right': 'Left',
+    'Top': 'Bottom',
+    'Bottom': 'Top'
+}
+
 def start_mouse_share_server(edge):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
@@ -154,6 +161,7 @@ def start_mouse_share_client(ip, edge):
         s.connect((ip, MOUSE_PORT))
         pointer_on_client = False
         ignore_edge_once = False
+        entry_edge = None
         while mouse_sharing_running:
             data = s.recv(1024)
             if not data:
@@ -163,6 +171,7 @@ def start_mouse_share_client(ip, edge):
                 if line == 'ENTER':
                     pointer_on_client = True
                     ignore_edge_once = True
+                    entry_edge = edge
                     # Move pointer just inside the edge
                     if edge == 'Left':
                         mouse.position = (width - 2, height // 2)
@@ -199,13 +208,14 @@ def start_mouse_share_client(ip, edge):
                     ignore_edge_once = False
                     continue
                 hit_edge = False
-                if edge == 'Left' and x >= width - 1:
+                opp_edge = OPPOSITE_EDGE.get(entry_edge)
+                if opp_edge == 'Left' and x <= 0:
                     hit_edge = True
-                elif edge == 'Right' and x <= 0:
+                elif opp_edge == 'Right' and x >= width - 1:
                     hit_edge = True
-                elif edge == 'Top' and y >= height - 1:
+                elif opp_edge == 'Top' and y <= 0:
                     hit_edge = True
-                elif edge == 'Bottom' and y <= 0:
+                elif opp_edge == 'Bottom' and y >= height - 1:
                     hit_edge = True
                 if hit_edge:
                     pointer_on_client = False
