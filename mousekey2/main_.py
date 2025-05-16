@@ -5,12 +5,15 @@ import threading
 import time
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QVBoxLayout, QWidget, 
                              QComboBox, QLineEdit, QPushButton, QLabel, 
-                             QGroupBox, QRadioButton, QHBoxLayout)
-from PyQt5.QtCore import Qt
+                             QGroupBox, QRadioButton, QHBoxLayout, QMessageBox)
+from PyQt5.QtCore import Qt, QObject, pyqtSignal
 from pynput import mouse, keyboard
 from pynput.mouse import Controller as MouseController
 from pynput.keyboard import Controller as KeyboardController
 import pyperclip
+
+class Communicate(QObject):
+    status_signal = pyqtSignal(str, str)
 
 class InputSharingApp(QMainWindow):
     def __init__(self):
@@ -24,21 +27,26 @@ class InputSharingApp(QMainWindow):
         self.client_socket = None
         self.server_socket = None
         self.running = False
-        self.role = "server"  # or "client"
+        self.role = "server"
+        self.connection_active = False
         
         # Screen edge configuration
-        self.client_side = "right"  # left, right, top, bottom
+        self.client_side = "right"
         
         # Input controllers
         self.mouse_controller = MouseController()
         self.keyboard_controller = KeyboardController()
+        
+        # Communication handler
+        self.comm = Communicate()
+        self.comm.status_signal.connect(self.show_status)
         
         # Initialize UI
         self.init_ui()
         
         # Clipboard monitoring
         self.last_clipboard_content = ""
-        self.clipboard_monitor_thread = threading.Thread(target=self.monitor_clipboard, daemon=True)
+        self.clipboard_monitor_thread = None
         self.clipboard_monitor_active = False
         
     def init_ui(self):
@@ -135,6 +143,7 @@ class InputSharingApp(QMainWindow):
         # Start clipboard monitoring
         self.last_clipboard_content = pyperclip.paste()
         if not self.clipboard_monitor_active:
+            self.clipboard_monitor_thread = threading.Thread(target=self.monitor_clipboard, daemon=True)
             self.clipboard_monitor_thread.start()
             self.clipboard_monitor_active = True
         
@@ -142,16 +151,24 @@ class InputSharingApp(QMainWindow):
     
     def stop_sharing(self):
         self.running = False
+        self.connection_active = False
+        
         if self.client_socket:
             try:
+                self.client_socket.shutdown(socket.SHUT_RDWR)
                 self.client_socket.close()
             except:
                 pass
+            finally:
+                self.client_socket = None
+        
         if self.server_socket:
             try:
                 self.server_socket.close()
             except:
                 pass
+            finally:
+                self.server_socket = None
         
         self.start_btn.setEnabled(True)
         self.stop_btn.setEnabled(False)
@@ -159,6 +176,8 @@ class InputSharingApp(QMainWindow):
     
     def show_status(self, title, message):
         print(f"[{title}] {message}")
+        if title == "Error":
+            QMessageBox.critical(self, title, message)
     
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -170,89 +189,110 @@ class InputSharingApp(QMainWindow):
             self.show_status("Server", f"Listening on port {self.server_port}...")
             
             while self.running:
-                conn, addr = self.server_socket.accept()
-                self.show_status("Server", f"Connected to {addr}")
-                self.client_socket = conn
-                
-                # Start mouse listener
-                mouse_listener = mouse.Listener(
-                    on_move=self.on_server_mouse_move,
-                    on_click=self.on_server_mouse_click,
-                    on_scroll=self.on_server_mouse_scroll)
-                mouse_listener.start()
-                
-                # Start keyboard listener
-                keyboard_listener = keyboard.Listener(
-                    on_press=self.on_server_key_press,
-                    on_release=self.on_server_key_release)
-                keyboard_listener.start()
-                
-                # Handle client messages
-                while self.running:
-                    try:
-                        data = conn.recv(4096)
-                        if not data:
-                            break
-                            
-                        message = json.loads(data.decode())
-                        self.handle_client_message(message)
-                    except (ConnectionResetError, json.JSONDecodeError):
-                        break
-                
-                mouse_listener.stop()
-                keyboard_listener.stop()
-                conn.close()
-                self.show_status("Server", "Client disconnected")
+                try:
+                    conn, addr = self.server_socket.accept()
+                    self.connection_active = True
+                    self.client_socket = conn
+                    self.show_status("Server", f"Connected to {addr}")
+                    
+                    # Start input handlers in separate threads
+                    mouse_listener = mouse.Listener(
+                        on_move=self.on_server_mouse_move,
+                        on_click=self.on_server_mouse_click,
+                        on_scroll=self.on_server_mouse_scroll)
+                    mouse_listener.start()
+                    
+                    keyboard_listener = keyboard.Listener(
+                        on_press=self.on_server_key_press,
+                        on_release=self.on_server_key_release)
+                    keyboard_listener.start()
+                    
+                    # Handle client messages
+                    self.handle_connection(conn, mouse_listener, keyboard_listener)
+                    
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    if self.running:
+                        self.comm.status_signal.emit("Server Error", f"Connection error: {str(e)}")
+                    break
                 
         except Exception as e:
             if self.running:
-                self.show_status("Server Error", str(e))
+                self.comm.status_signal.emit("Server Error", str(e))
         finally:
             if self.server_socket:
                 self.server_socket.close()
+            self.connection_active = False
+    
+    def handle_connection(self, conn, mouse_listener, keyboard_listener):
+        try:
+            conn.settimeout(1.0)  # Set timeout to prevent blocking
+            while self.running and self.connection_active:
+                try:
+                    data = conn.recv(4096)
+                    if not data:
+                        break
+                        
+                    try:
+                        message = json.loads(data.decode())
+                        if self.role == "server":
+                            self.handle_client_message(message)
+                        else:
+                            self.handle_server_message(message)
+                    except json.JSONDecodeError:
+                        self.comm.status_signal.emit("Error", "Invalid message received")
+                        continue
+                    
+                except socket.timeout:
+                    continue
+                except ConnectionResetError:
+                    break
+                except Exception as e:
+                    self.comm.status_signal.emit("Error", f"Message handling error: {str(e)}")
+                    break
+                    
+        finally:
+            mouse_listener.stop()
+            keyboard_listener.stop()
+            try:
+                conn.close()
+            except:
+                pass
+            self.connection_active = False
+            self.comm.status_signal.emit("Server", "Client disconnected")
     
     def connect_to_server(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.client_socket.settimeout(5.0)  # Connection timeout
         
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
+            self.connection_active = True
             self.show_status("Client", f"Connected to server at {self.server_ip}")
             
-            # Start mouse listener
+            # Start input handlers
             mouse_listener = mouse.Listener(
                 on_move=self.on_client_mouse_move,
                 on_click=self.on_client_mouse_click,
                 on_scroll=self.on_client_mouse_scroll)
             mouse_listener.start()
             
-            # Start keyboard listener
             keyboard_listener = keyboard.Listener(
                 on_press=self.on_client_key_press,
                 on_release=self.on_client_key_release)
             keyboard_listener.start()
             
             # Handle server messages
-            while self.running:
-                try:
-                    data = self.client_socket.recv(4096)
-                    if not data:
-                        break
-                        
-                    message = json.loads(data.decode())
-                    self.handle_server_message(message)
-                except (ConnectionResetError, json.JSONDecodeError):
-                    break
+            self.handle_connection(self.client_socket, mouse_listener, keyboard_listener)
             
-            mouse_listener.stop()
-            keyboard_listener.stop()
-            self.show_status("Client", "Disconnected from server")
-            
+        except socket.timeout:
+            self.comm.status_signal.emit("Error", "Connection timed out")
         except Exception as e:
             if self.running:
-                self.show_status("Client Error", str(e))
+                self.comm.status_signal.emit("Client Error", str(e))
         finally:
-            if self.client_socket:
-                self.client_socket.close()
+            self.connection_active = False
     
     def send_message(self, message_type, data=None):
         if not self.client_socket:
