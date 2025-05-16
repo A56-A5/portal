@@ -13,6 +13,7 @@ from pynput.mouse import Controller as MouseController, Listener as MouseListene
 from pynput.mouse import Button
 import platform
 import json
+import os
 
 # Placeholders for mouse, keyboard, clipboard sharing logic
 # (to be implemented in next steps)
@@ -58,6 +59,29 @@ OPPOSITE_EDGE = {
     'Bottom': 'Top'
 }
 
+# Edge mapping for pointer entry on client
+ENTRY_EDGE_TO_CLIENT_POS = {
+    'Left': lambda w, h: (1, h // 2),         # Enter from server's right, appear at left
+    'Right': lambda w, h: (w - 2, h // 2),   # Enter from server's left, appear at right
+    'Top': lambda w, h: (w // 2, 1),         # Enter from server's bottom, appear at top
+    'Bottom': lambda w, h: (w // 2, h - 2),  # Enter from server's top, appear at bottom
+}
+
+# Helper functions to hide/show mouse pointer (Windows/Linux)
+def hide_cursor():
+    if platform.system() == 'Windows':
+        import ctypes
+        ctypes.windll.user32.ShowCursor(False)
+    elif platform.system() == 'Linux':
+        # Try to use xdotool or fallback to Xlib/Xcursor if needed
+        os.system('xsetroot -cursor_name none')
+def show_cursor():
+    if platform.system() == 'Windows':
+        import ctypes
+        ctypes.windll.user32.ShowCursor(True)
+    elif platform.system() == 'Linux':
+        os.system('xsetroot -cursor_name left_ptr')
+
 def start_mouse_share_server(edge):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
@@ -76,12 +100,7 @@ def start_mouse_share_server(edge):
         def on_move(x, y):
             nonlocal pointer_on_server, pointer_on_client
             if not pointer_on_server:
-                # Send move event to client
-                msg = json.dumps({"type": "move", "x": x, "y": y})
-                try:
-                    conn.sendall(msg.encode() + b'\n')
-                except Exception:
-                    pass
+                # Block local mouse movement when pointer is on client
                 return True
             # Check if mouse hits the selected edge
             hit_edge = False
@@ -96,6 +115,7 @@ def start_mouse_share_server(edge):
             if hit_edge:
                 pointer_on_server = False
                 pointer_on_client = True
+                hide_cursor()
                 # Send enter event to client with edge info
                 conn.sendall(f'ENTER:{edge}\n'.encode())
                 print(f"[Mouse] Pointer entered client via {edge}")
@@ -103,21 +123,19 @@ def start_mouse_share_server(edge):
             return True
         def on_click(x, y, button, pressed):
             if not pointer_on_server:
-                msg = json.dumps({"type": "click", "x": x, "y": y, "button": str(button), "pressed": pressed})
-                try:
-                    conn.sendall(msg.encode() + b'\n')
-                except Exception:
-                    pass
+                # Block local mouse clicks when pointer is on client
+                return
+            # Only send clicks to client if pointer is on client (handled in event loop)
+            pass
         def on_scroll(x, y, dx, dy):
             if not pointer_on_server:
-                msg = json.dumps({"type": "scroll", "x": x, "y": y, "dx": dx, "dy": dy})
-                try:
-                    conn.sendall(msg.encode() + b'\n')
-                except Exception:
-                    pass
+                # Block local scroll when pointer is on client
+                return
+            pass
         while mouse_sharing_running:
             pointer_on_server = True
             pointer_on_client = False
+            show_cursor()
             with MouseListener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
                 while mouse_sharing_running:
                     if pointer_on_server:
@@ -131,6 +149,7 @@ def start_mouse_share_server(edge):
                             if b'RETURN' in data:
                                 pointer_on_server = True
                                 pointer_on_client = False
+                                show_cursor()
                                 # Move pointer to edge
                                 if edge == 'Left':
                                     mouse.position = (0, height // 2)
@@ -172,15 +191,9 @@ def start_mouse_share_client(ip, _):
                     pointer_on_client = True
                     ignore_edge_once = True
                     entry_edge = line.split(':', 1)[1]
-                    # Move pointer just inside the edge
-                    if entry_edge == 'Left':
-                        mouse.position = (width - 2, height // 2)
-                    elif entry_edge == 'Right':
-                        mouse.position = (1, height // 2)
-                    elif entry_edge == 'Top':
-                        mouse.position = (width // 2, height - 2)
-                    elif entry_edge == 'Bottom':
-                        mouse.position = (width // 2, 1)
+                    # Place pointer at the correct entry edge on client
+                    if entry_edge in ENTRY_EDGE_TO_CLIENT_POS:
+                        mouse.position = ENTRY_EDGE_TO_CLIENT_POS[entry_edge](width, height)
                     print(f"[Mouse] Pointer entered client via {entry_edge}")
                 elif line == 'RETURN':
                     pointer_on_client = False
