@@ -166,6 +166,15 @@ def start_mouse_share_server(edge):
                 # Send enter event to client with edge info
                 conn.sendall(f'ENTER:{edge}\n'.encode())
                 print(f"[Mouse] Pointer entered client via {edge}")
+                # Force server mouse to stay at edge
+                if edge == 'Left':
+                    mouse.position = (0, height // 2)
+                elif edge == 'Right':
+                    mouse.position = (width - 1, height // 2)
+                elif edge == 'Top':
+                    mouse.position = (width // 2, 0)
+                elif edge == 'Bottom':
+                    mouse.position = (width // 2, height - 1)
                 return True
             return True
 
@@ -276,6 +285,9 @@ def start_mouse_share_client(ip, _):
                             pos = ENTRY_EDGE_TO_CLIENT_POS[entry_edge](width, height)
                             mouse.position = pos
                             last_client_pos = pos
+                            # Force the mouse to stay at the edge initially
+                            time.sleep(0.1)  # Small delay to ensure position is set
+                            mouse.position = pos
                         print(f"[Mouse] Pointer entered client via {entry_edge}")
                     elif line == 'RETURN':
                         pointer_on_client = False
