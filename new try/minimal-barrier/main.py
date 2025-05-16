@@ -14,6 +14,7 @@ from pynput.mouse import Button
 import platform
 import json
 import os
+import pyautogui
 
 # Placeholders for mouse, keyboard, clipboard sharing logic
 # (to be implemented in next steps)
@@ -30,12 +31,7 @@ def start_clipboard_share_server():
 def start_clipboard_share_client(ip):
     pass
 
-def stop_all_sharing():
-    global mouse_sharing_running, mouse_sharing_thread
-    mouse_sharing_running = False
-    if mouse_sharing_thread and mouse_sharing_thread.is_alive():
-        mouse_sharing_thread.join(timeout=1.0)
-    show_cursor()  # Make sure cursor is visible when stopping
+pyautogui.FAILSAFE = False  # Disable failsafe for edge detection
 
 MOUSE_PORT = 50010
 
@@ -113,13 +109,19 @@ def show_cursor():
         except Exception:
             os.system('xsetroot -cursor_name left_ptr')
 
+def stop_all_sharing():
+    global mouse_sharing_running, mouse_sharing_thread
+    mouse_sharing_running = False
+    if mouse_sharing_thread and mouse_sharing_thread.is_alive():
+        mouse_sharing_thread.join(timeout=1.0)
+    pyautogui.moveTo(0, 0)  # Reset mouse position
+
 def start_mouse_share_server(edge):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
     def server_thread():
         global mouse_sharing_running
-        mouse = MouseController()
-        width, height = get_screen_size()
+        width, height = pyautogui.size()
         s = socket.socket()
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind(('0.0.0.0', MOUSE_PORT))
@@ -128,126 +130,66 @@ def start_mouse_share_server(edge):
         conn, addr = s.accept()
         print(f"[Mouse] Client connected: {addr}")
         pointer_on_server = True
-        pointer_on_client = False
-        last_server_pos = None
         edge_threshold = 5  # Pixels from edge to trigger transition
 
-        def on_move(x, y):
-            nonlocal pointer_on_server, pointer_on_client, last_server_pos
-            if not pointer_on_server:
-                # Send mouse position to client
-                try:
-                    event = json.dumps({"type": "move", "x": x, "y": y})
-                    conn.sendall(f"{event}\n".encode())
-                    # Keep server mouse at last position
-                    if last_server_pos:
-                        mouse.position = last_server_pos
-                except Exception as e:
-                    print(f"[Mouse] Error sending move event: {e}")
-                return True
-
-            # Store last position before potential transfer
-            last_server_pos = (x, y)
-
-            # Check if mouse hits the selected edge with threshold
-            hit_edge = False
-            if edge == 'Left' and x <= edge_threshold:
-                hit_edge = True
-            elif edge == 'Right' and x >= width - edge_threshold:
-                hit_edge = True
-            elif edge == 'Top' and y <= edge_threshold:
-                hit_edge = True
-            elif edge == 'Bottom' and y >= height - edge_threshold:
-                hit_edge = True
-
-            if hit_edge:
-                pointer_on_server = False
-                pointer_on_client = True
-                hide_cursor()
-                # Send enter event to client with edge info
-                conn.sendall(f'ENTER:{edge}\n'.encode())
-                print(f"[Mouse] Pointer entered client via {edge}")
-                # Force server mouse to stay at edge
-                if edge == 'Left':
-                    mouse.position = (0, height // 2)
-                elif edge == 'Right':
-                    mouse.position = (width - 1, height // 2)
-                elif edge == 'Top':
-                    mouse.position = (width // 2, 0)
-                elif edge == 'Bottom':
-                    mouse.position = (width // 2, height - 1)
-                return True
-            return True
-
-        def on_click(x, y, button, pressed):
-            if not pointer_on_server:
-                # Send click event to client
-                try:
-                    event = json.dumps({
-                        "type": "click",
-                        "button": str(button),
-                        "pressed": pressed
-                    })
-                    conn.sendall(f"{event}\n".encode())
-                except Exception as e:
-                    print(f"[Mouse] Error sending click event: {e}")
-                return False  # Block the click on server
-            return True
-
-        def on_scroll(x, y, dx, dy):
-            if not pointer_on_server:
-                # Send scroll event to client
-                try:
-                    event = json.dumps({
-                        "type": "scroll",
-                        "dx": dx,
-                        "dy": dy
-                    })
-                    conn.sendall(f"{event}\n".encode())
-                except Exception as e:
-                    print(f"[Mouse] Error sending scroll event: {e}")
-                return False  # Block the scroll on server
-            return True
-
         while mouse_sharing_running:
-            pointer_on_server = True
-            pointer_on_client = False
-            show_cursor()
-            with MouseListener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
-                while mouse_sharing_running:
-                    if pointer_on_server:
-                        time.sleep(0.01)
-                    else:
-                        # Pointer is on client, listen for RETURN
-                        try:
-                            data = conn.recv(1024)
-                            if not data:
-                                break
-                            if b'RETURN' in data:
-                                pointer_on_server = True
-                                pointer_on_client = False
-                                show_cursor()
-                                # Move pointer to correct edge on return
-                                if edge == 'Left':
-                                    mouse.position = (edge_threshold, height // 2)
-                                elif edge == 'Right':
-                                    mouse.position = (width - edge_threshold, height // 2)
-                                elif edge == 'Top':
-                                    mouse.position = (width // 2, edge_threshold)
-                                elif edge == 'Bottom':
-                                    mouse.position = (width // 2, height - edge_threshold)
-                                print("[Mouse] Pointer returned to server")
-                                break
-                        except Exception:
-                            break
-                if not mouse_sharing_running:
-                    break
+            try:
+                if pointer_on_server:
+                    x, y = pyautogui.position()
+                    # Check if mouse hits the selected edge
+                    hit_edge = False
+                    if edge == 'Left' and x <= edge_threshold:
+                        hit_edge = True
+                    elif edge == 'Right' and x >= width - edge_threshold:
+                        hit_edge = True
+                    elif edge == 'Top' and y <= edge_threshold:
+                        hit_edge = True
+                    elif edge == 'Bottom' and y >= height - edge_threshold:
+                        hit_edge = True
+
+                    if hit_edge:
+                        pointer_on_server = False
+                        # Send enter event to client with edge info
+                        conn.sendall(f'ENTER:{edge}\n'.encode())
+                        print(f"[Mouse] Pointer entered client via {edge}")
+                        # Keep mouse at edge
+                        if edge == 'Left':
+                            pyautogui.moveTo(0, height // 2)
+                        elif edge == 'Right':
+                            pyautogui.moveTo(width - 1, height // 2)
+                        elif edge == 'Top':
+                            pyautogui.moveTo(width // 2, 0)
+                        elif edge == 'Bottom':
+                            pyautogui.moveTo(width // 2, height - 1)
+                else:
+                    # Listen for RETURN
+                    data = conn.recv(1024)
+                    if not data:
+                        break
+                    if b'RETURN' in data:
+                        pointer_on_server = True
+                        print("[Mouse] Pointer returned to server")
+                        # Move pointer to correct edge on return
+                        if edge == 'Left':
+                            pyautogui.moveTo(edge_threshold, height // 2)
+                        elif edge == 'Right':
+                            pyautogui.moveTo(width - edge_threshold, height // 2)
+                        elif edge == 'Top':
+                            pyautogui.moveTo(width // 2, edge_threshold)
+                        elif edge == 'Bottom':
+                            pyautogui.moveTo(width // 2, height - edge_threshold)
+                time.sleep(0.01)  # Small delay to prevent CPU overuse
+            except Exception as e:
+                print(f"[Mouse] Server error: {e}")
+                break
+
         try:
             conn.close()
             s.close()
         except Exception:
             pass
         mouse_sharing_running = False
+
     mouse_sharing_thread = threading.Thread(target=server_thread, daemon=True)
     mouse_sharing_thread.start()
 
@@ -256,8 +198,7 @@ def start_mouse_share_client(ip, _):
     mouse_sharing_running = True
     def client_thread():
         global mouse_sharing_running
-        mouse = MouseController()
-        width, height = get_screen_size()
+        width, height = pyautogui.size()
         s = socket.socket()
         try:
             s.connect((ip, MOUSE_PORT))
@@ -270,7 +211,6 @@ def start_mouse_share_client(ip, _):
         ignore_edge_once = False
         entry_edge = None
         edge_threshold = 5  # Pixels from edge to trigger transition
-        last_client_pos = None
 
         while mouse_sharing_running:
             try:
@@ -286,64 +226,36 @@ def start_mouse_share_client(ip, _):
                         # Place pointer at the correct entry edge on client
                         if entry_edge in ENTRY_EDGE_TO_CLIENT_POS:
                             pos = ENTRY_EDGE_TO_CLIENT_POS[entry_edge](width, height)
-                            mouse.position = pos
-                            last_client_pos = pos
+                            pyautogui.moveTo(pos[0], pos[1])
                             # Force the mouse to stay at the edge initially
-                            time.sleep(0.1)  # Small delay to ensure position is set
-                            mouse.position = pos
+                            time.sleep(0.1)
+                            pyautogui.moveTo(pos[0], pos[1])
                         print(f"[Mouse] Pointer entered client via {entry_edge}")
-                    elif line == 'RETURN':
-                        pointer_on_client = False
-                        print("[Mouse] Pointer returned to server")
-                    elif pointer_on_client:
-                        try:
-                            event = json.loads(line)
-                            if event["type"] == "move":
-                                x, y = event["x"], event["y"]
-                                # Keep mouse within screen bounds
-                                x = max(0, min(x, width - 1))
-                                y = max(0, min(y, height - 1))
-                                mouse.position = (x, y)
-                                last_client_pos = (x, y)
-                            elif event["type"] == "click":
-                                btn_name = event["button"].split('.')[-1]
-                                btn = getattr(Button, btn_name, Button.left)
-                                if event["pressed"]:
-                                    mouse.press(btn)
-                                else:
-                                    mouse.release(btn)
-                            elif event["type"] == "scroll":
-                                mouse.scroll(event["dx"], event["dy"])
-                        except Exception as e:
-                            print(f"[Mouse] Client event error: {e}")
-                            continue
 
                 # Listen for mouse leaving client edge
                 if pointer_on_client and entry_edge:
-                    try:
-                        x, y = mouse.position
-                        if ignore_edge_once:
-                            ignore_edge_once = False
-                            continue
-                        hit_edge = False
-                        opp_edge = OPPOSITE_EDGE.get(entry_edge)
-                        if opp_edge == 'Left' and x <= edge_threshold:
-                            hit_edge = True
-                        elif opp_edge == 'Right' and x >= width - edge_threshold:
-                            hit_edge = True
-                        elif opp_edge == 'Top' and y <= edge_threshold:
-                            hit_edge = True
-                        elif opp_edge == 'Bottom' and y >= height - edge_threshold:
-                            hit_edge = True
-                        if hit_edge:
-                            s.sendall(b'RETURN\n')
-                            pointer_on_client = False
-                            print(f"[Mouse] Pointer leaving client via {opp_edge}")
-                    except Exception as e:
-                        print(f"[Mouse] Edge detection error: {e}")
+                    x, y = pyautogui.position()
+                    if ignore_edge_once:
+                        ignore_edge_once = False
                         continue
+                    hit_edge = False
+                    opp_edge = OPPOSITE_EDGE.get(entry_edge)
+                    if opp_edge == 'Left' and x <= edge_threshold:
+                        hit_edge = True
+                    elif opp_edge == 'Right' and x >= width - edge_threshold:
+                        hit_edge = True
+                    elif opp_edge == 'Top' and y <= edge_threshold:
+                        hit_edge = True
+                    elif opp_edge == 'Bottom' and y >= height - edge_threshold:
+                        hit_edge = True
+                    if hit_edge:
+                        s.sendall(b'RETURN\n')
+                        pointer_on_client = False
+                        print(f"[Mouse] Pointer leaving client via {opp_edge}")
+
+                time.sleep(0.01)  # Small delay to prevent CPU overuse
             except Exception as e:
-                print(f"[Mouse] Client connection error: {e}")
+                print(f"[Mouse] Client error: {e}")
                 break
 
         try:
