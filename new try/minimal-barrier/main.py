@@ -153,6 +153,7 @@ def start_mouse_share_client(ip, edge):
         s = socket.socket()
         s.connect((ip, MOUSE_PORT))
         pointer_on_client = False
+        ignore_edge_once = False
         while mouse_sharing_running:
             data = s.recv(1024)
             if not data:
@@ -161,15 +162,16 @@ def start_mouse_share_client(ip, edge):
             for line in lines:
                 if line == 'ENTER':
                     pointer_on_client = True
-                    # Move pointer to edge
+                    ignore_edge_once = True
+                    # Move pointer just inside the edge
                     if edge == 'Left':
-                        mouse.position = (width - 1, height // 2)
+                        mouse.position = (width - 2, height // 2)
                     elif edge == 'Right':
-                        mouse.position = (0, height // 2)
+                        mouse.position = (1, height // 2)
                     elif edge == 'Top':
-                        mouse.position = (width // 2, height - 1)
+                        mouse.position = (width // 2, height - 2)
                     elif edge == 'Bottom':
-                        mouse.position = (width // 2, 0)
+                        mouse.position = (width // 2, 1)
                     print("[Mouse] Pointer entered client")
                 elif line == 'RETURN':
                     pointer_on_client = False
@@ -193,6 +195,9 @@ def start_mouse_share_client(ip, edge):
             # Listen for mouse leaving client edge
             if pointer_on_client:
                 x, y = mouse.position
+                if ignore_edge_once:
+                    ignore_edge_once = False
+                    continue
                 hit_edge = False
                 if edge == 'Left' and x >= width - 1:
                     hit_edge = True
