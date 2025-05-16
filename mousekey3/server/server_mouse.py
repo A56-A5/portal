@@ -39,23 +39,35 @@ def listen_for_return(conn):
     threading.Thread(target=loop, daemon=True).start()
 
 
-def send_mouse_control():
+def stream_mouse_deltas():
     global has_control
+    prev_x, prev_y = pyautogui.position()
     screen_w, screen_h = pyautogui.size()
     while True:
+        x, y = pyautogui.position()
+        dx = x - prev_x
+        dy = y - prev_y
+
         if has_control:
-            x, y = pyautogui.position()
             if position == "right" and x >= screen_w - 1:
-                client_conn.sendall(f"TAKE_CONTROL,{y}".encode())
                 has_control = False
-                pyautogui.moveTo(screen_w - 1, y)  # Pin mouse
+                pyautogui.moveTo(screen_w - 1, y)
+                print("Passing control to client")
+            else:
+                prev_x, prev_y = x, y
+        else:
+            if dx != 0 or dy != 0:
+                try:
+                    client_conn.sendall(f"MOVE,{dx},{dy}".encode())
+                    prev_x, prev_y = x, y
+                except:
+                    break
         time.sleep(0.01)
 
 
 threading.Thread(target=accept_client).start()
 
-# Wait for client to connect
 while client_conn is None:
     time.sleep(0.1)
 
-send_mouse_control()
+stream_mouse_deltas()

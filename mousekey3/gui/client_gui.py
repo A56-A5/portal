@@ -13,7 +13,7 @@ def start_client():
     subprocess.Popen([sys.executable, script_path, ip])
 
 def stop_client():
-    os._exit(0)  # Quick and dirty stop
+    os._exit(0)
 
 root = tk.Tk()
 root.title("Barrier-like Client")
