@@ -12,6 +12,7 @@ import time
 from pynput.mouse import Controller as MouseController, Listener as MouseListener
 from pynput.mouse import Button
 import platform
+import json
 
 # Placeholders for mouse, keyboard, clipboard sharing logic
 # (to be implemented in next steps)
@@ -50,6 +51,13 @@ except ImportError:
 mouse_sharing_thread = None
 mouse_sharing_running = False
 
+OPPOSITE_EDGE = {
+    'Left': 'Right',
+    'Right': 'Left',
+    'Top': 'Bottom',
+    'Bottom': 'Top'
+}
+
 def start_mouse_share_server(edge):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
@@ -64,10 +72,17 @@ def start_mouse_share_server(edge):
         conn, addr = s.accept()
         print(f"[Mouse] Client connected: {addr}")
         pointer_on_server = True
+        pointer_on_client = False
         def on_move(x, y):
-            nonlocal pointer_on_server
+            nonlocal pointer_on_server, pointer_on_client
             if not pointer_on_server:
-                return False  # Stop listener
+                # Send move event to client
+                msg = json.dumps({"type": "move", "x": x, "y": y})
+                try:
+                    conn.sendall(msg.encode() + b'\n')
+                except Exception:
+                    pass
+                return True
             # Check if mouse hits the selected edge
             hit_edge = False
             if edge == 'Left' and x <= 0:
@@ -80,43 +95,63 @@ def start_mouse_share_server(edge):
                 hit_edge = True
             if hit_edge:
                 pointer_on_server = False
-                # Send enter event to client
-                conn.sendall(b'ENTER\n')
-                # Now send mouse movements
-                while not pointer_on_server and mouse_sharing_running:
-                    # Wait for client to send 'RETURN' or send mouse deltas
-                    time.sleep(0.01)
-                return False  # Stop listener
+                pointer_on_client = True
+                # Send enter event to client with edge info
+                conn.sendall(f'ENTER:{edge}\n'.encode())
+                print(f"[Mouse] Pointer entered client via {edge}")
+                return True
             return True
+        def on_click(x, y, button, pressed):
+            if not pointer_on_server:
+                msg = json.dumps({"type": "click", "x": x, "y": y, "button": str(button), "pressed": pressed})
+                try:
+                    conn.sendall(msg.encode() + b'\n')
+                except Exception:
+                    pass
+        def on_scroll(x, y, dx, dy):
+            if not pointer_on_server:
+                msg = json.dumps({"type": "scroll", "x": x, "y": y, "dx": dx, "dy": dy})
+                try:
+                    conn.sendall(msg.encode() + b'\n')
+                except Exception:
+                    pass
         while mouse_sharing_running:
             pointer_on_server = True
-            with MouseListener(on_move=on_move) as listener:
-                listener.join()
-            # Now pointer is on client, wait for client to return
-            while not pointer_on_server and mouse_sharing_running:
-                try:
-                    data = conn.recv(1024)
-                    if not data:
-                        break
-                    if b'RETURN' in data:
-                        pointer_on_server = True
-                        # Move pointer to edge
-                        if edge == 'Left':
-                            mouse.position = (0, height // 2)
-                        elif edge == 'Right':
-                            mouse.position = (width - 1, height // 2)
-                        elif edge == 'Top':
-                            mouse.position = (width // 2, 0)
-                        elif edge == 'Bottom':
-                            mouse.position = (width // 2, height - 1)
-                except Exception:
+            pointer_on_client = False
+            with MouseListener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
+                while mouse_sharing_running:
+                    if pointer_on_server:
+                        time.sleep(0.01)
+                    else:
+                        # Pointer is on client, listen for RETURN
+                        try:
+                            data = conn.recv(1024)
+                            if not data:
+                                break
+                            if b'RETURN' in data:
+                                pointer_on_server = True
+                                pointer_on_client = False
+                                # Move pointer to edge
+                                if edge == 'Left':
+                                    mouse.position = (0, height // 2)
+                                elif edge == 'Right':
+                                    mouse.position = (width - 1, height // 2)
+                                elif edge == 'Top':
+                                    mouse.position = (width // 2, 0)
+                                elif edge == 'Bottom':
+                                    mouse.position = (width // 2, height - 1)
+                                print("[Mouse] Pointer returned to server")
+                                break
+                        except Exception:
+                            break
+                if not mouse_sharing_running:
                     break
         conn.close()
         s.close()
     mouse_sharing_thread = threading.Thread(target=server_thread, daemon=True)
     mouse_sharing_thread.start()
 
-def start_mouse_share_client(ip, edge):
+def start_mouse_share_client(ip, _):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
     def client_thread():
@@ -125,40 +160,67 @@ def start_mouse_share_client(ip, edge):
         s = socket.socket()
         s.connect((ip, MOUSE_PORT))
         pointer_on_client = False
+        ignore_edge_once = False
+        entry_edge = None
         while mouse_sharing_running:
             data = s.recv(1024)
             if not data:
                 break
-            if b'ENTER' in data:
-                pointer_on_client = True
-                # Move pointer to edge
-                if edge == 'Left':
-                    mouse.position = (width - 1, height // 2)
-                elif edge == 'Right':
-                    mouse.position = (0, height // 2)
-                elif edge == 'Top':
-                    mouse.position = (width // 2, height - 1)
-                elif edge == 'Bottom':
-                    mouse.position = (width // 2, 0)
-                # Listen for mouse leaving client edge
-                def on_move(x, y):
-                    nonlocal pointer_on_client
-                    hit_edge = False
-                    if edge == 'Left' and x >= width - 1:
-                        hit_edge = True
-                    elif edge == 'Right' and x <= 0:
-                        hit_edge = True
-                    elif edge == 'Top' and y >= height - 1:
-                        hit_edge = True
-                    elif edge == 'Bottom' and y <= 0:
-                        hit_edge = True
-                    if hit_edge:
-                        pointer_on_client = False
-                        s.sendall(b'RETURN\n')
-                        return False
-                    return True
-                with MouseListener(on_move=on_move) as listener:
-                    listener.join()
+            lines = data.decode(errors='ignore').splitlines()
+            for line in lines:
+                if line.startswith('ENTER:'):
+                    pointer_on_client = True
+                    ignore_edge_once = True
+                    entry_edge = line.split(':', 1)[1]
+                    # Move pointer just inside the edge
+                    if entry_edge == 'Left':
+                        mouse.position = (width - 2, height // 2)
+                    elif entry_edge == 'Right':
+                        mouse.position = (1, height // 2)
+                    elif entry_edge == 'Top':
+                        mouse.position = (width // 2, height - 2)
+                    elif entry_edge == 'Bottom':
+                        mouse.position = (width // 2, 1)
+                    print(f"[Mouse] Pointer entered client via {entry_edge}")
+                elif line == 'RETURN':
+                    pointer_on_client = False
+                    print("[Mouse] Pointer returned to server")
+                elif pointer_on_client:
+                    try:
+                        event = json.loads(line)
+                        if event["type"] == "move":
+                            mouse.position = (event["x"], event["y"])
+                        elif event["type"] == "click":
+                            btn_name = event["button"].split('.')[-1]
+                            btn = getattr(Button, btn_name, Button.left)
+                            if event["pressed"]:
+                                mouse.press(btn)
+                            else:
+                                mouse.release(btn)
+                        elif event["type"] == "scroll":
+                            mouse.scroll(event["dx"], event["dy"])
+                    except Exception as e:
+                        print(f"[Mouse] Client event error: {e}")
+            # Listen for mouse leaving client edge
+            if pointer_on_client and entry_edge:
+                x, y = mouse.position
+                if ignore_edge_once:
+                    ignore_edge_once = False
+                    continue
+                hit_edge = False
+                opp_edge = OPPOSITE_EDGE.get(entry_edge)
+                if opp_edge == 'Left' and x <= 0:
+                    hit_edge = True
+                elif opp_edge == 'Right' and x >= width - 1:
+                    hit_edge = True
+                elif opp_edge == 'Top' and y <= 0:
+                    hit_edge = True
+                elif opp_edge == 'Bottom' and y >= height - 1:
+                    hit_edge = True
+                if hit_edge:
+                    pointer_on_client = False
+                    s.sendall(b'RETURN\n')
+                    print("[Mouse] Pointer sent back to server")
     mouse_sharing_thread = threading.Thread(target=client_thread, daemon=True)
     mouse_sharing_thread.start()
 
@@ -200,12 +262,12 @@ class BarrierMinimal(QMainWindow):
         self.client_ip_input = QLineEdit()
         client_layout.addWidget(self.client_ip_label)
         client_layout.addWidget(self.client_ip_input)
-        # Client location config
-        self.client_location_label = QLabel("Location relative to server:")
-        self.client_location_combo = QComboBox()
-        self.client_location_combo.addItems(["Left", "Right", "Top", "Bottom"])
-        client_layout.addWidget(self.client_location_label)
-        client_layout.addWidget(self.client_location_combo)
+        # Remove client location config from GUI
+        # self.client_location_label = QLabel("Location relative to server:")
+        # self.client_location_combo = QComboBox()
+        # self.client_location_combo.addItems(["Left", "Right", "Top", "Bottom"])
+        # client_layout.addWidget(self.client_location_label)
+        # client_layout.addWidget(self.client_location_combo)
         self.client_group.setLayout(client_layout)
         layout.addWidget(self.client_group)
 
@@ -247,9 +309,9 @@ class BarrierMinimal(QMainWindow):
                 start_audio_share('server')
         elif self.client_group.isChecked():
             ip = self.client_ip_input.text().strip()
-            edge = self.client_location_combo.currentText()
+            # edge is not needed on client, pass None
             if ip:
-                start_mouse_share_client(ip, edge)
+                start_mouse_share_client(ip, None)
                 if self.audio_checkbox.isChecked():
                     start_audio_share('client', ip)
 
