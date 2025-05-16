@@ -11,7 +11,8 @@ from pynput.keyboard import Controller as KeyboardController
 import pyperclip
 import platform
 import ctypes
-import struct
+import socket
+import sys
 
 class Communicate(QObject):
     status_signal = pyqtSignal(str, str)
@@ -482,7 +483,6 @@ class InputSharingApp(QMainWindow):
                 pyperclip.copy(content)
     
     def handle_server_message(self, message):
-        def handle_server_message(self, message):
         if message["type"] == "mouse_move":
             data = message["data"]
             if "screen_width" in data and "screen_height" in data:
