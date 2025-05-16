@@ -1,4 +1,3 @@
-
 ### server/server_mouse.py
 
 import socket
@@ -25,17 +24,20 @@ def accept_client():
 def send_mouse_position():
     global client_conn
     screen_w, screen_h = pyautogui.size()
+    has_control = True
     while True:
         x, y = pyautogui.position()
 
-        if position == "right" and x >= screen_w - 1:
-            msg = f"{x},{y}"
-            client_conn.sendall(msg.encode())
-            time.sleep(0.01)
+        if has_control:
+            if position == "right" and x >= screen_w - 1:
+                has_control = False
+                client_conn.sendall(f"TAKE,{x},{y}".encode())
+                pyautogui.moveTo(screen_w - 2, y)  # Pin to edge
+
+        time.sleep(0.01)
 
 threading.Thread(target=accept_client).start()
 
-# Wait for client to connect before sending
 while client_conn is None:
     time.sleep(0.1)
 
