@@ -96,9 +96,9 @@ def start_mouse_share_server(edge):
             if hit_edge:
                 pointer_on_server = False
                 pointer_on_client = True
-                # Send enter event to client
-                conn.sendall(b'ENTER\n')
-                print("[Mouse] Pointer entered client")
+                # Send enter event to client with edge info
+                conn.sendall(f'ENTER:{edge}\n'.encode())
+                print(f"[Mouse] Pointer entered client via {edge}")
                 return True
             return True
         def on_click(x, y, button, pressed):
@@ -151,7 +151,7 @@ def start_mouse_share_server(edge):
     mouse_sharing_thread = threading.Thread(target=server_thread, daemon=True)
     mouse_sharing_thread.start()
 
-def start_mouse_share_client(ip, edge):
+def start_mouse_share_client(ip, _):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
     def client_thread():
@@ -168,20 +168,20 @@ def start_mouse_share_client(ip, edge):
                 break
             lines = data.decode(errors='ignore').splitlines()
             for line in lines:
-                if line == 'ENTER':
+                if line.startswith('ENTER:'):
                     pointer_on_client = True
                     ignore_edge_once = True
-                    entry_edge = edge
+                    entry_edge = line.split(':', 1)[1]
                     # Move pointer just inside the edge
-                    if edge == 'Left':
+                    if entry_edge == 'Left':
                         mouse.position = (width - 2, height // 2)
-                    elif edge == 'Right':
+                    elif entry_edge == 'Right':
                         mouse.position = (1, height // 2)
-                    elif edge == 'Top':
+                    elif entry_edge == 'Top':
                         mouse.position = (width // 2, height - 2)
-                    elif edge == 'Bottom':
+                    elif entry_edge == 'Bottom':
                         mouse.position = (width // 2, 1)
-                    print("[Mouse] Pointer entered client")
+                    print(f"[Mouse] Pointer entered client via {entry_edge}")
                 elif line == 'RETURN':
                     pointer_on_client = False
                     print("[Mouse] Pointer returned to server")
@@ -202,7 +202,7 @@ def start_mouse_share_client(ip, edge):
                     except Exception as e:
                         print(f"[Mouse] Client event error: {e}")
             # Listen for mouse leaving client edge
-            if pointer_on_client:
+            if pointer_on_client and entry_edge:
                 x, y = mouse.position
                 if ignore_edge_once:
                     ignore_edge_once = False
@@ -262,12 +262,12 @@ class BarrierMinimal(QMainWindow):
         self.client_ip_input = QLineEdit()
         client_layout.addWidget(self.client_ip_label)
         client_layout.addWidget(self.client_ip_input)
-        # Client location config
-        self.client_location_label = QLabel("Location relative to server:")
-        self.client_location_combo = QComboBox()
-        self.client_location_combo.addItems(["Left", "Right", "Top", "Bottom"])
-        client_layout.addWidget(self.client_location_label)
-        client_layout.addWidget(self.client_location_combo)
+        # Remove client location config from GUI
+        # self.client_location_label = QLabel("Location relative to server:")
+        # self.client_location_combo = QComboBox()
+        # self.client_location_combo.addItems(["Left", "Right", "Top", "Bottom"])
+        # client_layout.addWidget(self.client_location_label)
+        # client_layout.addWidget(self.client_location_combo)
         self.client_group.setLayout(client_layout)
         layout.addWidget(self.client_group)
 
@@ -309,9 +309,9 @@ class BarrierMinimal(QMainWindow):
                 start_audio_share('server')
         elif self.client_group.isChecked():
             ip = self.client_ip_input.text().strip()
-            edge = self.client_location_combo.currentText()
+            # edge is not needed on client, pass None
             if ip:
-                start_mouse_share_client(ip, edge)
+                start_mouse_share_client(ip, None)
                 if self.audio_checkbox.isChecked():
                     start_audio_share('client', ip)
 
