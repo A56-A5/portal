@@ -10,6 +10,95 @@ try:
 except ImportError:
     pyaudio = None
 
+audio_thread = None
+audio_running = False
+
+def start_audio_share(mode, ip=None):
+    global audio_thread, audio_running
+    if not pyaudio:
+        print("[Audio] PyAudio is not installed.")
+        return
+    audio_running = True
+    if mode == 'server':
+        audio_thread = threading.Thread(target=_run_server, daemon=True)
+        audio_thread.start()
+    elif mode == 'client':
+        if not ip:
+            print("[Audio] No server IP provided for client mode.")
+            return
+        audio_thread = threading.Thread(target=_run_client, args=(ip,), daemon=True)
+        audio_thread.start()
+    else:
+        print(f"[Audio] Unknown mode: {mode}")
+
+def stop_audio_share():
+    global audio_running
+    audio_running = False
+
+# Internal server/client logic
+
+def _run_server():
+    CHUNK = 1024
+    FORMAT = pyaudio.paInt16
+    CHANNELS = 1
+    RATE = 44100
+    PORT = 50007
+    p = pyaudio.PyAudio()
+    stream = p.open(format=FORMAT, channels=CHANNELS, rate=RATE, output=True, frames_per_buffer=CHUNK)
+    s = socket.socket()
+    s.bind(('0.0.0.0', PORT))
+    s.listen(1)
+    print("[Audio] Waiting for audio client connection...")
+    try:
+        conn, addr = s.accept()
+        print(f"[Audio] Connected by {addr}")
+        while audio_running:
+            data = conn.recv(CHUNK * 2)
+            if not data:
+                break
+            stream.write(data)
+    except Exception as e:
+        print(f"[Audio] Server error: {e}")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        s.close()
+        print("[Audio] Server stopped.")
+
+def _run_client(ip):
+    PORT = 50007
+    CHUNK_SIZE = 4096
+    p = pyaudio.PyAudio()
+    # Try to find a working input device
+    device_index = None
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if info["maxInputChannels"] > 0:
+            device_index = i
+            break
+    if device_index is None:
+        print("[Audio] No input device found.")
+        return
+    stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, input=True, input_device_index=device_index, frames_per_buffer=CHUNK_SIZE)
+    s = socket.socket()
+    try:
+        s.connect((ip, PORT))
+        print(f"[Audio] Connected to server {ip}")
+        while audio_running:
+            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+            if not data:
+                break
+            s.sendall(data)
+    except Exception as e:
+        print(f"[Audio] Client error: {e}")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        s.close()
+        print("[Audio] Client stopped.")
+
 class AudioShareWidget(QWidget):
     status_signal = pyqtSignal(str)
 
