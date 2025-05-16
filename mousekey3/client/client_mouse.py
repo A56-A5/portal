@@ -21,8 +21,9 @@ def receive_deltas(sock):
                 dx = int(parts[1])
                 dy = int(parts[2])
                 pyautogui.moveRel(dx, dy)
+
                 x, y = pyautogui.position()
-                if x >= screen_w - 1:
+                if x <= 0 or x >= screen_w - 1 or y <= 0 or y >= screen_h - 1:
                     sock.sendall(b"RETURN_CONTROL")
         except:
             break

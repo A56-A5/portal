@@ -1,4 +1,3 @@
-
 ### gui/client_gui.py
 
 import tkinter as tk

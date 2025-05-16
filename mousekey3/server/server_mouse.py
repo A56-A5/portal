@@ -13,7 +13,6 @@ position = sys.argv[1] if len(sys.argv) > 1 else "right"
 client_conn = None
 has_control = True
 
-
 def accept_client():
     global client_conn
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
@@ -49,9 +48,11 @@ def stream_mouse_deltas():
         dy = y - prev_y
 
         if has_control:
-            if position == "right" and x >= screen_w - 1:
+            if (position == "right" and x >= screen_w - 1) or \
+               (position == "left" and x <= 0) or \
+               (position == "top" and y <= 0) or \
+               (position == "bottom" and y >= screen_h - 1):
                 has_control = False
-                pyautogui.moveTo(screen_w - 1, y)
                 print("Passing control to client")
             else:
                 prev_x, prev_y = x, y
@@ -62,7 +63,7 @@ def stream_mouse_deltas():
                     prev_x, prev_y = x, y
                 except:
                     break
-        time.sleep(0.01)
+        time.sleep(0.005)
 
 
 threading.Thread(target=accept_client).start()
