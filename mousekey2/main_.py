@@ -1,5 +1,3 @@
-import sys
-import socket
 import json
 import threading
 import time
@@ -11,6 +9,9 @@ from pynput import mouse, keyboard
 from pynput.mouse import Controller as MouseController
 from pynput.keyboard import Controller as KeyboardController
 import pyperclip
+import platform
+import ctypes
+import struct
 
 class Communicate(QObject):
     status_signal = pyqtSignal(str, str)
@@ -29,6 +30,7 @@ class InputSharingApp(QMainWindow):
         self.running = False
         self.role = "server"
         self.connection_active = False
+        self.last_message_time = 0
         
         # Screen edge configuration
         self.client_side = "right"
@@ -36,6 +38,7 @@ class InputSharingApp(QMainWindow):
         # Input controllers
         self.mouse_controller = MouseController()
         self.keyboard_controller = KeyboardController()
+        self.remote_control_active = False
         
         # Communication handler
         self.comm = Communicate()
@@ -48,6 +51,10 @@ class InputSharingApp(QMainWindow):
         self.last_clipboard_content = ""
         self.clipboard_monitor_thread = None
         self.clipboard_monitor_active = False
+        
+        # Platform-specific screen size detection
+        self.screen_width, self.screen_height = self.get_screen_size()
+        
         
     def init_ui(self):
         main_widget = QWidget()
@@ -191,11 +198,15 @@ class InputSharingApp(QMainWindow):
             while self.running:
                 try:
                     conn, addr = self.server_socket.accept()
+                    conn.settimeout(0.1)  # Short timeout for more responsive checks
                     self.connection_active = True
                     self.client_socket = conn
                     self.show_status("Server", f"Connected to {addr}")
                     
-                    # Start input handlers in separate threads
+                    # Start a heartbeat thread
+                    threading.Thread(target=self.send_heartbeat, daemon=True).start()
+                    
+                    # Start input handlers
                     mouse_listener = mouse.Listener(
                         on_move=self.on_server_mouse_move,
                         on_click=self.on_server_mouse_click,
@@ -207,7 +218,7 @@ class InputSharingApp(QMainWindow):
                         on_release=self.on_server_key_release)
                     keyboard_listener.start()
                     
-                    # Handle client messages
+                    # Handle connection
                     self.handle_connection(conn, mouse_listener, keyboard_listener)
                     
                 except socket.timeout:
@@ -215,7 +226,7 @@ class InputSharingApp(QMainWindow):
                 except Exception as e:
                     if self.running:
                         self.comm.status_signal.emit("Server Error", f"Connection error: {str(e)}")
-                    break
+                    continue
                 
         except Exception as e:
             if self.running:
@@ -225,9 +236,16 @@ class InputSharingApp(QMainWindow):
                 self.server_socket.close()
             self.connection_active = False
     
+    def send_heartbeat(self):
+        while self.running and self.connection_active:
+            try:
+                self.send_message("heartbeat")
+                time.sleep(1)
+            except:
+                break
+    
     def handle_connection(self, conn, mouse_listener, keyboard_listener):
         try:
-            conn.settimeout(1.0)  # Set timeout to prevent blocking
             while self.running and self.connection_active:
                 try:
                     data = conn.recv(4096)
@@ -235,13 +253,17 @@ class InputSharingApp(QMainWindow):
                         break
                         
                     try:
-                        message = json.loads(data.decode())
-                        if self.role == "server":
-                            self.handle_client_message(message)
-                        else:
-                            self.handle_server_message(message)
+                        messages = data.decode().split('\n')
+                        for msg in messages:
+                            if msg.strip():
+                                message = json.loads(msg)
+                                if message["type"] == "heartbeat":
+                                    continue
+                                if self.role == "server":
+                                    self.handle_client_message(message)
+                                else:
+                                    self.handle_server_message(message)
                     except json.JSONDecodeError:
-                        self.comm.status_signal.emit("Error", "Invalid message received")
                         continue
                     
                 except socket.timeout:
@@ -264,12 +286,16 @@ class InputSharingApp(QMainWindow):
     
     def connect_to_server(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.settimeout(5.0)  # Connection timeout
+        self.client_socket.settimeout(5.0)
         
         try:
             self.client_socket.connect((self.server_ip, self.server_port))
+            self.client_socket.settimeout(0.1)  # Short timeout for responsiveness
             self.connection_active = True
             self.show_status("Client", f"Connected to server at {self.server_ip}")
+            
+            # Start heartbeat
+            threading.Thread(target=self.send_heartbeat, daemon=True).start()
             
             # Start input handlers
             mouse_listener = mouse.Listener(
@@ -283,7 +309,7 @@ class InputSharingApp(QMainWindow):
                 on_release=self.on_client_key_release)
             keyboard_listener.start()
             
-            # Handle server messages
+            # Handle connection
             self.handle_connection(self.client_socket, mouse_listener, keyboard_listener)
             
         except socket.timeout:
@@ -295,7 +321,7 @@ class InputSharingApp(QMainWindow):
             self.connection_active = False
     
     def send_message(self, message_type, data=None):
-        if not self.client_socket:
+        if not self.client_socket or not self.connection_active:
             return
             
         message = {"type": message_type}
@@ -303,72 +329,90 @@ class InputSharingApp(QMainWindow):
             message["data"] = data
             
         try:
-            self.client_socket.sendall(json.dumps(message).encode())
+            self.client_socket.sendall((json.dumps(message) + '\n').encode())
+            self.last_message_time = time.time()
         except:
-            pass
+            self.connection_active = False
     
-    # Server-side input handlers
+    def get_screen_size(self):
+        """Improved screen size detection that works cross-platform"""
+        if platform.system() == "Windows":
+            user32 = ctypes.windll.user32
+            return (user32.GetSystemMetrics(0), user32.GetSystemMetrics(1))
+        elif platform.system() == "Linux":
+            try:
+                from Xlib import display
+                d = display.Display()
+                s = d.screen()
+                return (s.width_in_pixels, s.height_in_pixels)
+            except:
+                return (1920, 1080)  # Fallback
+        else:
+            return (1920, 1080)  # Default fallback
+    
     def on_server_mouse_move(self, x, y):
-        screen_width, screen_height = self.get_screen_size()
+        if not self.connection_active:
+            return
+            
+        # Update screen dimensions periodically
+        if time.time() - self.last_message_time > 5:
+            self.screen_width, self.screen_height = self.get_screen_size()
         
         # Check if mouse left the screen on the client side
-        if ((self.client_side == "left" and x <= 0) or
-            (self.client_side == "right" and x >= screen_width - 1) or
-            (self.client_side == "top" and y <= 0) or
-            (self.client_side == "bottom" and y >= screen_height - 1)):
+        edge_threshold = 5  # pixels from edge to consider as edge
+        if ((self.client_side == "left" and x <= edge_threshold) or
+            (self.client_side == "right" and x >= self.screen_width - edge_threshold) or
+            (self.client_side == "top" and y <= edge_threshold) or
+            (self.client_side == "bottom" and y >= self.screen_height - edge_threshold)):
             
-            # Normalize coordinates for client
-            if self.client_side == "left":
-                client_x = screen_width - 1
-                client_y = y
-            elif self.client_side == "right":
-                client_x = 0
-                client_y = y
-            elif self.client_side == "top":
-                client_x = x
-                client_y = screen_height - 1
-            else:  # bottom
-                client_x = x
-                client_y = 0
+            # Only send if we're not already in remote control mode
+            if not self.remote_control_active:
+                self.remote_control_active = True
                 
-            self.send_message("mouse_move", {"x": client_x, "y": client_y})
+                # Normalize coordinates for client
+                if self.client_side == "left":
+                    client_x = self.screen_width - 1
+                    client_y = y
+                elif self.client_side == "right":
+                    client_x = 0
+                    client_y = y
+                elif self.client_side == "top":
+                    client_x = x
+                    client_y = self.screen_height - 1
+                else:  # bottom
+                    client_x = x
+                    client_y = 0
+                    
+                self.send_message("mouse_move", {
+                    "x": client_x, 
+                    "y": client_y,
+                    "screen_width": self.screen_width,
+                    "screen_height": self.screen_height
+                })
     
-    def on_server_mouse_click(self, x, y, button, pressed):
-        self.send_message("mouse_click", {
-            "x": x, "y": y, 
-            "button": str(button), 
-            "pressed": pressed
-        })
-    
-    def on_server_mouse_scroll(self, x, y, dx, dy):
-        self.send_message("mouse_scroll", {
-            "x": x, "y": y,
-            "dx": dx, "dy": dy
-        })
-    
-    def on_server_key_press(self, key):
-        try:
-            self.send_message("key_press", {"key": str(key)})
-        except:
-            pass
-    
-    def on_server_key_release(self, key):
-        try:
-            self.send_message("key_release", {"key": str(key)})
-        except:
-            pass
-    
-    # Client-side input handlers
     def on_client_mouse_move(self, x, y):
-        screen_width, screen_height = self.get_screen_size()
+        if not self.connection_active:
+            return
+            
+        # Update screen dimensions periodically
+        if time.time() - self.last_message_time > 5:
+            self.screen_width, self.screen_height = self.get_screen_size()
         
         # Check if mouse left the screen towards the server
-        if ((self.client_side == "left" and x >= screen_width - 1) or
-            (self.client_side == "right" and x <= 0) or
-            (self.client_side == "top" and y >= screen_height - 1) or
-            (self.client_side == "bottom" and y <= 0)):
+        edge_threshold = 5  # pixels from edge to consider as edge
+        if ((self.client_side == "left" and x <= edge_threshold) or
+            (self.client_side == "right" and x >= self.screen_width - edge_threshold) or
+            (self.client_side == "top" and y <= edge_threshold) or
+            (self.client_side == "bottom" and y >= self.screen_height - edge_threshold)):
             
-            self.send_message("mouse_move", {"x": x, "y": y})
+            if self.remote_control_active:
+                self.remote_control_active = False
+                self.send_message("mouse_move", {
+                    "x": x,
+                    "y": y,
+                    "screen_width": self.screen_width,
+                    "screen_height": self.screen_height
+                })
     
     def on_client_mouse_click(self, x, y, button, pressed):
         self.send_message("mouse_click", {
@@ -399,6 +443,12 @@ class InputSharingApp(QMainWindow):
     def handle_client_message(self, message):
         if message["type"] == "mouse_move":
             data = message["data"]
+            if "screen_width" in data and "screen_height" in data:
+                # Update our screen dimensions to match client
+                self.screen_width = data["screen_width"]
+                self.screen_height = data["screen_height"]
+            
+            self.remote_control_active = True
             self.mouse_controller.position = (data["x"], data["y"])
         
         elif message["type"] == "mouse_click":
@@ -432,23 +482,29 @@ class InputSharingApp(QMainWindow):
                 pyperclip.copy(content)
     
     def handle_server_message(self, message):
+        def handle_server_message(self, message):
         if message["type"] == "mouse_move":
             data = message["data"]
-            screen_width, screen_height = self.get_screen_size()
+            if "screen_width" in data and "screen_height" in data:
+                # Update our screen dimensions to match server
+                self.screen_width = data["screen_width"]
+                self.screen_height = data["screen_height"]
+            
+            self.remote_control_active = False
             
             # Adjust position based on client side
             if self.client_side == "left":
                 new_x = 0
                 new_y = data["y"]
             elif self.client_side == "right":
-                new_x = screen_width - 1
+                new_x = self.screen_width - 1
                 new_y = data["y"]
             elif self.client_side == "top":
                 new_x = data["x"]
                 new_y = 0
             else:  # bottom
                 new_x = data["x"]
-                new_y = screen_height - 1
+                new_y = self.screen_height - 1
                 
             self.mouse_controller.position = (new_x, new_y)
         
