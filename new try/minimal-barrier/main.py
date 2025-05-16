@@ -31,7 +31,11 @@ def start_clipboard_share_client(ip):
     pass
 
 def stop_all_sharing():
-    pass
+    global mouse_sharing_running
+    mouse_sharing_running = False
+    if mouse_sharing_thread and mouse_sharing_thread.is_alive():
+        mouse_sharing_thread.join(timeout=1.0)
+    show_cursor()  # Make sure cursor is visible when stopping
 
 MOUSE_PORT = 50010
 
@@ -64,10 +68,18 @@ OPPOSITE_EDGE = {
 
 # Edge mapping for pointer entry on client
 ENTRY_EDGE_TO_CLIENT_POS = {
-    'Left': lambda w, h: (1, h // 2),         # Enter from server's right, appear at left
-    'Right': lambda w, h: (w - 2, h // 2),   # Enter from server's left, appear at right
-    'Top': lambda w, h: (w // 2, 1),         # Enter from server's bottom, appear at top
-    'Bottom': lambda w, h: (w // 2, h - 2),  # Enter from server's top, appear at bottom
+    'Left': lambda w, h: (w - 2, h // 2),   # Enter from server's right, appear at right
+    'Right': lambda w, h: (1, h // 2),      # Enter from server's left, appear at left
+    'Top': lambda w, h: (w // 2, h - 2),    # Enter from server's bottom, appear at bottom
+    'Bottom': lambda w, h: (w // 2, 1),     # Enter from server's top, appear at top
+}
+
+# Edge mapping for pointer return to server
+RETURN_EDGE_TO_SERVER_POS = {
+    'Left': lambda w, h: (w - 1, h // 2),   # Return from client's right, appear at server's right
+    'Right': lambda w, h: (0, h // 2),      # Return from client's left, appear at server's left
+    'Top': lambda w, h: (w // 2, h - 1),    # Return from client's bottom, appear at server's bottom
+    'Bottom': lambda w, h: (w // 2, 0),     # Return from client's top, appear at server's top
 }
 
 # Helper functions to hide/show mouse pointer (Windows/Linux, robust)
@@ -119,7 +131,12 @@ def start_mouse_share_server(edge):
         def on_move(x, y):
             nonlocal pointer_on_server, pointer_on_client
             if not pointer_on_server:
-                # Block all local mouse movement when pointer is on client
+                # Send mouse position to client
+                try:
+                    event = json.dumps({"type": "move", "x": x, "y": y})
+                    conn.sendall(f"{event}\n".encode())
+                except Exception as e:
+                    print(f"[Mouse] Error sending move event: {e}")
                 return True
             # Check if mouse hits the selected edge
             hit_edge = False
@@ -140,16 +157,37 @@ def start_mouse_share_server(edge):
                 print(f"[Mouse] Pointer entered client via {edge}")
                 return True
             return True
+
         def on_click(x, y, button, pressed):
             if not pointer_on_server:
-                # Block all local mouse clicks when pointer is on client
+                # Send click event to client
+                try:
+                    event = json.dumps({
+                        "type": "click",
+                        "button": str(button),
+                        "pressed": pressed
+                    })
+                    conn.sendall(f"{event}\n".encode())
+                except Exception as e:
+                    print(f"[Mouse] Error sending click event: {e}")
                 return
             pass
+
         def on_scroll(x, y, dx, dy):
             if not pointer_on_server:
-                # Block all local scroll when pointer is on client
+                # Send scroll event to client
+                try:
+                    event = json.dumps({
+                        "type": "scroll",
+                        "dx": dx,
+                        "dy": dy
+                    })
+                    conn.sendall(f"{event}\n".encode())
+                except Exception as e:
+                    print(f"[Mouse] Error sending scroll event: {e}")
                 return
             pass
+
         while mouse_sharing_running:
             pointer_on_server = True
             pointer_on_client = False
@@ -183,8 +221,11 @@ def start_mouse_share_server(edge):
                             break
                 if not mouse_sharing_running:
                     break
-        conn.close()
-        s.close()
+        try:
+            conn.close()
+            s.close()
+        except Exception:
+            pass
     mouse_sharing_thread = threading.Thread(target=server_thread, daemon=True)
     mouse_sharing_thread.start()
 
@@ -249,9 +290,9 @@ def start_mouse_share_client(ip, _):
                 elif opp_edge == 'Bottom' and y >= height - 1:
                     hit_edge = True
                 if hit_edge:
-                    pointer_on_client = False
                     s.sendall(b'RETURN\n')
-                    print("[Mouse] Pointer sent back to server")
+                    pointer_on_client = False
+                    print(f"[Mouse] Pointer leaving client via {opp_edge}")
     mouse_sharing_thread = threading.Thread(target=client_thread, daemon=True)
     mouse_sharing_thread.start()
 
