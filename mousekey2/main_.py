@@ -482,88 +482,94 @@ class InputSharingApp(QMainWindow):
             if content != pyperclip.paste():
                 pyperclip.copy(content)
     
-    def handle_server_message(self, message):
-        if message["type"] == "mouse_move":
-            data = message["data"]
-            if "screen_width" in data and "screen_height" in data:
-                # Update our screen dimensions to match server
-                self.screen_width = data["screen_width"]
-                self.screen_height = data["screen_height"]
-            
-            self.remote_control_active = False
-            
-            # Adjust position based on client side
-            if self.client_side == "left":
-                new_x = 0
-                new_y = data["y"]
-            elif self.client_side == "right":
-                new_x = self.screen_width - 1
-                new_y = data["y"]
-            elif self.client_side == "top":
-                new_x = data["x"]
-                new_y = 0
-            else:  # bottom
-                new_x = data["x"]
-                new_y = self.screen_height - 1
-                
-            self.mouse_controller.position = (new_x, new_y)
-        
-        elif message["type"] == "mouse_click":
-            data = message["data"]
-            button = mouse.Button[data["button"].split(".")[-1]]
-            
-            if data["pressed"]:
-                self.mouse_controller.press(button)
-            else:
-                self.mouse_controller.release(button)
-        
-        elif message["type"] == "mouse_scroll":
-            data = message["data"]
-            self.mouse_controller.scroll(data["dx"], data["dy"])
-        
-        elif message["type"] == "key_press":
-            data = message["data"]
-            key = self.parse_key(data["key"])
-            if key:
-                self.keyboard_controller.press(key)
-        
-        elif message["type"] == "key_release":
-            data = message["data"]
-            key = self.parse_key(data["key"])
-            if key:
-                self.keyboard_controller.release(key)
-        
-        elif message["type"] == "clipboard_update":
-            content = message["data"]["content"]
-            if content != pyperclip.paste():
-                pyperclip.copy(content)
+def handle_server_message(self, message):
+    if message["type"] == "mouse_move":
+        data = message["data"]
+        if "screen_width" in data and "screen_height" in data:
+            # Update our screen dimensions to match server
+            self.screen_width = data["screen_width"]
+            self.screen_height = data["screen_height"]
+
+        self.remote_control_active = False
+
+        # Adjust position based on client side
+        if self.client_side == "left":
+            new_x = self.screen_width - 1
+            new_y = data["y"]
+        elif self.client_side == "right":
+            new_x = 0
+            new_y = data["y"]
+        elif self.client_side == "top":
+            new_x = data["x"]
+            new_y = self.screen_height - 1
+        else:  # bottom
+            new_x = data["x"]
+            new_y = 0
+
+        self.mouse_controller.position = (new_x, new_y)
+
+    elif message["type"] == "mouse_click":
+        data = message["data"]
+        button = mouse.Button[data["button"].split(".")[-1]]
+
+        if data["pressed"]:
+            self.mouse_controller.press(button)
+        else:
+            self.mouse_controller.release(button)
+
+    elif message["type"] == "mouse_scroll":
+        data = message["data"]
+        self.mouse_controller.scroll(data["dx"], data["dy"])
+
+    elif message["type"] == "key_press":
+        data = message["data"]
+        key = self.parse_key(data["key"])
+        if key:
+            self.keyboard_controller.press(key)
+
+    elif message["type"] == "key_release":
+        data = message["data"]
+        key = self.parse_key(data["key"])
+        if key:
+            self.keyboard_controller.release(key)
+
+    elif message["type"] == "clipboard_update":
+        content = message["data"]["content"]
+        if content != pyperclip.paste():
+            pyperclip.copy(content)
+
+
     
     def parse_key(self, key_str):
         try:
-            if key_str.startswith("Key."):
-                return getattr(keyboard.Key, key_str.split(".")[1])
-            elif key_str.startswith("'") and key_str.endswith("'"):
-                return key_str[1:-1]
+            # Try parsing special keys like 'Key.shift'
+            if "Key." in key_str:
+                return getattr(keyboard.Key, key_str.split(".")[-1])
+            elif "'" in key_str:
+                return key_str.strip("'")
             else:
-                return None
-        except:
+                return key_str
+        except AttributeError:
             return None
+
+    
+    def monitor_clipboard(self):
+        while self.running:
+            try:
+                current = pyperclip.paste()
+                if current != self.last_clipboard_content:
+                    self.last_clipboard_content = current
+                    self.send_message("clipboard_update", {"content": current})
+                time.sleep(1)
+            except Exception as e:
+                print(f"[Clipboard Monitor] Error: {e}")
+                time.sleep(1)
+
     
     def get_screen_size(self):
         # This is a simplified version - you might need platform-specific code
         # For a real implementation, consider using screeninfo package
         return (1920, 1080)  # Default to 1080p, adjust as needed
-    
-    def monitor_clipboard(self):
-        while self.running:
-            try:
-                current_content = pyperclip.paste()
-                if current_content != self.last_clipboard_content:
-                    self.last_clipboard_content = current_content
-                    self.send_message("clipboard_update", {"content": current_content})
-                time.sleep(0.5)
-            except:
-                time.sleep(1)
     
     def closeEvent(self, event):
         self.stop_sharing()
