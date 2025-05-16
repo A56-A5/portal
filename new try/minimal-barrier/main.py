@@ -68,18 +68,18 @@ OPPOSITE_EDGE = {
 
 # Edge mapping for pointer entry on client
 ENTRY_EDGE_TO_CLIENT_POS = {
-    'Left': lambda w, h: (1, h // 2),         # Enter from server's right, appear at left
-    'Right': lambda w, h: (1, h // 2),        # Enter from server's left, appear at left
-    'Top': lambda w, h: (w // 2, 1),          # Enter from server's bottom, appear at top
-    'Bottom': lambda w, h: (w // 2, 1),       # Enter from server's top, appear at top
+    'Left': lambda w, h: (w - 2, h // 2),   # Enter from server's right, appear at right
+    'Right': lambda w, h: (1, h // 2),      # Enter from server's left, appear at left
+    'Top': lambda w, h: (w // 2, h - 2),    # Enter from server's bottom, appear at bottom
+    'Bottom': lambda w, h: (w // 2, 1),     # Enter from server's top, appear at top
 }
 
 # Edge mapping for pointer return to server
 RETURN_EDGE_TO_SERVER_POS = {
-    'Left': lambda w, h: (w - 1, h // 2),     # Return from client's right, appear at server's right
-    'Right': lambda w, h: (0, h // 2),        # Return from client's left, appear at server's left
-    'Top': lambda w, h: (w // 2, h - 1),      # Return from client's bottom, appear at server's bottom
-    'Bottom': lambda w, h: (w // 2, 0),       # Return from client's top, appear at server's top
+    'Left': lambda w, h: (0, h // 2),       # Return from client's right, appear at server's left
+    'Right': lambda w, h: (w - 1, h // 2),  # Return from client's left, appear at server's right
+    'Top': lambda w, h: (w // 2, 0),        # Return from client's bottom, appear at server's top
+    'Bottom': lambda w, h: (w // 2, h - 1), # Return from client's top, appear at server's bottom
 }
 
 # Helper functions to hide/show mouse pointer (Windows/Linux, robust)
