@@ -41,6 +41,9 @@ try:
     def get_screen_size():
         return pyautogui.size()
 except ImportError:
+    pass
+
+if 'get_screen_size' not in globals():
     def get_screen_size():
         if platform.system() == 'Windows':
             from ctypes import windll
@@ -67,20 +70,36 @@ ENTRY_EDGE_TO_CLIENT_POS = {
     'Bottom': lambda w, h: (w // 2, h - 2),  # Enter from server's top, appear at bottom
 }
 
-# Helper functions to hide/show mouse pointer (Windows/Linux)
+# Helper functions to hide/show mouse pointer (Windows/Linux, robust)
 def hide_cursor():
     if platform.system() == 'Windows':
         import ctypes
         ctypes.windll.user32.ShowCursor(False)
     elif platform.system() == 'Linux':
-        # Try to use xdotool or fallback to Xlib/Xcursor if needed
-        os.system('xsetroot -cursor_name none')
+        try:
+            from Xlib import display, X
+            dsp = display.Display()
+            root = dsp.screen().root
+            invisible_cursor = dsp.screen().root.create_pixmap(1, 1, 1)
+            color = dsp.screen().default_colormap.alloc_color(0, 0, 0)
+            cursor = root.create_cursor(invisible_cursor, invisible_cursor, color.pixel, color.pixel, 0, 0)
+            root.change_attributes(cursor=cursor)
+            dsp.sync()
+        except Exception:
+            os.system('xsetroot -cursor_name none')
 def show_cursor():
     if platform.system() == 'Windows':
         import ctypes
         ctypes.windll.user32.ShowCursor(True)
     elif platform.system() == 'Linux':
-        os.system('xsetroot -cursor_name left_ptr')
+        try:
+            from Xlib import display, X
+            dsp = display.Display()
+            root = dsp.screen().root
+            root.change_attributes(cursor=X.NONE)
+            dsp.sync()
+        except Exception:
+            os.system('xsetroot -cursor_name left_ptr')
 
 def start_mouse_share_server(edge):
     global mouse_sharing_thread, mouse_sharing_running
@@ -100,7 +119,7 @@ def start_mouse_share_server(edge):
         def on_move(x, y):
             nonlocal pointer_on_server, pointer_on_client
             if not pointer_on_server:
-                # Block local mouse movement when pointer is on client
+                # Block all local mouse movement when pointer is on client
                 return True
             # Check if mouse hits the selected edge
             hit_edge = False
@@ -123,13 +142,12 @@ def start_mouse_share_server(edge):
             return True
         def on_click(x, y, button, pressed):
             if not pointer_on_server:
-                # Block local mouse clicks when pointer is on client
+                # Block all local mouse clicks when pointer is on client
                 return
-            # Only send clicks to client if pointer is on client (handled in event loop)
             pass
         def on_scroll(x, y, dx, dy):
             if not pointer_on_server:
-                # Block local scroll when pointer is on client
+                # Block all local scroll when pointer is on client
                 return
             pass
         while mouse_sharing_running:
@@ -150,7 +168,7 @@ def start_mouse_share_server(edge):
                                 pointer_on_server = True
                                 pointer_on_client = False
                                 show_cursor()
-                                # Move pointer to edge
+                                # Move pointer to correct edge on return
                                 if edge == 'Left':
                                     mouse.position = (0, height // 2)
                                 elif edge == 'Right':
