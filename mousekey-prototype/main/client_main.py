@@ -1,16 +1,16 @@
-# main/client_main.py
+### ✅ FIXED: client_main.py
+
 from net.client import Client
 from clipboard.clipboard_manager import watch_clipboard
 from input.input_listener import InputListener
+from input.input_controller import handle_input_event  # <-- added
 from common.protocol import encode_event
-from input.mouse_handler import apply_mouse_position
 import sys
 import pickle
 import platform
 import threading
-from pynput.mouse import Controller  # Use for testing mouse movement directly
+from pynput.mouse import Controller
 
-# Platform-specific screen width getter
 if platform.system() == "Windows":
     import ctypes
     def get_screen_width():
@@ -22,7 +22,6 @@ else:
         screen = d.screen()
         return screen.width_in_pixels
 
-# Receiver thread
 def receive_events(client):
     while True:
         data = client.receive()
@@ -35,11 +34,14 @@ def receive_events(client):
                 screen_width = get_screen_width()
                 mouse = Controller()
                 if event['edge'] == "right":
-                    print("→ Moving to left edge: (0, 100)")
+                    print("\u2192 Moving to left edge: (0, 100)")
                     mouse.position = (0, 100)
                 elif event['edge'] == "left":
-                    print(f"→ Moving to right edge: ({screen_width - 1}, 100)")
+                    print(f"\u2192 Moving to right edge: ({screen_width - 1}, 100)")
                     mouse.position = (screen_width - 1, 100)
+            else:
+                handle_input_event(event)  # <-- NEW: apply server input
+
         except Exception as e:
             print(f"[Client] Error processing data: {e}")
 
@@ -50,18 +52,15 @@ if __name__ == "__main__":
 
     print("[Client] Starting input listener and clipboard watcher...")
 
-    # Start the receiver in background
     threading.Thread(target=receive_events, args=(client,), daemon=True).start()
 
-    # Start sending local input events (mouse + keyboard)
     listener = InputListener(send_callback=client.send)
     listener.start()
 
-    # Start clipboard monitoring
     watch_clipboard(lambda event: client.send(encode_event(event)))
 
     try:
         while True:
-            pass  # Keep main thread alive
+            pass
     except KeyboardInterrupt:
         client.close()

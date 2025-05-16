@@ -1,4 +1,3 @@
-# server_main.py
 from common.protocol import decode_event
 from screen.edge_detector import EdgeMonitor
 from net.server import Server
@@ -25,7 +24,6 @@ def handle_client(conn):
                 line, buffer = buffer.split('\n', 1)
                 if line.strip():
                     event = decode_event(line)
-                    # Apply event from client
                     handle_input_event(event)
 
         except Exception as e:
@@ -44,7 +42,7 @@ def on_edge(direction):
             mouse_on_client = True
 
 def listen_for_return():
-    """ Continuously check if mouse returns to this screen """
+    global mouse_on_client
     import time
     from screen.edge_detector import get_mouse_position, get_screen_size
 
@@ -52,7 +50,7 @@ def listen_for_return():
         if mouse_on_client:
             x, y = get_mouse_position()
             screen_width, screen_height = get_screen_size()
-            if 100 < x < screen_width - 100:  # Mouse is clearly inside screen
+            if 100 < x < screen_width - 100:
                 with lock:
                     print("[Server] Mouse returned from client")
                     mouse_on_client = False
