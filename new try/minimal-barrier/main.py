@@ -31,7 +31,7 @@ def start_clipboard_share_client(ip):
     pass
 
 def stop_all_sharing():
-    global mouse_sharing_running
+    global mouse_sharing_running, mouse_sharing_thread
     mouse_sharing_running = False
     if mouse_sharing_thread and mouse_sharing_thread.is_alive():
         mouse_sharing_thread.join(timeout=1.0)
@@ -117,6 +117,7 @@ def start_mouse_share_server(edge):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
     def server_thread():
+        global mouse_sharing_running
         mouse = MouseController()
         width, height = get_screen_size()
         s = socket.socket()
@@ -246,6 +247,7 @@ def start_mouse_share_server(edge):
             s.close()
         except Exception:
             pass
+        mouse_sharing_running = False
     mouse_sharing_thread = threading.Thread(target=server_thread, daemon=True)
     mouse_sharing_thread.start()
 
@@ -253,6 +255,7 @@ def start_mouse_share_client(ip, _):
     global mouse_sharing_thread, mouse_sharing_running
     mouse_sharing_running = True
     def client_thread():
+        global mouse_sharing_running
         mouse = MouseController()
         width, height = get_screen_size()
         s = socket.socket()
