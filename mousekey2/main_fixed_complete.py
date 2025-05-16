@@ -351,7 +351,31 @@ class InputSharingApp(QMainWindow):
         else:
             return (1920, 1080)  # Default fallback
     
-    def on_server_mouse_move(self, x, y):
+    def on_server_mouse_click(self, x, y, button, pressed):
+        self.send_message("mouse_click", {
+            "x": x, "y": y,
+            "button": str(button),
+            "pressed": pressed
+        })
+
+    def on_server_mouse_scroll(self, x, y, dx, dy):
+        self.send_message("mouse_scroll", {
+            "x": x, "y": y,
+            "dx": dx, "dy": dy
+        })
+
+    def on_server_key_press(self, key):
+        try:
+            self.send_message("key_press", {"key": str(key)})
+        except:
+            pass
+
+    def on_server_key_release(self,x,y, key):
+        try:
+            self.send_message("key_release", {"key": str(key)})
+        except:
+            pass
+
         if not self.connection_active:
             return
             
@@ -489,9 +513,9 @@ class InputSharingApp(QMainWindow):
                 # Update our screen dimensions to match server
                 self.screen_width = data["screen_width"]
                 self.screen_height = data["screen_height"]
-    
+
             self.remote_control_active = False
-    
+
             # Adjust position based on client side
             if self.client_side == "left":
                 new_x = self.screen_width - 1
@@ -505,34 +529,34 @@ class InputSharingApp(QMainWindow):
             else:  # bottom
                 new_x = data["x"]
                 new_y = 0
-    
+
             self.mouse_controller.position = (new_x, new_y)
-    
+
         elif message["type"] == "mouse_click":
             data = message["data"]
             button = mouse.Button[data["button"].split(".")[-1]]
-    
+
             if data["pressed"]:
                 self.mouse_controller.press(button)
             else:
                 self.mouse_controller.release(button)
-    
+
         elif message["type"] == "mouse_scroll":
             data = message["data"]
             self.mouse_controller.scroll(data["dx"], data["dy"])
-    
+
         elif message["type"] == "key_press":
             data = message["data"]
             key = self.parse_key(data["key"])
             if key:
                 self.keyboard_controller.press(key)
-    
+
         elif message["type"] == "key_release":
             data = message["data"]
             key = self.parse_key(data["key"])
             if key:
                 self.keyboard_controller.release(key)
-    
+
         elif message["type"] == "clipboard_update":
             content = message["data"]["content"]
             if content != pyperclip.paste():
