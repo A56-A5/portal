@@ -68,18 +68,18 @@ OPPOSITE_EDGE = {
 
 # Edge mapping for pointer entry on client
 ENTRY_EDGE_TO_CLIENT_POS = {
-    'Left': lambda w, h: (w - 2, h // 2),   # Enter from server's right, appear at right
-    'Right': lambda w, h: (1, h // 2),      # Enter from server's left, appear at left
-    'Top': lambda w, h: (w // 2, h - 2),    # Enter from server's bottom, appear at bottom
-    'Bottom': lambda w, h: (w // 2, 1),     # Enter from server's top, appear at top
+    'Left': lambda w, h: (1, h // 2),         # Enter from server's right, appear at left
+    'Right': lambda w, h: (1, h // 2),        # Enter from server's left, appear at left
+    'Top': lambda w, h: (w // 2, 1),          # Enter from server's bottom, appear at top
+    'Bottom': lambda w, h: (w // 2, 1),       # Enter from server's top, appear at top
 }
 
 # Edge mapping for pointer return to server
 RETURN_EDGE_TO_SERVER_POS = {
-    'Left': lambda w, h: (w - 1, h // 2),   # Return from client's right, appear at server's right
-    'Right': lambda w, h: (0, h // 2),      # Return from client's left, appear at server's left
-    'Top': lambda w, h: (w // 2, h - 1),    # Return from client's bottom, appear at server's bottom
-    'Bottom': lambda w, h: (w // 2, 0),     # Return from client's top, appear at server's top
+    'Left': lambda w, h: (w - 1, h // 2),     # Return from client's right, appear at server's right
+    'Right': lambda w, h: (0, h // 2),        # Return from client's left, appear at server's left
+    'Top': lambda w, h: (w // 2, h - 1),      # Return from client's bottom, appear at server's bottom
+    'Bottom': lambda w, h: (w // 2, 0),       # Return from client's top, appear at server's top
 }
 
 # Helper functions to hide/show mouse pointer (Windows/Linux, robust)
@@ -128,16 +128,25 @@ def start_mouse_share_server(edge):
         print(f"[Mouse] Client connected: {addr}")
         pointer_on_server = True
         pointer_on_client = False
+        last_server_pos = None
+
         def on_move(x, y):
-            nonlocal pointer_on_server, pointer_on_client
+            nonlocal pointer_on_server, pointer_on_client, last_server_pos
             if not pointer_on_server:
                 # Send mouse position to client
                 try:
                     event = json.dumps({"type": "move", "x": x, "y": y})
                     conn.sendall(f"{event}\n".encode())
+                    # Keep server mouse at last position
+                    if last_server_pos:
+                        mouse.position = last_server_pos
                 except Exception as e:
                     print(f"[Mouse] Error sending move event: {e}")
                 return True
+
+            # Store last position before potential transfer
+            last_server_pos = (x, y)
+
             # Check if mouse hits the selected edge
             hit_edge = False
             if edge == 'Left' and x <= 0:
@@ -170,8 +179,8 @@ def start_mouse_share_server(edge):
                     conn.sendall(f"{event}\n".encode())
                 except Exception as e:
                     print(f"[Mouse] Error sending click event: {e}")
-                return
-            pass
+                return False  # Block the click on server
+            return True
 
         def on_scroll(x, y, dx, dy):
             if not pointer_on_server:
@@ -185,8 +194,8 @@ def start_mouse_share_server(edge):
                     conn.sendall(f"{event}\n".encode())
                 except Exception as e:
                     print(f"[Mouse] Error sending scroll event: {e}")
-                return
-            pass
+                return False  # Block the scroll on server
+            return True
 
         while mouse_sharing_running:
             pointer_on_server = True
