@@ -66,6 +66,7 @@ class MouseSyncApp:
         self.client_socket = None
         self.mouse_controller = mouse.Controller()
         self.system = platform.system()
+        self.use_raw_input = False
 
         self.virtual_x = self.screen_width // 2
         self.virtual_y = self.screen_height // 2
@@ -93,6 +94,8 @@ class MouseSyncApp:
             rid.hwndTarget = self.root.winfo_id()
             if not windll.user32.RegisterRawInputDevices(byref(rid), 1, sizeof(rid)):
                 print("[Windows] Failed to register raw input device")
+            else:
+                self.use_raw_input = True
 
             self.root.bind('<Map>', lambda e: self.root.focus_force())
             self.root.bind('<FocusIn>', lambda e: self.root.focus_force())
@@ -141,12 +144,32 @@ class MouseSyncApp:
             self.is_running = True
             self.status_label.config(text="Status: Connected")
             self.start_button.config(text="Stop")
+            if not self.use_raw_input:
+                self.start_screen_listener()  # fallback only if raw input is not available
         else:
             self.is_running = False
             self.status_label.config(text="Status: Disconnected")
             self.start_button.config(text="Start")
 
-if __name__ == "__main__":
+    def start_screen_listener(self):
+        def on_move(x, y):
+            # Prevent fight with raw input updates
+            pass
+
+        def on_click(x, y, button, pressed):
+            pass
+
+        def on_scroll(x, y, dx, dy):
+            pass
+
+        def run_listener():
+            with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll, suppress=True) as listener:
+                while self.is_running:
+                    time.sleep(0.01)
+
+        threading.Thread(target=run_listener, daemon=True).start()
+
+if __name__ == '__main__':
     root = tk.Tk()
     app = MouseSyncApp(root)
     root.mainloop()
