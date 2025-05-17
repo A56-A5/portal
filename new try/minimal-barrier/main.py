@@ -7,18 +7,27 @@ from pynput import mouse
 import time
 import platform
 import ctypes
+from ctypes import windll, Structure, c_long, byref
 import os
 
-# Platform-specific imports
+# Platform-specific imports and structures
 if platform.system() == "Windows":
     try:
         import win32api
         import win32con
         import win32gui
-        from ctypes import windll, Structure, c_long, byref
         
         class POINT(Structure):
             _fields_ = [("x", c_long), ("y", c_long)]
+            
+        # Windows API constants
+        CURSOR_SHOWING = 0x00000001
+        SPI_SETMOUSECLICKLOCK = 0x101F
+        SPI_SETMOUSESONAR = 0x101D
+        SPI_SETMOUSEVANISH = 0x1021
+        SPIF_UPDATEINIFILE = 0x01
+        SPIF_SENDCHANGE = 0x02
+        
     except ImportError:
         print("[System] win32api not available, using ctypes fallback")
 elif platform.system() == "Linux":
@@ -49,130 +58,79 @@ class MouseSyncApp:
         self.server_socket = None
         self.client_socket = None
         self.mouse_controller = mouse.Controller()
-        self.original_cursor_visibility = True
         self.system = platform.system()
         self.cursor_hidden = False
-        self.last_mouse_pos = None
+        self.cursor_locked = False
         
         self.setup_gui()
         
-    def get_mouse_position(self):
-        """Get current mouse position using platform-specific methods"""
-        if self.system == "Windows":
-            try:
-                pt = POINT()
-                windll.user32.GetCursorPos(byref(pt))
-                return pt.x, pt.y
-            except:
-                return 0, 0
-        elif self.system == "Linux":
-            try:
-                d = display.Display()
-                root = d.screen().root
-                root.query_pointer()
-                return root.query_pointer().root_x, root.query_pointer().root_y
-            except:
-                return 0, 0
-        return 0, 0
-        
-    def hide_cursor(self):
-        """Hide the global cursor using platform-specific methods"""
-        if self.cursor_hidden:
+    def lock_cursor(self):
+        """Lock the cursor to prevent movement"""
+        if self.cursor_locked:
             return
             
         try:
             if self.system == "Windows":
-                # Windows implementation - hide cursor globally
-                # First try to hide cursor multiple times to ensure it's hidden
-                for _ in range(20):  # Try multiple times to ensure it's hidden
-                    win32api.ShowCursor(False)
+                # Lock cursor to center of screen
+                center_x = self.screen_width // 2
+                center_y = self.screen_height // 2
+                win32api.SetCursorPos((center_x, center_y))
                 
-                # Move cursor to center of screen before hiding
-                win32api.SetCursorPos((self.screen_width//2, self.screen_height//2))
+                # Hide cursor
+                for _ in range(20):
+                    win32api.ShowCursor(False)
+                    
+                # Enable cursor confinement
+                windll.user32.ClipCursor(ctypes.byref(ctypes.c_void_p(0)))
+                
             elif self.system == "Linux":
-                # Linux implementation using Xlib
                 try:
                     d = display.Display()
                     root = d.screen().root
-                    # Move cursor to center before hiding
+                    # Move cursor to center
                     root.warp_pointer(self.screen_width//2, self.screen_height//2)
                     # Hide cursor
                     os.system('xsetroot -cursor_name none')
-                except (NameError, ImportError):
-                    print("[Server] Xlib not available, using fallback method")
-                    os.system('xsetroot -cursor_name none')
+                    # Lock cursor (using xinput)
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
+                except:
+                    print("[Server] Failed to lock cursor on Linux")
             
-            self.cursor_hidden = True
-            print("[Server] Global cursor hidden")
+            self.cursor_locked = True
+            print("[Server] Cursor locked")
+            
         except Exception as e:
-            print(f"[Server] Error hiding cursor: {e}")
+            print(f"[Server] Error locking cursor: {e}")
             
-    def show_cursor(self):
-        """Show the global cursor using platform-specific methods"""
-        if not self.cursor_hidden:
+    def unlock_cursor(self):
+        """Unlock the cursor"""
+        if not self.cursor_locked:
             return
             
         try:
             if self.system == "Windows":
-                # Windows implementation - show cursor globally
-                # Show cursor multiple times to ensure it's visible
-                for _ in range(20):  # Try multiple times to ensure it's shown
+                # Show cursor
+                for _ in range(20):
                     win32api.ShowCursor(True)
-                # Move cursor to center of screen
-                win32api.SetCursorPos((self.screen_width//2, self.screen_height//2))
+                    
+                # Disable cursor confinement
+                windll.user32.ClipCursor(None)
+                
             elif self.system == "Linux":
-                # Linux implementation
                 try:
-                    d = display.Display()
-                    root = d.screen().root
                     # Show cursor
-                    root.warp_pointer(self.screen_width//2, self.screen_height//2)
-                    # Restore default cursor
                     os.system('xsetroot -cursor_name left_ptr')
-                except (NameError, ImportError):
-                    print("[Server] Xlib not available, using fallback method")
-                    os.system('xsetroot -cursor_name left_ptr')
+                    # Unlock cursor
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
+                except:
+                    print("[Server] Failed to unlock cursor on Linux")
             
-            self.cursor_hidden = False
-            print("[Server] Global cursor shown")
-        except Exception as e:
-            print(f"[Server] Error showing cursor: {e}")
+            self.cursor_locked = False
+            print("[Server] Cursor unlocked")
             
-    def handle_client(self, client_socket):
-        print("[Server] Starting mouse tracking...")
-        last_position = None
-        
-        def track_mouse():
-            """Track mouse movement using platform-specific methods"""
-            while self.is_running:
-                try:
-                    x, y = self.get_mouse_position()
-                    if last_position != (x, y):
-                        # Clamp coordinates
-                        x = max(0, min(x, self.screen_width - 1))
-                        y = max(0, min(y, self.screen_height - 1))
-                        
-                        # Send position to client
-                        data = json.dumps({"x": x, "y": y}) + '\n'
-                        client_socket.sendall(data.encode())
-                        print(f"[Server] Mouse position: X={x}, Y={y}")
-                        last_position = (x, y)
-                except Exception as e:
-                    print(f"[Server] Error tracking mouse: {e}")
-                    break
-                time.sleep(0.01)  # Small delay to prevent high CPU usage
-        
-        # Start mouse tracking in a separate thread
-        tracking_thread = threading.Thread(target=track_mouse, daemon=True)
-        tracking_thread.start()
-        
-        try:
-            while self.is_running:
-                time.sleep(0.1)
         except Exception as e:
-            print(f"[Server] Mouse tracking error: {e}")
-            self.stop_connection()
-        
+            print(f"[Server] Error unlocking cursor: {e}")
+            
     def setup_gui(self):
         # Mode selection
         mode_frame = ttk.LabelFrame(self.root, text="Mode", padding=10)
@@ -238,137 +196,91 @@ class MouseSyncApp:
             print(f"[Error] Connection failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start: {str(e)}")
             
-    def stop_connection(self):
-        print("[System] Stopping connection...")
-        self.is_running = False
-        try:
-            if self.server_socket:
-                print("[Server] Closing server socket...")
-                self.server_socket.close()
-                print("[Server] Server socket closed")
-                # Show cursor when server stops
-                print("[Server] Showing cursor...")
-                self.show_cursor()
-        except Exception as e:
-            print(f"[Server] Error closing server socket: {str(e)}")
-            
-        try:
-            if self.client_socket:
-                print("[Client] Closing client socket...")
-                self.client_socket.close()
-                print("[Client] Client socket closed")
-        except Exception as e:
-            print(f"[Client] Error closing client socket: {str(e)}")
-            
-        self.start_button.config(text="Start")
-        self.status_label.config(text="Status: Disconnected")
-        print("[System] Connection stopped")
-        
     def start_server(self):
         try:
-            print("[Server] Creating server socket...")
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            
-            # Try binding to all interfaces
-            print(f"[Server] Binding to port {self.port}...")
-            try:
-                self.server_socket.bind(('0.0.0.0', self.port))
-            except OSError as e:
-                print(f"[Server] Failed to bind to 0.0.0.0: {str(e)}")
-                print("[Server] Trying localhost instead...")
-                self.server_socket.bind(('127.0.0.1', self.port))
-            
-            print("[Server] Starting to listen...")
+            self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
-            print(f"[Server] Server is listening on port {self.port}")
+            print(f"[Server] Listening on port {self.port}")
             
             def server_thread():
                 try:
                     print("[Server] Waiting for client connection...")
-                    # Set timeout for accept
-                    self.server_socket.settimeout(5)
-                    try:
-                        client, addr = self.server_socket.accept()
-                        print(f"[Server] Client connected from: {addr}")
-                        # Remove timeout after connection
-                        self.server_socket.settimeout(None)
-                        
-                        # Send initial connection acknowledgment
-                        print("[Server] Sending connection acknowledgment...")
-                        client.sendall(b'CONNECTED\n')
-                        print("[Server] Connection acknowledgment sent")
-                        
-                        # Hide cursor after connection is established
-                        print("[Server] Hiding cursor...")
-                        self.hide_cursor()
-                        print("[Server] Starting client handler...")
-                        self.handle_client(client)
-                    except socket.timeout:
-                        print("[Server] No client connected within timeout period")
-                        if self.is_running:
-                            self.stop_connection()
+                    client, addr = self.server_socket.accept()
+                    print(f"[Server] Client connected from: {addr}")
+                    # Send initial connection acknowledgment
+                    client.sendall(b'CONNECTED\n')
+                    print("[Server] Sent connection acknowledgment")
+                    self.handle_client(client)
                 except Exception as e:
-                    print(f"[Server] Error in server thread: {str(e)}")
                     if self.is_running:
-                        print("[Server] Attempting to stop connection...")
-                        self.stop_connection()
+                        print(f"[Server] Error: {e}")
+                    self.stop_connection()
                         
-            print("[Server] Starting server thread...")
             threading.Thread(target=server_thread, daemon=True).start()
-            print("[Server] Server thread started")
             
         except Exception as e:
-            print(f"[Server] Failed to start server: {str(e)}")
-            if self.server_socket:
-                try:
-                    self.server_socket.close()
-                except:
-                    pass
+            print(f"[Server] Failed to start: {e}")
             raise
             
+    def handle_client(self, client_socket):
+        print("[Server] Starting mouse tracking...")
+        last_position = None
+        
+        def on_mouse_move(x, y):
+            nonlocal last_position
+            if self.is_running:
+                try:
+                    # Check if mouse is at screen edges
+                    if x <= 0:
+                        print(f"[Server] Mouse at LEFT edge: X={x}")
+                    elif x >= self.screen_width - 1:
+                        print(f"[Server] Mouse at RIGHT edge: X={x}")
+                    if y <= 0:
+                        print(f"[Server] Mouse at TOP edge: Y={y}")
+                    elif y >= self.screen_height - 1:
+                        print(f"[Server] Mouse at BOTTOM edge: Y={y}")
+                    
+                    # Only send if position has changed
+                    if last_position != (x, y):
+                        data = json.dumps({"x": x, "y": y}) + '\n'
+                        client_socket.sendall(data.encode())
+                        print(f"[Server] Mouse position: X={x}, Y={y}")
+                        last_position = (x, y)
+                except Exception as e:
+                    print(f"[Server] Error sending mouse data: {e}")
+                    self.stop_connection()
+                    
+        # Lock cursor before starting mouse tracking
+        self.lock_cursor()
+        
+        with mouse.Listener(on_move=on_mouse_move) as listener:
+            print("[Server] Mouse listener started")
+            try:
+                while self.is_running:
+                    time.sleep(0.01)
+            except Exception as e:
+                print(f"[Server] Mouse tracking error: {e}")
+                self.stop_connection()
+            finally:
+                # Unlock cursor when done
+                self.unlock_cursor()
+        
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print("[Client] Socket created")
-            
-            # Set timeout for connection attempt
-            self.client_socket.settimeout(5)  # 5 second timeout
-            print("[Client] Set connection timeout to 5 seconds")
-            
-            print("[Client] Connecting to server...")
-            try:
-                self.client_socket.connect((self.server_ip.get(), self.port))
-                print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
-            except socket.timeout:
-                print("[Client] Connection timed out - server not responding")
-                raise Exception("Connection timed out - server not responding")
-            except ConnectionRefusedError:
-                print("[Client] Connection refused - server not running or port blocked")
-                raise Exception("Connection refused - server not running or port blocked")
-            except Exception as e:
-                print(f"[Client] Connection failed: {str(e)}")
-                raise
-            
-            # Remove timeout after connection
-            self.client_socket.settimeout(None)
-            print("[Client] Connection timeout removed")
+            self.client_socket.connect((self.server_ip.get(), self.port))
+            print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
             
             # Wait for server acknowledgment
-            print("[Client] Waiting for server acknowledgment...")
-            try:
-                data = self.client_socket.recv(1024)
-                print(f"[Client] Received data: {data}")
-            except socket.timeout:
-                print("[Client] Timeout waiting for server acknowledgment")
-                raise Exception("Timeout waiting for server acknowledgment")
-            
+            data = self.client_socket.recv(1024)
             if data == b'CONNECTED\n':
                 print("[Client] Received connection acknowledgment from server")
             else:
-                print(f"[Client] Unexpected acknowledgment: {data}")
-                raise Exception("Connection failed - unexpected server acknowledgment")
+                print("[Client] Did not receive proper connection acknowledgment")
+                raise Exception("Connection failed - no server acknowledgment")
             
             def client_thread():
                 print("[Client] Starting mouse tracking...")
@@ -414,29 +326,34 @@ class MouseSyncApp:
                                 
                     except Exception as e:
                         if self.is_running:
-                            print(f"[Client] Error in client thread: {str(e)}")
+                            print(f"[Client] Error: {e}")
                         break
                         
-            print("[Client] Starting client thread...")
             threading.Thread(target=client_thread, daemon=True).start()
-            print("[Client] Client thread started")
             
         except Exception as e:
-            print(f"[Client] Connection error: {str(e)}")
-            if self.client_socket:
-                try:
-                    self.client_socket.close()
-                except:
-                    pass
+            print(f"[Client] Connection error: {e}")
             raise
             
+    def stop_connection(self):
+        print("[System] Stopping connection...")
+        self.is_running = False
+        if self.server_socket:
+            self.server_socket.close()
+            print("[Server] Server socket closed")
+            # Unlock cursor when server stops
+            self.unlock_cursor()
+        if self.client_socket:
+            self.client_socket.close()
+            print("[Client] Client socket closed")
+        self.start_button.config(text="Start")
+        self.status_label.config(text="Status: Disconnected")
+        print("[System] Connection stopped")
+        
     def on_closing(self):
-        """Ensure cursor is shown when closing the application"""
+        """Ensure cursor is unlocked when closing"""
         print("[System] Application closing...")
-        try:
-            self.show_cursor()  # Make sure cursor is shown
-        except:
-            pass  # Ignore any errors during cleanup
+        self.unlock_cursor()
         self.stop_connection()
         self.root.destroy()
 
