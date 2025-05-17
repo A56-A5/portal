@@ -154,14 +154,26 @@ class BarrierApp:
             print(f"Successfully connected to server at {server_ip}:{self.port}")
             
             def client_thread():
+                buffer = ""
                 while self.is_running:
                     try:
                         data = self.client_socket.recv(1024)
                         if not data:
                             print("Server disconnected")
                             break
-                        mouse_data = json.loads(data.decode())
-                        self.mouse_controller.position = (mouse_data["x"], mouse_data["y"])
+                            
+                        buffer += data.decode()
+                        while '\n' in buffer:
+                            line, buffer = buffer.split('\n', 1)
+                            try:
+                                mouse_data = json.loads(line)
+                                x, y = mouse_data["x"], mouse_data["y"]
+                                print(f"Mouse Position: X={x}, Y={y}")  # Print coordinates in chat
+                                self.mouse_controller.position = (x, y)
+                            except json.JSONDecodeError:
+                                print(f"Invalid JSON data: {line}")
+                            except Exception as e:
+                                print(f"Error moving mouse: {e}")
                     except Exception as e:
                         if self.is_running:
                             print(f"Client error: {e}")
@@ -186,7 +198,7 @@ class BarrierApp:
         def on_mouse_move(x, y):
             if self.is_running:
                 try:
-                    data = json.dumps({"x": x, "y": y})
+                    data = json.dumps({"x": x, "y": y}) + "\n"
                     client_socket.sendall(data.encode())
                 except Exception as e:
                     print(f"Error sending mouse data: {e}")
