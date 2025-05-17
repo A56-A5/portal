@@ -387,8 +387,15 @@ class MouseSyncApp:
                                     if self.system == "Windows":
                                         win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, dx, dy, 0, 0)
                                     else:
-                                        # For Linux, use XTest extension for relative movement
-                                        os.system(f'xdotool mousemove_relative {dx} {dy}')
+                                        try:
+                                            # For Linux, use Xlib for relative movement
+                                            display = display.Display()
+                                            root = display.screen().root
+                                            current_x, current_y = root.query_pointer()._data["root_x"], root.query_pointer()._data["root_y"]
+                                            root.warp_pointer(current_x + dx, current_y + dy)
+                                            display.sync()
+                                        except Exception as e:
+                                            print(f"[Client] Error moving mouse on Linux: {e}")
                                     
                                 elif mouse_data["type"] == "click":
                                     # Handle click
