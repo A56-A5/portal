@@ -7,17 +7,21 @@ from pynput import mouse
 import time
 import platform
 import ctypes
+import os
 
 # Platform-specific imports
 if platform.system() == "Windows":
     try:
         import win32api
         import win32con
+        import win32gui
     except ImportError:
         print("[System] win32api not available, using ctypes fallback")
 elif platform.system() == "Linux":
     try:
-        from Xlib import display
+        from Xlib import display, X
+        from Xlib.ext import record
+        from Xlib.protocol import rq
     except ImportError:
         print("[System] Xlib not available, using Tkinter fallback")
 
@@ -43,37 +47,67 @@ class MouseSyncApp:
         self.mouse_controller = mouse.Controller()
         self.original_cursor_visibility = True
         self.system = platform.system()
+        self.cursor_hidden = False
         
         self.setup_gui()
         
     def hide_cursor(self):
-        """Hide the cursor using platform-specific methods"""
+        """Hide the global cursor using platform-specific methods"""
+        if self.cursor_hidden:
+            return
+            
         try:
             if self.system == "Windows":
-                # Windows implementation
-                ctypes.windll.user32.ShowCursor(False)
+                # Windows implementation - hide cursor globally
+                while win32api.ShowCursor(False) >= 0:
+                    pass
+                # Disable mouse input
+                ctypes.windll.user32.BlockInput(True)
             elif self.system == "Linux":
                 # Linux implementation using Xlib
                 try:
-                    display.Display().screen().root.warp_pointer(0, 0)
-                    self.root.config(cursor="none")
+                    d = display.Display()
+                    root = d.screen().root
+                    # Hide cursor
+                    root.warp_pointer(0, 0)
+                    # Disable mouse input
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
                 except (NameError, ImportError):
                     print("[Server] Xlib not available, using fallback method")
-                    self.root.config(cursor="none")
-            print("[Server] Cursor hidden")
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
+            
+            self.cursor_hidden = True
+            print("[Server] Global cursor hidden and disabled")
         except Exception as e:
             print(f"[Server] Error hiding cursor: {e}")
             
     def show_cursor(self):
-        """Show the cursor using platform-specific methods"""
+        """Show the global cursor using platform-specific methods"""
+        if not self.cursor_hidden:
+            return
+            
         try:
             if self.system == "Windows":
-                # Windows implementation
-                ctypes.windll.user32.ShowCursor(True)
+                # Windows implementation - show cursor globally
+                while win32api.ShowCursor(True) < 0:
+                    pass
+                # Enable mouse input
+                ctypes.windll.user32.BlockInput(False)
             elif self.system == "Linux":
                 # Linux implementation
-                self.root.config(cursor="")
-            print("[Server] Cursor shown")
+                try:
+                    d = display.Display()
+                    root = d.screen().root
+                    # Show cursor
+                    root.warp_pointer(self.screen_width//2, self.screen_height//2)
+                    # Enable mouse input
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
+                except (NameError, ImportError):
+                    print("[Server] Xlib not available, using fallback method")
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
+            
+            self.cursor_hidden = False
+            print("[Server] Global cursor shown and enabled")
         except Exception as e:
             print(f"[Server] Error showing cursor: {e}")
             
