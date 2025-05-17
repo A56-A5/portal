@@ -16,7 +16,7 @@ class BarrierApp:
         # Variables
         self.is_server = tk.BooleanVar(value=False)
         self.server_ip = tk.StringVar(value="127.0.0.1")
-        self.port = tk.IntVar(value=5000)
+        self.port = 5000  # Fixed port
         self.is_running = False
         self.server_socket = None
         self.client_socket = None
@@ -41,9 +41,6 @@ class BarrierApp:
         ttk.Label(conn_frame, text="Server IP:").grid(row=0, column=0, padx=5, pady=5)
         self.ip_entry = ttk.Entry(conn_frame, textvariable=self.server_ip)
         self.ip_entry.grid(row=0, column=1, padx=5, pady=5)
-        
-        ttk.Label(conn_frame, text="Port:").grid(row=1, column=0, padx=5, pady=5)
-        ttk.Entry(conn_frame, textvariable=self.port).grid(row=1, column=1, padx=5, pady=5)
         
         # Control buttons
         control_frame = ttk.Frame(self.root, padding=10)
@@ -74,16 +71,21 @@ class BarrierApp:
     def start_connection(self):
         try:
             if self.is_server.get():
+                print("Starting server...")
                 self.start_server()
             else:
+                print(f"Connecting to server at {self.server_ip.get()}...")
                 self.start_client()
             self.is_running = True
             self.start_button.config(text="Stop")
             self.status_label.config(text="Status: Connected")
+            print("Connection established successfully!")
         except Exception as e:
+            print(f"Connection failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start: {str(e)}")
             
     def stop_connection(self):
+        print("Stopping connection...")
         self.is_running = False
         if self.server_socket:
             self.server_socket.close()
@@ -93,17 +95,19 @@ class BarrierApp:
             self.mouse_thread.join(timeout=1.0)
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
+        print("Connection stopped")
         
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind(('0.0.0.0', self.port.get()))
+        self.server_socket.bind(('0.0.0.0', self.port))
         self.server_socket.listen(1)
+        print(f"Server listening on port {self.port}")
         
         def server_thread():
             while self.is_running:
                 try:
                     client, addr = self.server_socket.accept()
-                    print(f"Client connected: {addr}")
+                    print(f"Client connected from: {addr}")
                     self.handle_client(client)
                 except Exception as e:
                     if self.is_running:
@@ -114,7 +118,8 @@ class BarrierApp:
         
     def start_client(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((self.server_ip.get(), self.port.get()))
+        self.client_socket.connect((self.server_ip.get(), self.port))
+        print(f"Connected to server at {self.server_ip.get()}:{self.port}")
         
         def client_thread():
             while self.is_running:
