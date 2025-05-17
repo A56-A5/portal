@@ -434,12 +434,18 @@ class MouseSyncApp:
             self.update_virtual_pointer(self.virtual_x, self.virtual_y)
             
             # Start raw input handling
+            raw_ok = False
             if self.system == "Windows":
                 self.root.bind('<Map>', lambda e: self.root.focus_force())
                 self.root.bind('<FocusIn>', lambda e: self.root.focus_force())
                 self.root.bind(WM_INPUT, self.handle_windows_raw_input)
+                raw_ok = True
             else:
-                threading.Thread(target=self.handle_linux_raw_input, daemon=True).start()
+                try:
+                    threading.Thread(target=self.handle_linux_raw_input, daemon=True).start()
+                    raw_ok = True
+                except Exception as e:
+                    print(f"[Linux] Failed to start raw input: {e}")
             
             def server_thread():
                 try:
@@ -554,26 +560,27 @@ class MouseSyncApp:
         # Block input and hide cursor before starting mouse tracking
         self.lock_cursor()
         
-        # Start mouse tracking in a separate thread
-        def track_mouse():
-            with mouse.Listener(
-                on_move=on_mouse_move,
-                on_click=on_mouse_click,
-                on_scroll=on_mouse_scroll,
-                suppress=True  # Suppress events from reaching the system
-            ) as listener:
-                print("[Server] Mouse listener started")
-                try:
-                    while self.is_running:
-                        time.sleep(0.01)
-                except Exception as e:
-                    print(f"[Server] Mouse tracking error: {e}")
-                    self.stop_connection()
-                finally:
-                    # Enable input and show cursor when done
-                    self.unlock_cursor()
-        
-        threading.Thread(target=track_mouse, daemon=True).start()
+        # Start mouse tracking in a separate thread only if raw input is not available
+        if not raw_ok:
+            def track_mouse():
+                with mouse.Listener(
+                    on_move=on_mouse_move,
+                    on_click=on_mouse_click,
+                    on_scroll=on_mouse_scroll,
+                    suppress=True  # Suppress events from reaching the system
+                ) as listener:
+                    print("[Server] Mouse listener started")
+                    try:
+                        while self.is_running:
+                            time.sleep(0.01)
+                    except Exception as e:
+                        print(f"[Server] Mouse tracking error: {e}")
+                        self.stop_connection()
+                    finally:
+                        # Enable input and show cursor when done
+                        self.unlock_cursor()
+            
+            threading.Thread(target=track_mouse, daemon=True).start()
                 
     def start_client(self):
         try:
