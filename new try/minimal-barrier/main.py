@@ -16,6 +16,9 @@ if platform.system() == "Windows":
         import win32con
         import win32gui
         from ctypes import windll, Structure, c_long, byref
+        
+        class POINT(Structure):
+            _fields_ = [("x", c_long), ("y", c_long)]
     except ImportError:
         print("[System] win32api not available, using ctypes fallback")
 elif platform.system() == "Linux":
@@ -25,9 +28,6 @@ elif platform.system() == "Linux":
         from Xlib.protocol import rq
     except ImportError:
         print("[System] Xlib not available, using Tkinter fallback")
-
-class POINT(Structure):
-    _fields_ = [("x", c_long), ("y", c_long)]
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -59,9 +59,12 @@ class MouseSyncApp:
     def get_mouse_position(self):
         """Get current mouse position using platform-specific methods"""
         if self.system == "Windows":
-            pt = POINT()
-            windll.user32.GetCursorPos(byref(pt))
-            return pt.x, pt.y
+            try:
+                pt = POINT()
+                windll.user32.GetCursorPos(byref(pt))
+                return pt.x, pt.y
+            except:
+                return 0, 0
         elif self.system == "Linux":
             try:
                 d = display.Display()
