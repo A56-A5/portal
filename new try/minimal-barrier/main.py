@@ -225,8 +225,6 @@ class MouseSyncApp:
             if self.is_server.get():
                 print("[Server] Starting server...")
                 self.start_server()
-                # Hide cursor when server starts
-                self.hide_cursor()
             else:
                 print(f"[Client] Connecting to server at {self.server_ip.get()}...")
                 self.start_client()
@@ -268,6 +266,8 @@ class MouseSyncApp:
                     # Send initial connection acknowledgment
                     client.sendall(b'CONNECTED\n')
                     print("[Server] Sent connection acknowledgment")
+                    # Hide cursor after connection is established
+                    self.hide_cursor()
                     self.handle_client(client)
                 except Exception as e:
                     if self.is_running:
