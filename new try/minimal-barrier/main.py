@@ -241,25 +241,39 @@ class MouseSyncApp:
     def stop_connection(self):
         print("[System] Stopping connection...")
         self.is_running = False
-        if self.server_socket:
-            self.server_socket.close()
-            print("[Server] Server socket closed")
-            # Show cursor when server stops
-            self.show_cursor()
-        if self.client_socket:
-            self.client_socket.close()
-            print("[Client] Client socket closed")
+        try:
+            if self.server_socket:
+                print("[Server] Closing server socket...")
+                self.server_socket.close()
+                print("[Server] Server socket closed")
+                # Show cursor when server stops
+                print("[Server] Showing cursor...")
+                self.show_cursor()
+        except Exception as e:
+            print(f"[Server] Error closing server socket: {str(e)}")
+            
+        try:
+            if self.client_socket:
+                print("[Client] Closing client socket...")
+                self.client_socket.close()
+                print("[Client] Client socket closed")
+        except Exception as e:
+            print(f"[Client] Error closing client socket: {str(e)}")
+            
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
         
     def start_server(self):
         try:
+            print("[Server] Creating server socket...")
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            print(f"[Server] Binding to port {self.port}...")
             self.server_socket.bind(('0.0.0.0', self.port))
+            print("[Server] Starting to listen...")
             self.server_socket.listen(1)
-            print(f"[Server] Listening on port {self.port}")
+            print(f"[Server] Server is listening on port {self.port}")
             
             def server_thread():
                 try:
@@ -267,31 +281,43 @@ class MouseSyncApp:
                     client, addr = self.server_socket.accept()
                     print(f"[Server] Client connected from: {addr}")
                     # Send initial connection acknowledgment
+                    print("[Server] Sending connection acknowledgment...")
                     client.sendall(b'CONNECTED\n')
-                    print("[Server] Sent connection acknowledgment")
+                    print("[Server] Connection acknowledgment sent")
                     # Hide cursor after connection is established
+                    print("[Server] Hiding cursor...")
                     self.hide_cursor()
+                    print("[Server] Starting client handler...")
                     self.handle_client(client)
                 except Exception as e:
+                    print(f"[Server] Error in server thread: {str(e)}")
                     if self.is_running:
-                        print(f"[Server] Error: {e}")
-                    self.stop_connection()
+                        print("[Server] Attempting to stop connection...")
+                        self.stop_connection()
                         
+            print("[Server] Starting server thread...")
             threading.Thread(target=server_thread, daemon=True).start()
+            print("[Server] Server thread started")
             
         except Exception as e:
-            print(f"[Server] Failed to start: {e}")
+            print(f"[Server] Failed to start server: {str(e)}")
             raise
             
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            print("[Client] Socket created")
+            
+            print("[Client] Connecting to server...")
             self.client_socket.connect((self.server_ip.get(), self.port))
             print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
             
             # Wait for server acknowledgment
+            print("[Client] Waiting for server acknowledgment...")
             data = self.client_socket.recv(1024)
+            print(f"[Client] Received data: {data}")
+            
             if data == b'CONNECTED\n':
                 print("[Client] Received connection acknowledgment from server")
             else:
@@ -342,13 +368,15 @@ class MouseSyncApp:
                                 
                     except Exception as e:
                         if self.is_running:
-                            print(f"[Client] Error: {e}")
+                            print(f"[Client] Error in client thread: {str(e)}")
                         break
                         
+            print("[Client] Starting client thread...")
             threading.Thread(target=client_thread, daemon=True).start()
+            print("[Client] Client thread started")
             
         except Exception as e:
-            print(f"[Client] Connection error: {e}")
+            print(f"[Client] Connection error: {str(e)}")
             raise
             
     def on_closing(self):
