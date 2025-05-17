@@ -65,40 +65,41 @@ class MouseSyncApp:
         self.setup_gui()
         
     def lock_cursor(self):
-        """Hide cursor globally without confining it"""
+        """Lock cursor at screen edge and hide it"""
         if self.cursor_locked:
             return
             
         try:
             if self.system == "Windows":
+                # Move cursor to edge of screen
+                win32api.SetCursorPos((0, 0))
+                
                 # Hide cursor globally
-                for _ in range(50):  # Multiple attempts to ensure it's hidden
+                for _ in range(50):
                     win32api.ShowCursor(False)
                 
-                # Set system-wide cursor visibility
-                try:
-                    # Try to hide cursor at system level
-                    ctypes.windll.user32.SystemParametersInfoW(0x101F, 0, None, 0x01 | 0x02)  # SPI_SETMOUSECLICKLOCK
-                    ctypes.windll.user32.SystemParametersInfoW(0x101D, 0, None, 0x01 | 0x02)  # SPI_SETMOUSESONAR
-                    ctypes.windll.user32.SystemParametersInfoW(0x1021, 0, None, 0x01 | 0x02)  # SPI_SETMOUSEVANISH
-                except:
-                    print("[Server] Could not set system-wide cursor visibility")
+                # Create a tiny rectangle at screen edge to confine cursor
+                rect = ctypes.c_long * 4
+                rect = rect(0, 0, 1, 1)  # 1x1 pixel at (0,0)
+                ctypes.windll.user32.ClipCursor(ctypes.byref(rect))
                 
             elif self.system == "Linux":
                 try:
-                    # Hide cursor globally using multiple methods
+                    d = display.Display()
+                    root = d.screen().root
+                    # Move cursor to edge
+                    root.warp_pointer(0, 0)
+                    # Hide cursor
                     os.system('xsetroot -cursor_name none')
                     os.system('unclutter -idle 0.1 -root &')
-                    # Additional global cursor hiding
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
                 except:
-                    print("[Server] Failed to hide cursor on Linux")
+                    print("[Server] Failed to lock cursor on Linux")
             
             self.cursor_locked = True
-            print("[Server] Global cursor hidden")
+            print("[Server] Cursor locked at edge")
             
         except Exception as e:
-            print(f"[Server] Error hiding cursor: {e}")
+            print(f"[Server] Error locking cursor: {e}")
             
     def unlock_cursor(self):
         """Show cursor globally"""
@@ -231,32 +232,45 @@ class MouseSyncApp:
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
         last_position = None
+        last_physical_pos = None
         
         def on_mouse_move(x, y):
-            nonlocal last_position
+            nonlocal last_position, last_physical_pos
             if self.is_running:
                 try:
-                    # Check if mouse is at screen edges
-                    if x <= 0:
-                        print(f"[Server] Mouse at LEFT edge: X={x}")
-                    elif x >= self.screen_width - 1:
-                        print(f"[Server] Mouse at RIGHT edge: X={x}")
-                    if y <= 0:
-                        print(f"[Server] Mouse at TOP edge: Y={y}")
-                    elif y >= self.screen_height - 1:
-                        print(f"[Server] Mouse at BOTTOM edge: Y={y}")
+                    # Get the physical mouse position
+                    if self.system == "Windows":
+                        pt = POINT()
+                        ctypes.windll.user32.GetCursorPos(ctypes.byref(pt))
+                        physical_x, physical_y = pt.x, pt.y
+                    else:
+                        # For Linux, use the raw coordinates
+                        physical_x, physical_y = x, y
                     
-                    # Only send if position has changed
-                    if last_position != (x, y):
-                        data = json.dumps({"x": x, "y": y}) + '\n'
+                    # Only send if physical position has changed
+                    if last_physical_pos != (physical_x, physical_y):
+                        # Send the physical mouse position
+                        data = json.dumps({"x": physical_x, "y": physical_y}) + '\n'
                         client_socket.sendall(data.encode())
-                        print(f"[Server] Mouse position: X={x}, Y={y}")
-                        last_position = (x, y)
+                        print(f"[Server] Physical mouse position: X={physical_x}, Y={physical_y}")
+                        last_physical_pos = (physical_x, physical_y)
+                        
+                        # Keep cursor locked at edge
+                        if self.system == "Windows":
+                            win32api.SetCursorPos((0, 0))
+                        elif self.system == "Linux":
+                            try:
+                                d = display.Display()
+                                root = d.screen().root
+                                root.warp_pointer(0, 0)
+                            except:
+                                pass
+                                
                 except Exception as e:
                     print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
                     
-        # Hide cursor before starting mouse tracking
+        # Lock cursor at edge before starting mouse tracking
         self.lock_cursor()
         
         with mouse.Listener(on_move=on_mouse_move) as listener:
@@ -308,20 +322,9 @@ class MouseSyncApp:
                                 mouse_data = json.loads(message)
                                 x, y = mouse_data["x"], mouse_data["y"]
                                 
-                                # Check if mouse is at screen edges
-                                if x <= 0:
-                                    print(f"[Client] Mouse at LEFT edge: X={x}")
-                                elif x >= self.screen_width - 1:
-                                    print(f"[Client] Mouse at RIGHT edge: X={x}")
-                                if y <= 0:
-                                    print(f"[Client] Mouse at TOP edge: Y={y}")
-                                elif y >= self.screen_height - 1:
-                                    print(f"[Client] Mouse at BOTTOM edge: Y={y}")
-                                
-                                # Only move if position has changed
+                                # Move client cursor to match server's physical mouse position
                                 if last_position != (x, y):
                                     print(f"[Client] Moving mouse to: X={x}, Y={y}")
-                                    # Use direct position setting instead of relative movement
                                     self.mouse_controller.position = (x, y)
                                     last_position = (x, y)
                             except json.JSONDecodeError as e:
