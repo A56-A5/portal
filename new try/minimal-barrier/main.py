@@ -93,6 +93,7 @@ class MouseSyncApp:
         self.system = platform.system()
         self.cursor_hidden = False
         self.cursor_locked = False
+        self.raw_input_available = False  # Track if raw input is available
         
         # Virtual pointer position
         self.virtual_x = self.screen_width // 2
@@ -434,16 +435,16 @@ class MouseSyncApp:
             self.update_virtual_pointer(self.virtual_x, self.virtual_y)
             
             # Start raw input handling
-            raw_ok = False
+            self.raw_input_available = False
             if self.system == "Windows":
                 self.root.bind('<Map>', lambda e: self.root.focus_force())
                 self.root.bind('<FocusIn>', lambda e: self.root.focus_force())
                 self.root.bind(WM_INPUT, self.handle_windows_raw_input)
-                raw_ok = True
+                self.raw_input_available = True
             else:
                 try:
                     threading.Thread(target=self.handle_linux_raw_input, daemon=True).start()
-                    raw_ok = True
+                    self.raw_input_available = True
                 except Exception as e:
                     print(f"[Linux] Failed to start raw input: {e}")
             
@@ -561,7 +562,7 @@ class MouseSyncApp:
         self.lock_cursor()
         
         # Start mouse tracking in a separate thread only if raw input is not available
-        if not raw_ok:
+        if not self.raw_input_available:
             def track_mouse():
                 with mouse.Listener(
                     on_move=on_mouse_move,
