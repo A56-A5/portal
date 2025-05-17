@@ -364,13 +364,18 @@ class MouseSyncApp:
                 self.update_virtual_pointer(self.virtual_x, self.virtual_y)
                 
                 # Send to client if connected
-                if self.is_running and self.server_socket:
-                    data = json.dumps({
-                        "type": "move",
-                        "x": self.virtual_x,
-                        "y": self.virtual_y
-                    }) + '\n'
-                    self.server_socket.sendall(data.encode())
+                if self.is_running and hasattr(self, 'client_socket') and self.client_socket:
+                    try:
+                        data = json.dumps({
+                            "type": "move",
+                            "x": self.virtual_x,
+                            "y": self.virtual_y
+                        }) + '\n'
+                        self.client_socket.sendall(data.encode())
+                        print(f"[Server] Sent virtual pointer position: x={self.virtual_x}, y={self.virtual_y}")
+                    except Exception as e:
+                        print(f"[Server] Error sending to client: {e}")
+                        self.stop_connection()
                     
         except Exception as e:
             print(f"[Windows] Error handling raw input: {e}")
@@ -401,13 +406,18 @@ class MouseSyncApp:
                     self.update_virtual_pointer(self.virtual_x, self.virtual_y)
                     
                     # Send to client if connected
-                    if self.is_running and self.server_socket:
-                        data = json.dumps({
-                            "type": "move",
-                            "x": self.virtual_x,
-                            "y": self.virtual_y
-                        }) + '\n'
-                        self.server_socket.sendall(data.encode())
+                    if self.is_running and hasattr(self, 'client_socket') and self.client_socket:
+                        try:
+                            data = json.dumps({
+                                "type": "move",
+                                "x": self.virtual_x,
+                                "y": self.virtual_y
+                            }) + '\n'
+                            self.client_socket.sendall(data.encode())
+                            print(f"[Server] Sent virtual pointer position: x={self.virtual_x}, y={self.virtual_y}")
+                        except Exception as e:
+                            print(f"[Server] Error sending to client: {e}")
+                            self.stop_connection()
                         
         except Exception as e:
             print(f"[Linux] Error handling raw input: {e}")
@@ -478,86 +488,8 @@ class MouseSyncApp:
 
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
-        last_position = None
+        self.client_socket = client_socket  # Store client socket for raw input handlers
         
-        def on_mouse_move(x, y):
-            nonlocal last_position
-            if self.is_running:
-                try:
-                    # Calculate movement delta
-                    if last_position is not None:
-                        delta_x = x - last_position[0]
-                        delta_y = y - last_position[1]
-                        
-                        # Only send if there's actual movement
-                        if delta_x != 0 or delta_y != 0:
-                            # Update virtual pointer position
-                            self.virtual_x += delta_x
-                            self.virtual_y += delta_y
-                            
-                            # Clamp virtual pointer to screen boundaries
-                            self.virtual_x = max(0, min(self.virtual_x, self.screen_width - 1))
-                            self.virtual_y = max(0, min(self.virtual_y, self.screen_height - 1))
-                            
-                            # Update virtual pointer visualization
-                            self.update_virtual_pointer(self.virtual_x, self.virtual_y)
-                            
-                            # Send the virtual pointer position
-                            data = json.dumps({
-                                "type": "move",
-                                "x": self.virtual_x,
-                                "y": self.virtual_y
-                            }) + '\n'
-                            client_socket.sendall(data.encode())
-                            print(f"[Server] Virtual pointer position: x={self.virtual_x}, y={self.virtual_y}")
-                    else:
-                        # Initialize last_position with current position
-                        last_position = (x, y)
-                        # Set initial virtual pointer position
-                        self.virtual_x = x
-                        self.virtual_y = y
-                        self.update_virtual_pointer(self.virtual_x, self.virtual_y)
-                    
-                    last_position = (x, y)
-                            
-                except Exception as e:
-                    print(f"[Server] Error sending mouse data: {e}")
-                    self.stop_connection()
-
-        def on_mouse_click(x, y, button, pressed):
-            if self.is_running:
-                try:
-                    # Send click event with virtual pointer position
-                    data = json.dumps({
-                        "type": "click",
-                        "button": str(button),
-                        "pressed": pressed,
-                        "x": self.virtual_x,
-                        "y": self.virtual_y
-                    }) + '\n'
-                    client_socket.sendall(data.encode())
-                    print(f"[Server] Mouse click: {button} {'pressed' if pressed else 'released'} at ({self.virtual_x}, {self.virtual_y})")
-                except Exception as e:
-                    print(f"[Server] Error sending click data: {e}")
-                    self.stop_connection()
-
-        def on_mouse_scroll(x, y, dx, dy):
-            if self.is_running:
-                try:
-                    # Send scroll event with virtual pointer position
-                    data = json.dumps({
-                        "type": "scroll",
-                        "dx": dx,
-                        "dy": dy,
-                        "x": self.virtual_x,
-                        "y": self.virtual_y
-                    }) + '\n'
-                    client_socket.sendall(data.encode())
-                    print(f"[Server] Mouse scroll: dx={dx}, dy={dy} at ({self.virtual_x}, {self.virtual_y})")
-                except Exception as e:
-                    print(f"[Server] Error sending scroll data: {e}")
-                    self.stop_connection()
-                    
         # Block input and hide cursor before starting mouse tracking
         self.lock_cursor()
         
@@ -694,6 +626,7 @@ class MouseSyncApp:
         if self.client_socket:
             self.client_socket.close()
             print("[Client] Client socket closed")
+            self.client_socket = None  # Clear client socket reference
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
