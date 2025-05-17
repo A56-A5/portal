@@ -6,7 +6,8 @@ import json
 import pyautogui
 import time
 from pynput import mouse
-import netifaces
+import platform
+import os
 
 class BarrierApp:
     def __init__(self, root):
@@ -22,26 +23,20 @@ class BarrierApp:
         self.server_socket = None
         self.client_socket = None
         self.mouse_thread = None
+        self.mouse_controller = mouse.Controller()
         
         self.setup_gui()
         
-    def get_local_ip(self):
+    def get_screen_size(self):
         try:
-            # Get all network interfaces
-            interfaces = netifaces.interfaces()
-            for interface in interfaces:
-                # Get IP addresses for this interface
-                addrs = netifaces.ifaddresses(interface)
-                if netifaces.AF_INET in addrs:
-                    for addr in addrs[netifaces.AF_INET]:
-                        ip = addr['addr']
-                        # Skip localhost and link-local addresses
-                        if not ip.startswith('127.') and not ip.startswith('169.254.'):
-                            return ip
-        except Exception as e:
-            print(f"Error getting local IP: {e}")
-        return "127.0.0.1"  # Fallback to localhost
-        
+            return pyautogui.size()
+        except:
+            if platform.system() == 'Windows':
+                from ctypes import windll
+                return windll.user32.GetSystemMetrics(0), windll.user32.GetSystemMetrics(1)
+            else:
+                return 1920, 1080  # fallback
+                
     def setup_gui(self):
         # Mode selection
         mode_frame = ttk.LabelFrame(self.root, text="Mode", padding=10)
@@ -60,10 +55,6 @@ class BarrierApp:
         self.ip_entry = ttk.Entry(conn_frame, textvariable=self.server_ip)
         self.ip_entry.grid(row=0, column=1, padx=5, pady=5)
         
-        # Show local IP button
-        self.show_ip_button = ttk.Button(conn_frame, text="Show Local IP", command=self.show_local_ip)
-        self.show_ip_button.grid(row=1, column=0, columnspan=2, pady=5)
-        
         # Control buttons
         control_frame = ttk.Frame(self.root, padding=10)
         control_frame.pack(fill="x", padx=10, pady=5)
@@ -78,16 +69,9 @@ class BarrierApp:
         # Initialize mode
         self.update_mode()
         
-    def show_local_ip(self):
-        local_ip = self.get_local_ip()
-        messagebox.showinfo("Local IP", f"Your local IP address is: {local_ip}\n\nUse this IP on the client side if connecting from another computer.")
-        
     def update_mode(self):
         if self.is_server.get():
             self.ip_entry.config(state="disabled")
-            local_ip = self.get_local_ip()
-            self.server_ip.set(local_ip)
-            print(f"Server mode - Local IP: {local_ip}")
         else:
             self.ip_entry.config(state="normal")
             
@@ -130,29 +114,28 @@ class BarrierApp:
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            local_ip = self.get_local_ip()
-            print(f"Server binding to {local_ip}:{self.port}")
-            self.server_socket.bind((local_ip, self.port))
+            self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
-            print(f"Server listening on {local_ip}:{self.port}")
+            print(f"Server listening on port {self.port}")
             print("Server is ready to accept connections...")
+            
+            def server_thread():
+                while self.is_running:
+                    try:
+                        client, addr = self.server_socket.accept()
+                        print(f"Client connected from: {addr}")
+                        self.handle_client(client)
+                    except Exception as e:
+                        if self.is_running:
+                            print(f"Server error: {e}")
+                        break
+                        
+            threading.Thread(target=server_thread, daemon=True).start()
+            
         except Exception as e:
             print(f"Failed to start server: {e}")
             raise
-        
-        def server_thread():
-            while self.is_running:
-                try:
-                    client, addr = self.server_socket.accept()
-                    print(f"Client connected from: {addr}")
-                    self.handle_client(client)
-                except Exception as e:
-                    if self.is_running:
-                        print(f"Server error: {e}")
-                    break
-                    
-        threading.Thread(target=server_thread, daemon=True).start()
-        
+            
     def start_client(self):
         try:
             server_ip = self.server_ip.get()
@@ -169,6 +152,23 @@ class BarrierApp:
             self.client_socket.settimeout(5)  # 5 second timeout
             self.client_socket.connect((server_ip, self.port))
             print(f"Successfully connected to server at {server_ip}:{self.port}")
+            
+            def client_thread():
+                while self.is_running:
+                    try:
+                        data = self.client_socket.recv(1024)
+                        if not data:
+                            print("Server disconnected")
+                            break
+                        mouse_data = json.loads(data.decode())
+                        self.update_mouse_position(mouse_data)
+                    except Exception as e:
+                        if self.is_running:
+                            print(f"Client error: {e}")
+                        break
+                        
+            threading.Thread(target=client_thread, daemon=True).start()
+            
         except socket.timeout:
             print("Connection timed out. Please check if the server is running and the IP is correct.")
             raise
@@ -181,38 +181,60 @@ class BarrierApp:
         except Exception as e:
             print(f"Failed to connect: {e}")
             raise
-        
-        def client_thread():
-            while self.is_running:
-                try:
-                    data = self.client_socket.recv(1024)
-                    if not data:
-                        break
-                    mouse_data = json.loads(data.decode())
-                    self.update_mouse_position(mouse_data)
-                except Exception as e:
-                    if self.is_running:
-                        print(f"Client error: {e}")
-                    break
-                    
-        threading.Thread(target=client_thread, daemon=True).start()
-        
+            
     def handle_client(self, client_socket):
         def on_mouse_move(x, y):
             if self.is_running:
                 try:
-                    data = json.dumps({"x": x, "y": y})
-                    client_socket.sendall(data.encode())
+                    data = json.dumps({"type": "move", "x": x, "y": y})
+                    client_socket.sendall(data.encode() + b'\n')
                 except Exception as e:
                     print(f"Error sending mouse data: {e}")
                     
-        with mouse.Listener(on_move=on_mouse_move) as listener:
+        def on_mouse_click(x, y, button, pressed):
+            if self.is_running:
+                try:
+                    data = json.dumps({
+                        "type": "click",
+                        "button": str(button),
+                        "pressed": pressed
+                    })
+                    client_socket.sendall(data.encode() + b'\n')
+                except Exception as e:
+                    print(f"Error sending click data: {e}")
+                    
+        def on_mouse_scroll(x, y, dx, dy):
+            if self.is_running:
+                try:
+                    data = json.dumps({
+                        "type": "scroll",
+                        "dx": dx,
+                        "dy": dy
+                    })
+                    client_socket.sendall(data.encode() + b'\n')
+                except Exception as e:
+                    print(f"Error sending scroll data: {e}")
+                    
+        with mouse.Listener(
+            on_move=on_mouse_move,
+            on_click=on_mouse_click,
+            on_scroll=on_mouse_scroll
+        ) as listener:
             while self.is_running:
                 time.sleep(0.01)
                 
     def update_mouse_position(self, mouse_data):
         try:
-            pyautogui.moveTo(mouse_data["x"], mouse_data["y"])
+            if mouse_data["type"] == "move":
+                self.mouse_controller.position = (mouse_data["x"], mouse_data["y"])
+            elif mouse_data["type"] == "click":
+                button = getattr(mouse.Button, mouse_data["button"].split('.')[-1], mouse.Button.left)
+                if mouse_data["pressed"]:
+                    self.mouse_controller.press(button)
+                else:
+                    self.mouse_controller.release(button)
+            elif mouse_data["type"] == "scroll":
+                self.mouse_controller.scroll(mouse_data["dx"], mouse_data["dy"])
         except Exception as e:
             print(f"Error updating mouse position: {e}")
             
