@@ -7,8 +7,19 @@ from pynput import mouse
 import time
 import platform
 import ctypes
-import win32api
-import win32con
+
+# Platform-specific imports
+if platform.system() == "Windows":
+    try:
+        import win32api
+        import win32con
+    except ImportError:
+        print("[System] win32api not available, using ctypes fallback")
+elif platform.system() == "Linux":
+    try:
+        from Xlib import display
+    except ImportError:
+        print("[System] Xlib not available, using Tkinter fallback")
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -44,10 +55,9 @@ class MouseSyncApp:
             elif self.system == "Linux":
                 # Linux implementation using Xlib
                 try:
-                    from Xlib import display
                     display.Display().screen().root.warp_pointer(0, 0)
                     self.root.config(cursor="none")
-                except ImportError:
+                except (NameError, ImportError):
                     print("[Server] Xlib not available, using fallback method")
                     self.root.config(cursor="none")
             print("[Server] Cursor hidden")
