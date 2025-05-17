@@ -100,18 +100,20 @@ class MouseSyncApp:
             self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
             print(f"[Server] Listening on port {self.port}")
-            print("[Server] Waiting for client connection...")
             
             def server_thread():
-                while self.is_running:
-                    try:
-                        client, addr = self.server_socket.accept()
-                        print(f"[Server] Client connected from: {addr}")
-                        self.handle_client(client)
-                    except Exception as e:
-                        if self.is_running:
-                            print(f"[Server] Error: {e}")
-                        break
+                try:
+                    print("[Server] Waiting for client connection...")
+                    client, addr = self.server_socket.accept()
+                    print(f"[Server] Client connected from: {addr}")
+                    # Send initial connection acknowledgment
+                    client.sendall(b'CONNECTED\n')
+                    print("[Server] Sent connection acknowledgment")
+                    self.handle_client(client)
+                except Exception as e:
+                    if self.is_running:
+                        print(f"[Server] Error: {e}")
+                    self.stop_connection()
                         
             threading.Thread(target=server_thread, daemon=True).start()
             
@@ -119,6 +121,33 @@ class MouseSyncApp:
             print(f"[Server] Failed to start: {e}")
             raise
             
+    def handle_client(self, client_socket):
+        print("[Server] Starting mouse tracking...")
+        last_position = None
+        
+        def on_mouse_move(x, y):
+            nonlocal last_position
+            if self.is_running:
+                try:
+                    # Only send if position has changed
+                    if last_position != (x, y):
+                        data = json.dumps({"x": x, "y": y}) + '\n'
+                        client_socket.sendall(data.encode())
+                        print(f"[Server] Mouse position: X={x}, Y={y}")
+                        last_position = (x, y)
+                except Exception as e:
+                    print(f"[Server] Error sending mouse data: {e}")
+                    self.stop_connection()
+                    
+        with mouse.Listener(on_move=on_mouse_move) as listener:
+            print("[Server] Mouse listener started")
+            try:
+                while self.is_running:
+                    time.sleep(0.01)
+            except Exception as e:
+                print(f"[Server] Mouse tracking error: {e}")
+                self.stop_connection()
+        
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
@@ -126,18 +155,42 @@ class MouseSyncApp:
             self.client_socket.connect((self.server_ip.get(), self.port))
             print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
             
+            # Wait for server acknowledgment
+            data = self.client_socket.recv(1024)
+            if data == b'CONNECTED\n':
+                print("[Client] Received connection acknowledgment from server")
+            else:
+                print("[Client] Did not receive proper connection acknowledgment")
+                raise Exception("Connection failed - no server acknowledgment")
+            
             def client_thread():
                 print("[Client] Starting mouse tracking...")
+                buffer = ""
                 while self.is_running:
                     try:
-                        data = self.client_socket.recv(1024)
+                        # Receive data in chunks
+                        data = self.client_socket.recv(1024).decode()
                         if not data:
                             print("[Client] Server disconnected")
                             break
-                        mouse_data = json.loads(data.decode())
-                        x, y = mouse_data["x"], mouse_data["y"]
-                        print(f"[Client] Moving mouse to: X={x}, Y={y}")
-                        self.mouse_controller.position = (x, y)
+                            
+                        # Add received data to buffer
+                        buffer += data
+                        
+                        # Process complete JSON messages
+                        while '\n' in buffer:
+                            message, buffer = buffer.split('\n', 1)
+                            try:
+                                mouse_data = json.loads(message)
+                                x, y = mouse_data["x"], mouse_data["y"]
+                                print(f"[Client] Moving mouse to: X={x}, Y={y}")
+                                # Move mouse to the received position
+                                self.mouse_controller.position = (x, y)
+                            except json.JSONDecodeError as e:
+                                print(f"[Client] Error decoding mouse data: {e}")
+                            except Exception as e:
+                                print(f"[Client] Error moving mouse: {e}")
+                                
                     except Exception as e:
                         if self.is_running:
                             print(f"[Client] Error: {e}")
@@ -149,23 +202,6 @@ class MouseSyncApp:
             print(f"[Client] Connection error: {e}")
             raise
             
-    def handle_client(self, client_socket):
-        print("[Server] Starting mouse tracking...")
-        
-        def on_mouse_move(x, y):
-            if self.is_running:
-                try:
-                    data = json.dumps({"x": x, "y": y})
-                    client_socket.sendall(data.encode())
-                    print(f"[Server] Mouse position: X={x}, Y={y}")
-                except Exception as e:
-                    print(f"[Server] Error sending mouse data: {e}")
-                    
-        with mouse.Listener(on_move=on_mouse_move) as listener:
-            print("[Server] Mouse listener started")
-            while self.is_running:
-                time.sleep(0.01)
-                
     def on_closing(self):
         print("[System] Application closing...")
         self.stop_connection()
