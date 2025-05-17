@@ -248,7 +248,7 @@ class MouseSyncApp:
                         # Only send if there's actual movement
                         if delta_x != 0 or delta_y != 0:
                             # Send the movement delta
-                            data = json.dumps({"dx": delta_x, "dy": delta_y}) + '\n'
+                            data = json.dumps({"type": "move", "dx": delta_x, "dy": delta_y}) + '\n'
                             client_socket.sendall(data.encode())
                             print(f"[Server] Mouse movement: dx={delta_x}, dy={delta_y}")
                     
@@ -257,13 +257,47 @@ class MouseSyncApp:
                 except Exception as e:
                     print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
+
+        def on_mouse_click(x, y, button, pressed):
+            if self.is_running:
+                try:
+                    # Send click event
+                    data = json.dumps({
+                        "type": "click",
+                        "button": str(button),
+                        "pressed": pressed
+                    }) + '\n'
+                    client_socket.sendall(data.encode())
+                    print(f"[Server] Mouse click: {button} {'pressed' if pressed else 'released'}")
+                except Exception as e:
+                    print(f"[Server] Error sending click data: {e}")
+                    self.stop_connection()
+
+        def on_mouse_scroll(x, y, dx, dy):
+            if self.is_running:
+                try:
+                    # Send scroll event
+                    data = json.dumps({
+                        "type": "scroll",
+                        "dx": dx,
+                        "dy": dy
+                    }) + '\n'
+                    client_socket.sendall(data.encode())
+                    print(f"[Server] Mouse scroll: dx={dx}, dy={dy}")
+                except Exception as e:
+                    print(f"[Server] Error sending scroll data: {e}")
+                    self.stop_connection()
                     
-        # Disable mouse input and hide cursor before starting mouse tracking
+        # Hide cursor and lock at edge before starting mouse tracking
         self.lock_cursor()
         
         # Start mouse tracking in a separate thread
         def track_mouse():
-            with mouse.Listener(on_move=on_mouse_move) as listener:
+            with mouse.Listener(
+                on_move=on_mouse_move,
+                on_click=on_mouse_click,
+                on_scroll=on_mouse_scroll
+            ) as listener:
                 print("[Server] Mouse listener started")
                 try:
                     while self.is_running:
@@ -272,7 +306,7 @@ class MouseSyncApp:
                     print(f"[Server] Mouse tracking error: {e}")
                     self.stop_connection()
                 finally:
-                    # Enable mouse input and show cursor when done
+                    # Show cursor when done
                     self.unlock_cursor()
         
         threading.Thread(target=track_mouse, daemon=True).start()
@@ -314,25 +348,57 @@ class MouseSyncApp:
                             message, buffer = buffer.split('\n', 1)
                             try:
                                 mouse_data = json.loads(message)
-                                dx = mouse_data["dx"]
-                                dy = mouse_data["dy"]
                                 
-                                # Update current position with deltas
-                                current_x += dx
-                                current_y += dy
-                                
-                                # Clamp to screen boundaries
-                                current_x = max(0, min(current_x, self.screen_width - 1))
-                                current_y = max(0, min(current_y, self.screen_height - 1))
-                                
-                                # Move client cursor by delta
-                                print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
-                                self.mouse_controller.position = (current_x, current_y)
-                                
+                                if mouse_data["type"] == "move":
+                                    # Handle movement
+                                    dx = mouse_data["dx"]
+                                    dy = mouse_data["dy"]
+                                    
+                                    # Update current position with deltas
+                                    current_x += dx
+                                    current_y += dy
+                                    
+                                    # Clamp to screen boundaries
+                                    current_x = max(0, min(current_x, self.screen_width - 1))
+                                    current_y = max(0, min(current_y, self.screen_height - 1))
+                                    
+                                    # Move client cursor
+                                    print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
+                                    self.mouse_controller.position = (current_x, current_y)
+                                    
+                                elif mouse_data["type"] == "click":
+                                    # Handle click
+                                    button = mouse_data["button"]
+                                    pressed = mouse_data["pressed"]
+                                    
+                                    # Convert button string to Button enum
+                                    if button == "Button.left":
+                                        button = mouse.Button.left
+                                    elif button == "Button.right":
+                                        button = mouse.Button.right
+                                    elif button == "Button.middle":
+                                        button = mouse.Button.middle
+                                    
+                                    # Simulate click
+                                    print(f"[Client] {'Pressing' if pressed else 'Releasing'} {button}")
+                                    if pressed:
+                                        self.mouse_controller.press(button)
+                                    else:
+                                        self.mouse_controller.release(button)
+                                        
+                                elif mouse_data["type"] == "scroll":
+                                    # Handle scroll
+                                    dx = mouse_data["dx"]
+                                    dy = mouse_data["dy"]
+                                    
+                                    # Simulate scroll
+                                    print(f"[Client] Scrolling: dx={dx}, dy={dy}")
+                                    self.mouse_controller.scroll(dx, dy)
+                                    
                             except json.JSONDecodeError as e:
                                 print(f"[Client] Error decoding mouse data: {e}")
                             except Exception as e:
-                                print(f"[Client] Error moving mouse: {e}")
+                                print(f"[Client] Error handling mouse event: {e}")
                                 
                     except Exception as e:
                         if self.is_running:
