@@ -98,10 +98,16 @@ class BarrierApp:
         print("Connection stopped")
         
     def start_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.bind(('0.0.0.0', self.port))
-        self.server_socket.listen(1)
-        print(f"Server listening on port {self.port}")
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind(('0.0.0.0', self.port))
+            self.server_socket.listen(1)
+            print(f"Server listening on port {self.port}")
+            print("Server is ready to accept connections...")
+        except Exception as e:
+            print(f"Failed to start server: {e}")
+            raise
         
         def server_thread():
             while self.is_running:
@@ -117,9 +123,24 @@ class BarrierApp:
         threading.Thread(target=server_thread, daemon=True).start()
         
     def start_client(self):
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((self.server_ip.get(), self.port))
-        print(f"Connected to server at {self.server_ip.get()}:{self.port}")
+        try:
+            print(f"Attempting to connect to {self.server_ip.get()}:{self.port}")
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.settimeout(5)  # 5 second timeout
+            self.client_socket.connect((self.server_ip.get(), self.port))
+            print(f"Successfully connected to server at {self.server_ip.get()}:{self.port}")
+        except socket.timeout:
+            print("Connection timed out. Please check if the server is running and the IP is correct.")
+            raise
+        except ConnectionRefusedError:
+            print("Connection refused. Please check if the server is running and the port is correct.")
+            raise
+        except socket.gaierror:
+            print("Invalid IP address. Please check the server IP address.")
+            raise
+        except Exception as e:
+            print(f"Failed to connect: {e}")
+            raise
         
         def client_thread():
             while self.is_running:
