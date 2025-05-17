@@ -1,2 +1,3 @@
 @echo off
-powershell -Command "Start-Process python -ArgumentList '%~dp0main.py' -Verb RunAs" 
+cd /d "%~dp0"
+powershell -Command "Start-Process python -ArgumentList 'main.py' -Verb RunAs -WorkingDirectory '%~dp0'" 

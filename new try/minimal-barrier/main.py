@@ -59,22 +59,30 @@ class MouseSyncApp:
         try:
             if self.system == "Windows":
                 # Windows implementation - hide cursor globally
-                while win32api.ShowCursor(False) >= 0:
-                    pass
+                # First try to hide cursor multiple times to ensure it's hidden
+                for _ in range(20):  # Try multiple times to ensure it's hidden
+                    win32api.ShowCursor(False)
+                
                 # Disable mouse input
-                ctypes.windll.user32.BlockInput(True)
+                if not ctypes.windll.user32.BlockInput(True):
+                    print("[Server] Failed to block input, trying alternative method")
+                    # Alternative method using SetCursorPos to move cursor off screen
+                    win32api.SetCursorPos((self.screen_width * 2, self.screen_height * 2))
             elif self.system == "Linux":
                 # Linux implementation using Xlib
                 try:
                     d = display.Display()
                     root = d.screen().root
-                    # Hide cursor
-                    root.warp_pointer(0, 0)
+                    # Hide cursor by moving it far off screen
+                    root.warp_pointer(self.screen_width * 2, self.screen_height * 2)
                     # Disable mouse input
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
+                    # Additional attempt to hide cursor
+                    os.system('xsetroot -cursor_name none')
                 except (NameError, ImportError):
                     print("[Server] Xlib not available, using fallback method")
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
+                    os.system('xsetroot -cursor_name none')
             
             self.cursor_hidden = True
             print("[Server] Global cursor hidden and disabled")
@@ -89,22 +97,28 @@ class MouseSyncApp:
         try:
             if self.system == "Windows":
                 # Windows implementation - show cursor globally
-                while win32api.ShowCursor(True) < 0:
-                    pass
-                # Enable mouse input
+                # First enable mouse input
                 ctypes.windll.user32.BlockInput(False)
+                # Then show cursor multiple times to ensure it's visible
+                for _ in range(20):  # Try multiple times to ensure it's shown
+                    win32api.ShowCursor(True)
+                # Move cursor to center of screen
+                win32api.SetCursorPos((self.screen_width//2, self.screen_height//2))
             elif self.system == "Linux":
                 # Linux implementation
                 try:
                     d = display.Display()
                     root = d.screen().root
-                    # Show cursor
-                    root.warp_pointer(self.screen_width//2, self.screen_height//2)
                     # Enable mouse input
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
+                    # Show cursor
+                    root.warp_pointer(self.screen_width//2, self.screen_height//2)
+                    # Restore default cursor
+                    os.system('xsetroot -cursor_name left_ptr')
                 except (NameError, ImportError):
                     print("[Server] Xlib not available, using fallback method")
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
+                    os.system('xsetroot -cursor_name left_ptr')
             
             self.cursor_hidden = False
             print("[Server] Global cursor shown and enabled")
@@ -336,7 +350,12 @@ class MouseSyncApp:
             raise
             
     def on_closing(self):
+        """Ensure cursor is shown when closing the application"""
         print("[System] Application closing...")
+        try:
+            self.show_cursor()  # Make sure cursor is shown
+        except:
+            pass  # Ignore any errors during cleanup
         self.stop_connection()
         self.root.destroy()
 
