@@ -15,28 +15,60 @@ if platform.system() == "Windows":
         import win32api
         import win32con
         import win32gui
-        from ctypes import windll, Structure, c_long, byref
+        from ctypes import windll, Structure, c_long, byref, c_uint, sizeof, POINTER, c_void_p, c_ulong, c_ushort, c_int
         
-        class POINT(Structure):
-            _fields_ = [("x", c_long), ("y", c_long)]
-            
+        # Windows Raw Input structures
+        class RAWINPUTDEVICE(Structure):
+            _fields_ = [
+                ("usUsagePage", c_ushort),
+                ("usUsage", c_ushort),
+                ("dwFlags", c_ulong),
+                ("hwndTarget", c_void_p)
+            ]
+
+        class RAWINPUTHEADER(Structure):
+            _fields_ = [
+                ("dwType", c_ulong),
+                ("dwSize", c_ulong),
+                ("hDevice", c_void_p),
+                ("wParam", c_void_p)
+            ]
+
+        class RAWMOUSE(Structure):
+            _fields_ = [
+                ("usFlags", c_ushort),
+                ("ulButtons", c_ulong),
+                ("ulRawButtons", c_ulong),
+                ("lLastX", c_long),
+                ("lLastY", c_long),
+                ("ulExtraInformation", c_ulong)
+            ]
+
+        class RAWINPUT(Structure):
+            _fields_ = [
+                ("header", RAWINPUTHEADER),
+                ("data", RAWMOUSE)
+            ]
+
         # Windows API constants
-        CURSOR_SHOWING = 0x00000001
-        SPI_SETMOUSECLICKLOCK = 0x101F
-        SPI_SETMOUSESONAR = 0x101D
-        SPI_SETMOUSEVANISH = 0x1021
-        SPIF_UPDATEINIFILE = 0x01
-        SPIF_SENDCHANGE = 0x02
+        RIM_TYPEMOUSE = 0
+        RIDEV_INPUTSINK = 0x00000100
+        RIDEV_REMOVE = 0x00000001
+        WM_INPUT = 0x00FF
+        MOUSE_MOVE_RELATIVE = 0x00
+        MOUSE_MOVE_ABSOLUTE = 0x01
         
     except ImportError:
         print("[System] win32api not available, using ctypes fallback")
 elif platform.system() == "Linux":
     try:
+        from evdev import InputDevice, categorize, ecodes
+        import glob
+    except ImportError:
+        print("[System] evdev not available, using Xlib fallback")
         from Xlib import display, X
         from Xlib.ext import record
         from Xlib.protocol import rq
-    except ImportError:
-        print("[System] Xlib not available, using Tkinter fallback")
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -86,8 +118,10 @@ class MouseSyncApp:
         # Platform-specific mouse movement
         if self.system == "Windows":
             self.move_mouse = self.move_mouse_windows
+            self.setup_windows_raw_input()
         else:
             self.move_mouse = self.move_mouse_linux
+            self.setup_linux_raw_input()
             
         self.setup_gui()
         
@@ -254,6 +288,129 @@ class MouseSyncApp:
             print(f"[Error] Connection failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start: {str(e)}")
             
+    def setup_windows_raw_input(self):
+        """Setup raw input device for Windows"""
+        try:
+            # Register raw input device
+            rid = RAWINPUTDEVICE()
+            rid.usUsagePage = 0x01  # HID_USAGE_PAGE_GENERIC
+            rid.usUsage = 0x02      # HID_USAGE_GENERIC_MOUSE
+            rid.dwFlags = RIDEV_INPUTSINK
+            rid.hwndTarget = self.root.winfo_id()
+            
+            if not windll.user32.RegisterRawInputDevices(byref(rid), 1, sizeof(rid)):
+                print("[Windows] Failed to register raw input device")
+                
+            # Bind raw input message
+            self.root.bind('<Map>', lambda e: self.root.focus_force())
+            self.root.bind('<FocusIn>', lambda e: self.root.focus_force())
+            
+        except Exception as e:
+            print(f"[Windows] Error setting up raw input: {e}")
+
+    def setup_linux_raw_input(self):
+        """Setup raw input device for Linux"""
+        try:
+            # Find mouse device
+            mouse_devices = glob.glob('/dev/input/mouse*')
+            if not mouse_devices:
+                print("[Linux] No mouse devices found")
+                return
+                
+            # Use first mouse device
+            self.mouse_device = InputDevice(mouse_devices[0])
+            print(f"[Linux] Using mouse device: {self.mouse_device}")
+            
+        except Exception as e:
+            print(f"[Linux] Error setting up raw input: {e}")
+
+    def handle_windows_raw_input(self, msg):
+        """Handle raw input messages on Windows"""
+        try:
+            # Get raw input data
+            dwSize = c_ulong(sizeof(RAWINPUT))
+            windll.user32.GetRawInputData(
+                msg.lParam,
+                RIM_TYPEMOUSE,
+                None,
+                byref(dwSize),
+                sizeof(RAWINPUTHEADER)
+            )
+            
+            raw = RAWINPUT()
+            windll.user32.GetRawInputData(
+                msg.lParam,
+                RIM_TYPEMOUSE,
+                byref(raw),
+                byref(dwSize),
+                sizeof(RAWINPUTHEADER)
+            )
+            
+            # Process relative movement
+            if raw.data.usFlags == MOUSE_MOVE_RELATIVE:
+                dx = raw.data.lLastX
+                dy = raw.data.lLastY
+                
+                # Update virtual pointer position
+                self.virtual_x += dx
+                self.virtual_y += dy
+                
+                # Clamp to screen boundaries
+                self.virtual_x = max(0, min(self.virtual_x, self.screen_width - 1))
+                self.virtual_y = max(0, min(self.virtual_y, self.screen_height - 1))
+                
+                # Update visualization
+                self.update_virtual_pointer(self.virtual_x, self.virtual_y)
+                
+                # Send to client if connected
+                if self.is_running and self.server_socket:
+                    data = json.dumps({
+                        "type": "move",
+                        "x": self.virtual_x,
+                        "y": self.virtual_y
+                    }) + '\n'
+                    self.server_socket.sendall(data.encode())
+                    
+        except Exception as e:
+            print(f"[Windows] Error handling raw input: {e}")
+
+    def handle_linux_raw_input(self):
+        """Handle raw input events on Linux"""
+        try:
+            for event in self.mouse_device.read_loop():
+                if event.type == ecodes.EV_REL:
+                    if event.code == ecodes.REL_X:
+                        dx = event.value
+                        dy = 0
+                    elif event.code == ecodes.REL_Y:
+                        dx = 0
+                        dy = event.value
+                    else:
+                        continue
+                        
+                    # Update virtual pointer position
+                    self.virtual_x += dx
+                    self.virtual_y += dy
+                    
+                    # Clamp to screen boundaries
+                    self.virtual_x = max(0, min(self.virtual_x, self.screen_width - 1))
+                    self.virtual_y = max(0, min(self.virtual_y, self.screen_height - 1))
+                    
+                    # Update visualization
+                    self.update_virtual_pointer(self.virtual_x, self.virtual_y)
+                    
+                    # Send to client if connected
+                    if self.is_running and self.server_socket:
+                        data = json.dumps({
+                            "type": "move",
+                            "x": self.virtual_x,
+                            "y": self.virtual_y
+                        }) + '\n'
+                        self.server_socket.sendall(data.encode())
+                        
+        except Exception as e:
+            print(f"[Linux] Error handling raw input: {e}")
+
     def start_server(self):
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -273,12 +430,19 @@ class MouseSyncApp:
             
             self.update_virtual_pointer(self.virtual_x, self.virtual_y)
             
+            # Start raw input handling
+            if self.system == "Windows":
+                self.root.bind('<Map>', lambda e: self.root.focus_force())
+                self.root.bind('<FocusIn>', lambda e: self.root.focus_force())
+                self.root.bind(WM_INPUT, self.handle_windows_raw_input)
+            else:
+                threading.Thread(target=self.handle_linux_raw_input, daemon=True).start()
+            
             def server_thread():
                 try:
                     print("[Server] Waiting for client connection...")
                     client, addr = self.server_socket.accept()
                     print(f"[Server] Client connected from: {addr}")
-                    # Send initial connection acknowledgment
                     client.sendall(b'CONNECTED\n')
                     print("[Server] Sent connection acknowledgment")
                     self.handle_client(client)
