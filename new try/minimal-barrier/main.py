@@ -1,175 +1,189 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-import socket
-import threading
-import json
-from pynput import mouse
-import time
-import platform
+from tkinter import ttk
 import ctypes
-import os
+from ctypes import wintypes
+import win32api
+import win32con
+import threading
+import time
 
-# Platform-specific imports and structures
-if platform.system() == "Windows":
-    try:
-        import win32api
-        import win32con
-        import win32gui
-        from ctypes import windll, Structure, c_long, byref, c_uint, sizeof, POINTER, c_void_p, c_ulong, c_ushort, c_int
+# Windows API structures for raw input
+class RAWINPUTDEVICE(ctypes.Structure):
+    _fields_ = [
+        ("usUsagePage", ctypes.c_ushort),
+        ("usUsage", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_ulong),
+        ("hwndTarget", ctypes.c_void_p)
+    ]
 
-        class RAWINPUTDEVICE(Structure):
-            _fields_ = [("usUsagePage", c_ushort),
-                        ("usUsage", c_ushort),
-                        ("dwFlags", c_ulong),
-                        ("hwndTarget", c_void_p)]
+class RAWINPUTHEADER(ctypes.Structure):
+    _fields_ = [
+        ("dwType", ctypes.c_ulong),
+        ("dwSize", ctypes.c_ulong),
+        ("hDevice", ctypes.c_void_p),
+        ("wParam", ctypes.c_void_p)
+    ]
 
-        class RAWINPUTHEADER(Structure):
-            _fields_ = [("dwType", c_ulong),
-                        ("dwSize", c_ulong),
-                        ("hDevice", c_void_p),
-                        ("wParam", c_void_p)]
+class RAWMOUSE(ctypes.Structure):
+    _fields_ = [
+        ("usFlags", ctypes.c_ushort),
+        ("usButtonFlags", ctypes.c_ushort),
+        ("usButtonData", ctypes.c_ushort),
+        ("ulRawButtons", ctypes.c_ulong),
+        ("lLastX", ctypes.c_long),
+        ("lLastY", ctypes.c_long),
+        ("ulExtraInformation", ctypes.c_ulong)
+    ]
 
-        class RAWMOUSE(Structure):
-            _fields_ = [("usFlags", c_ushort),
-                        ("ulButtons", c_ulong),
-                        ("ulRawButtons", c_ulong),
-                        ("lLastX", c_long),
-                        ("lLastY", c_long),
-                        ("ulExtraInformation", c_ulong)]
+class RAWINPUT(ctypes.Structure):
+    _fields_ = [
+        ("header", RAWINPUTHEADER),
+        ("mouse", RAWMOUSE)
+    ]
 
-        class RAWINPUT(Structure):
-            _fields_ = [("header", RAWINPUTHEADER),
-                        ("data", RAWMOUSE)]
+# Constants
+RIM_TYPEMOUSE = 0
+RIDEV_INPUTSINK = 0x00000100
+RID_INPUT = 0x10000003
+MOUSE_MOVE_RELATIVE = 0x00
+MOUSE_MOVE_ABSOLUTE = 0x01
 
-        RIM_TYPEMOUSE = 0
-        RIDEV_INPUTSINK = 0x00000100
-        WM_INPUT = 0x00FF
-        MOUSE_MOVE_RELATIVE = 0x00
-
-    except ImportError:
-        print("[System] win32api not available")
-
-class MouseSyncApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Mouse Sync")
-        self.root.geometry("300x200")
-
+class MonitorSync:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Monitor Sync")
+        self.root.geometry("300x150")
+        
+        # Get screen dimensions
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
-
-        self.is_server = tk.BooleanVar(value=False)
-        self.server_ip = tk.StringVar(value="127.0.0.1")
-        self.port = 50007
+        
+        # Variables
         self.is_running = False
-        self.server_socket = None
-        self.client_socket = None
-        self.mouse_controller = mouse.Controller()
-        self.system = platform.system()
-        self.use_raw_input = False
-
-        self.virtual_x = self.screen_width // 2
-        self.virtual_y = self.screen_height // 2
-
-        self.virtual_pointer = tk.Toplevel(self.root)
-        self.virtual_pointer.overrideredirect(True)
-        self.virtual_pointer.attributes('-topmost', True)
-        self.virtual_pointer.attributes('-alpha', 0.8)
-
-        self.pointer_canvas = tk.Canvas(self.virtual_pointer, width=10, height=10, bg='white', highlightthickness=0)
-        self.pointer_canvas.pack()
-        self.pointer_canvas.create_oval(0, 0, 10, 10, fill='red', outline='red')
-        self.virtual_pointer.withdraw()
-
-        if self.system == "Windows":
-            self.setup_windows_raw_input()
+        self.raw_input_handle = None
+        self.original_cursor_pos = None
+        
+        # Setup GUI
         self.setup_gui()
-
-    def setup_windows_raw_input(self):
-        try:
-            rid = RAWINPUTDEVICE()
-            rid.usUsagePage = 0x01
-            rid.usUsage = 0x02
-            rid.dwFlags = RIDEV_INPUTSINK
-            rid.hwndTarget = self.root.winfo_id()
-            if not windll.user32.RegisterRawInputDevices(byref(rid), 1, sizeof(rid)):
-                print("[Windows] Failed to register raw input device")
-            else:
-                self.use_raw_input = True
-
-            self.root.bind('<Map>', lambda e: self.root.focus_force())
-            self.root.bind('<FocusIn>', lambda e: self.root.focus_force())
-            self.root.bind(WM_INPUT, self.handle_windows_raw_input)
-        except Exception as e:
-            print(f"[Windows] Raw input setup error: {e}")
-
-    def handle_windows_raw_input(self, event):
-        try:
-            dwSize = c_uint()
-            windll.user32.GetRawInputData(event.lParam, 0x10000003, None, byref(dwSize), sizeof(RAWINPUTHEADER))
-            raw = RAWINPUT()
-            windll.user32.GetRawInputData(event.lParam, 0x10000003, byref(raw), byref(dwSize), sizeof(RAWINPUTHEADER))
-
-            if raw.data.usFlags == MOUSE_MOVE_RELATIVE:
-                dx = raw.data.lLastX
-                dy = raw.data.lLastY
-
-                self.virtual_x += dx
-                self.virtual_y += dy
-                self.virtual_x = max(0, min(self.screen_width - 1, self.virtual_x))
-                self.virtual_y = max(0, min(self.screen_height - 1, self.virtual_y))
-
-                self.virtual_pointer.geometry(f"+{self.virtual_x-5}+{self.virtual_y-5}")
-                self.virtual_pointer.deiconify()
-
-                if self.is_running and self.server_socket:
-                    data = json.dumps({"type": "move", "x": self.virtual_x, "y": self.virtual_y}) + '\n'
-                    self.server_socket.sendall(data.encode())
-        except Exception as e:
-            print(f"[Windows] Raw input error: {e}")
-
+        
+        # Setup raw input
+        self.setup_raw_input()
+        
     def setup_gui(self):
-        ttk.LabelFrame(self.root, text="Mode").pack(fill="x", padx=10, pady=5)
-        ttk.Radiobutton(self.root, text="Server", variable=self.is_server, value=True).pack(anchor="w", padx=20)
-        ttk.Radiobutton(self.root, text="Client", variable=self.is_server, value=False).pack(anchor="w", padx=20)
-        ttk.Label(self.root, text="Server IP:").pack(pady=5)
-        ttk.Entry(self.root, textvariable=self.server_ip).pack(fill="x", padx=20)
-        self.start_button = ttk.Button(self.root, text="Start", command=self.toggle_connection)
-        self.start_button.pack(pady=10)
-        self.status_label = ttk.Label(self.root, text="Status: Disconnected")
-        self.status_label.pack()
-
-    def toggle_connection(self):
+        # Control button
+        self.start_button = ttk.Button(self.root, text="Start", command=self.toggle_sync)
+        self.start_button.pack(pady=20)
+        
+        # Status label
+        self.status_label = ttk.Label(self.root, text="Status: Stopped")
+        self.status_label.pack(pady=10)
+        
+    def setup_raw_input(self):
+        # Register for raw input
+        rid = RAWINPUTDEVICE()
+        rid.usUsagePage = 0x01  # HID_USAGE_PAGE_GENERIC
+        rid.usUsage = 0x02      # HID_USAGE_GENERIC_MOUSE
+        rid.dwFlags = RIDEV_INPUTSINK
+        rid.hwndTarget = self.root.winfo_id()
+        
+        if not ctypes.windll.user32.RegisterRawInputDevices(ctypes.byref(rid), 1, ctypes.sizeof(rid)):
+            raise Exception("Failed to register raw input device")
+            
+    def toggle_sync(self):
         if not self.is_running:
-            self.is_running = True
-            self.status_label.config(text="Status: Connected")
-            self.start_button.config(text="Stop")
-            if not self.use_raw_input:
-                self.start_screen_listener()  # fallback only if raw input is not available
+            self.start_sync()
         else:
-            self.is_running = False
-            self.status_label.config(text="Status: Disconnected")
-            self.start_button.config(text="Start")
+            self.stop_sync()
+            
+    def start_sync(self):
+        try:
+            # Store original cursor position
+            self.original_cursor_pos = win32api.GetCursorPos()
+            
+            # Hide cursor
+            ctypes.windll.user32.ShowCursor(False)
+            
+            # Start raw input processing
+            self.is_running = True
+            self.start_button.config(text="Stop")
+            self.status_label.config(text="Status: Running")
+            
+            # Start processing thread
+            threading.Thread(target=self.process_raw_input, daemon=True).start()
+            
+        except Exception as e:
+            print(f"Error starting sync: {e}")
+            self.stop_sync()
+            
+    def stop_sync(self):
+        self.is_running = False
+        
+        # Show cursor
+        ctypes.windll.user32.ShowCursor(True)
+        
+        # Restore original cursor position
+        if self.original_cursor_pos:
+            win32api.SetCursorPos(self.original_cursor_pos)
+            
+        self.start_button.config(text="Start")
+        self.status_label.config(text="Status: Stopped")
+        
+    def process_raw_input(self):
+        while self.is_running:
+            try:
+                # Get raw input data
+                size = ctypes.c_ulong()
+                ctypes.windll.user32.GetRawInputData(
+                    self.raw_input_handle,
+                    RID_INPUT,
+                    None,
+                    ctypes.byref(size),
+                    ctypes.sizeof(RAWINPUTHEADER)
+                )
+                
+                if size.value > 0:
+                    buffer = ctypes.create_string_buffer(size.value)
+                    ctypes.windll.user32.GetRawInputData(
+                        self.raw_input_handle,
+                        RID_INPUT,
+                        buffer,
+                        ctypes.byref(size),
+                        ctypes.sizeof(RAWINPUTHEADER)
+                    )
+                    
+                    raw_input = RAWINPUT.from_buffer(buffer)
+                    
+                    if raw_input.header.dwType == RIM_TYPEMOUSE:
+                        # Get current cursor position
+                        current_pos = win32api.GetCursorPos()
+                        
+                        # Calculate new position based on raw input
+                        new_x = current_pos[0] + raw_input.mouse.lLastX
+                        new_y = current_pos[1] + raw_input.mouse.lLastY
+                        
+                        # Clamp to screen boundaries
+                        new_x = max(0, min(new_x, self.screen_width - 1))
+                        new_y = max(0, min(new_y, self.screen_height - 1))
+                        
+                        # Move cursor to new position
+                        win32api.SetCursorPos((new_x, new_y))
+                        
+                        # Reset to original position to keep it in place
+                        if self.original_cursor_pos:
+                            win32api.SetCursorPos(self.original_cursor_pos)
+                            
+            except Exception as e:
+                print(f"Error processing raw input: {e}")
+                time.sleep(0.01)
+                
+    def run(self):
+        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+        self.root.mainloop()
+        
+    def on_closing(self):
+        self.stop_sync()
+        self.root.destroy()
 
-    def start_screen_listener(self):
-        def on_move(x, y):
-            # Prevent fight with raw input updates
-            pass
-
-        def on_click(x, y, button, pressed):
-            pass
-
-        def on_scroll(x, y, dx, dy):
-            pass
-
-        def run_listener():
-            with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll, suppress=True) as listener:
-                while self.is_running:
-                    time.sleep(0.01)
-
-        threading.Thread(target=run_listener, daemon=True).start()
-
-if __name__ == '__main__':
-    root = tk.Tk()
-    app = MouseSyncApp(root)
-    root.mainloop()
+if __name__ == "__main__":
+    app = MonitorSync()
+    app.run()

@@ -1,2 +1,1 @@
-pynput>=1.7.6
-python-xlib>=0.31; platform_system=="Linux" 
+pywin32>=305
