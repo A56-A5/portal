@@ -353,9 +353,16 @@ class MouseSyncApp:
                                     dx = mouse_data["dx"]
                                     dy = mouse_data["dy"]
                                     
-                                    # Move client cursor relative to current position
+                                    # Get current position
+                                    current_x, current_y = self.mouse_controller.position
+                                    
+                                    # Calculate new position
+                                    new_x = current_x + dx
+                                    new_y = current_y + dy
+                                    
+                                    # Move client cursor to new position
                                     print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
-                                    self.mouse_controller.move(dx, dy)
+                                    self.mouse_controller.position = (new_x, new_y)
                                     
                                 elif mouse_data["type"] == "click":
                                     # Handle click
