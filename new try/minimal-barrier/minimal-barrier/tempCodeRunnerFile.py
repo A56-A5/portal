@@ -1,1 +1,0 @@
-        return pyautogui.size()

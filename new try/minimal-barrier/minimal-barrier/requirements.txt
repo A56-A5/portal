@@ -1,4 +1,0 @@
-PyQt5
-pyperclip
-pynput
-python-xlib 
