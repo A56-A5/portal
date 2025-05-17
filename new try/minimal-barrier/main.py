@@ -7,7 +7,6 @@ from pynput import mouse
 import time
 import platform
 import ctypes
-from ctypes import windll, Structure, c_long, byref
 import os
 
 # Platform-specific imports and structures
@@ -16,6 +15,7 @@ if platform.system() == "Windows":
         import win32api
         import win32con
         import win32gui
+        from ctypes import windll, Structure, c_long, byref
         
         class POINT(Structure):
             _fields_ = [("x", c_long), ("y", c_long)]
@@ -81,7 +81,7 @@ class MouseSyncApp:
                     win32api.ShowCursor(False)
                     
                 # Enable cursor confinement
-                windll.user32.ClipCursor(ctypes.byref(ctypes.c_void_p(0)))
+                ctypes.windll.user32.ClipCursor(ctypes.byref(ctypes.c_void_p(0)))
                 
             elif self.system == "Linux":
                 try:
@@ -114,7 +114,7 @@ class MouseSyncApp:
                     win32api.ShowCursor(True)
                     
                 # Disable cursor confinement
-                windll.user32.ClipCursor(None)
+                ctypes.windll.user32.ClipCursor(None)
                 
             elif self.system == "Linux":
                 try:
