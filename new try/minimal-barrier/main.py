@@ -62,6 +62,10 @@ class MouseSyncApp:
         self.cursor_hidden = False
         self.cursor_locked = False
         
+        # Virtual pointer position
+        self.virtual_x = self.screen_width // 2
+        self.virtual_y = self.screen_height // 2
+        
         # Platform-specific mouse movement
         if self.system == "Windows":
             self.move_mouse = self.move_mouse_windows
@@ -276,10 +280,22 @@ class MouseSyncApp:
                         
                         # Only send if there's actual movement
                         if delta_x != 0 or delta_y != 0:
-                            # Send the movement delta
-                            data = json.dumps({"type": "move", "dx": delta_x, "dy": delta_y}) + '\n'
+                            # Update virtual pointer position
+                            self.virtual_x += delta_x
+                            self.virtual_y += delta_y
+                            
+                            # Clamp virtual pointer to screen boundaries
+                            self.virtual_x = max(0, min(self.virtual_x, self.screen_width - 1))
+                            self.virtual_y = max(0, min(self.virtual_y, self.screen_height - 1))
+                            
+                            # Send the virtual pointer position
+                            data = json.dumps({
+                                "type": "move",
+                                "x": self.virtual_x,
+                                "y": self.virtual_y
+                            }) + '\n'
                             client_socket.sendall(data.encode())
-                            print(f"[Server] Mouse movement: dx={delta_x}, dy={delta_y}")
+                            print(f"[Server] Virtual pointer position: x={self.virtual_x}, y={self.virtual_y}")
                     
                     last_position = (x, y)
                             
@@ -290,14 +306,16 @@ class MouseSyncApp:
         def on_mouse_click(x, y, button, pressed):
             if self.is_running:
                 try:
-                    # Send click event
+                    # Send click event with virtual pointer position
                     data = json.dumps({
                         "type": "click",
                         "button": str(button),
-                        "pressed": pressed
+                        "pressed": pressed,
+                        "x": self.virtual_x,
+                        "y": self.virtual_y
                     }) + '\n'
                     client_socket.sendall(data.encode())
-                    print(f"[Server] Mouse click: {button} {'pressed' if pressed else 'released'}")
+                    print(f"[Server] Mouse click: {button} {'pressed' if pressed else 'released'} at ({self.virtual_x}, {self.virtual_y})")
                 except Exception as e:
                     print(f"[Server] Error sending click data: {e}")
                     self.stop_connection()
@@ -305,14 +323,16 @@ class MouseSyncApp:
         def on_mouse_scroll(x, y, dx, dy):
             if self.is_running:
                 try:
-                    # Send scroll event
+                    # Send scroll event with virtual pointer position
                     data = json.dumps({
                         "type": "scroll",
                         "dx": dx,
-                        "dy": dy
+                        "dy": dy,
+                        "x": self.virtual_x,
+                        "y": self.virtual_y
                     }) + '\n'
                     client_socket.sendall(data.encode())
-                    print(f"[Server] Mouse scroll: dx={dx}, dy={dy}")
+                    print(f"[Server] Mouse scroll: dx={dx}, dy={dy} at ({self.virtual_x}, {self.virtual_y})")
                 except Exception as e:
                     print(f"[Server] Error sending scroll data: {e}")
                     self.stop_connection()
@@ -378,22 +398,21 @@ class MouseSyncApp:
                                 mouse_data = json.loads(message)
                                 
                                 if mouse_data["type"] == "move":
-                                    # Handle movement using pure relative deltas
-                                    dx = mouse_data["dx"]
-                                    dy = mouse_data["dy"]
-                                    
-                                    # Move mouse using relative movement
-                                    print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
-                                    if self.system == "Windows":
-                                        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, dx, dy, 0, 0)
-                                    else:
-                                        # For Linux, use XTest extension for relative movement
-                                        os.system(f'xdotool mousemove_relative {dx} {dy}')
+                                    # Move client cursor to virtual pointer position
+                                    x = mouse_data["x"]
+                                    y = mouse_data["y"]
+                                    print(f"[Client] Moving mouse to: x={x}, y={y}")
+                                    self.mouse_controller.position = (x, y)
                                     
                                 elif mouse_data["type"] == "click":
                                     # Handle click
                                     button = mouse_data["button"]
                                     pressed = mouse_data["pressed"]
+                                    x = mouse_data["x"]
+                                    y = mouse_data["y"]
+                                    
+                                    # Move to position first
+                                    self.mouse_controller.position = (x, y)
                                     
                                     # Convert button string to Button enum
                                     if button == "Button.left":
@@ -404,7 +423,7 @@ class MouseSyncApp:
                                         button = mouse.Button.middle
                                     
                                     # Simulate click
-                                    print(f"[Client] {'Pressing' if pressed else 'Releasing'} {button}")
+                                    print(f"[Client] {'Pressing' if pressed else 'Releasing'} {button} at ({x}, {y})")
                                     if pressed:
                                         self.mouse_controller.press(button)
                                     else:
@@ -414,9 +433,14 @@ class MouseSyncApp:
                                     # Handle scroll
                                     dx = mouse_data["dx"]
                                     dy = mouse_data["dy"]
+                                    x = mouse_data["x"]
+                                    y = mouse_data["y"]
+                                    
+                                    # Move to position first
+                                    self.mouse_controller.position = (x, y)
                                     
                                     # Simulate scroll
-                                    print(f"[Client] Scrolling: dx={dx}, dy={dy}")
+                                    print(f"[Client] Scrolling: dx={dx}, dy={dy} at ({x}, {y})")
                                     self.mouse_controller.scroll(dx, dy)
                                     
                             except json.JSONDecodeError as e:
