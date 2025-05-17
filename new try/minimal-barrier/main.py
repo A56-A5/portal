@@ -6,6 +6,7 @@ import json
 import pyautogui
 import time
 from pynput import mouse
+import netifaces
 
 class BarrierApp:
     def __init__(self, root):
@@ -16,13 +17,30 @@ class BarrierApp:
         # Variables
         self.is_server = tk.BooleanVar(value=False)
         self.server_ip = tk.StringVar(value="127.0.0.1")
-        self.port = 5000  # Fixed port
+        self.port = 5000
         self.is_running = False
         self.server_socket = None
         self.client_socket = None
         self.mouse_thread = None
         
         self.setup_gui()
+        
+    def get_local_ip(self):
+        try:
+            # Get all network interfaces
+            interfaces = netifaces.interfaces()
+            for interface in interfaces:
+                # Get IP addresses for this interface
+                addrs = netifaces.ifaddresses(interface)
+                if netifaces.AF_INET in addrs:
+                    for addr in addrs[netifaces.AF_INET]:
+                        ip = addr['addr']
+                        # Skip localhost and link-local addresses
+                        if not ip.startswith('127.') and not ip.startswith('169.254.'):
+                            return ip
+        except Exception as e:
+            print(f"Error getting local IP: {e}")
+        return "127.0.0.1"  # Fallback to localhost
         
     def setup_gui(self):
         # Mode selection
@@ -42,6 +60,10 @@ class BarrierApp:
         self.ip_entry = ttk.Entry(conn_frame, textvariable=self.server_ip)
         self.ip_entry.grid(row=0, column=1, padx=5, pady=5)
         
+        # Show local IP button
+        self.show_ip_button = ttk.Button(conn_frame, text="Show Local IP", command=self.show_local_ip)
+        self.show_ip_button.grid(row=1, column=0, columnspan=2, pady=5)
+        
         # Control buttons
         control_frame = ttk.Frame(self.root, padding=10)
         control_frame.pack(fill="x", padx=10, pady=5)
@@ -56,9 +78,16 @@ class BarrierApp:
         # Initialize mode
         self.update_mode()
         
+    def show_local_ip(self):
+        local_ip = self.get_local_ip()
+        messagebox.showinfo("Local IP", f"Your local IP address is: {local_ip}\n\nUse this IP on the client side if connecting from another computer.")
+        
     def update_mode(self):
         if self.is_server.get():
             self.ip_entry.config(state="disabled")
+            local_ip = self.get_local_ip()
+            self.server_ip.set(local_ip)
+            print(f"Server mode - Local IP: {local_ip}")
         else:
             self.ip_entry.config(state="normal")
             
@@ -101,9 +130,11 @@ class BarrierApp:
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.server_socket.bind(('0.0.0.0', self.port))
+            local_ip = self.get_local_ip()
+            print(f"Server binding to {local_ip}:{self.port}")
+            self.server_socket.bind((local_ip, self.port))
             self.server_socket.listen(1)
-            print(f"Server listening on port {self.port}")
+            print(f"Server listening on {local_ip}:{self.port}")
             print("Server is ready to accept connections...")
         except Exception as e:
             print(f"Failed to start server: {e}")
@@ -124,11 +155,20 @@ class BarrierApp:
         
     def start_client(self):
         try:
-            print(f"Attempting to connect to {self.server_ip.get()}:{self.port}")
+            server_ip = self.server_ip.get()
+            print(f"Attempting to connect to {server_ip}:{self.port}")
+            
+            # Test if we can resolve the hostname
+            try:
+                socket.gethostbyname(server_ip)
+            except socket.gaierror:
+                print(f"Cannot resolve hostname: {server_ip}")
+                raise
+                
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.client_socket.settimeout(5)  # 5 second timeout
-            self.client_socket.connect((self.server_ip.get(), self.port))
-            print(f"Successfully connected to server at {self.server_ip.get()}:{self.port}")
+            self.client_socket.connect((server_ip, self.port))
+            print(f"Successfully connected to server at {server_ip}:{self.port}")
         except socket.timeout:
             print("Connection timed out. Please check if the server is running and the IP is correct.")
             raise
