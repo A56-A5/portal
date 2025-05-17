@@ -86,13 +86,16 @@ class BarrierApp:
             if self.is_server.get():
                 print("Starting server...")
                 self.start_server()
+                self.is_running = True
+                self.start_button.config(text="Stop")
+                self.status_label.config(text="Status: Waiting for client...")
             else:
                 print(f"Connecting to server at {self.server_ip.get()}...")
                 self.start_client()
-            self.is_running = True
-            self.start_button.config(text="Stop")
-            self.status_label.config(text="Status: Connected")
-            print("Connection established successfully!")
+                self.is_running = True
+                self.start_button.config(text="Stop")
+                self.status_label.config(text="Status: Connected")
+                print("Connection established successfully!")
         except Exception as e:
             print(f"Connection failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start: {str(e)}")
@@ -122,8 +125,11 @@ class BarrierApp:
             def server_thread():
                 while self.is_running:
                     try:
+                        print("Waiting for client connection...")
                         client, addr = self.server_socket.accept()
                         print(f"Client connected from: {addr}")
+                        self.status_label.config(text="Status: Connected")
+                        print("Connection established successfully!")
                         self.handle_client(client)
                     except Exception as e:
                         if self.is_running:
@@ -195,6 +201,8 @@ class BarrierApp:
             raise
             
     def handle_client(self, client_socket):
+        print("Starting mouse tracking on server...")  # Debug print
+        
         def on_mouse_move(x, y):
             if self.is_running:
                 try:
@@ -203,11 +211,16 @@ class BarrierApp:
                     client_socket.sendall(data.encode())
                 except Exception as e:
                     print(f"Error sending mouse data: {e}")
+                    return False
+            return True
                     
-        print("Starting mouse tracking on server...")  # Debug print
-        with mouse.Listener(on_move=on_mouse_move) as listener:
-            while self.is_running:
-                time.sleep(0.01)
+        try:
+            with mouse.Listener(on_move=on_mouse_move) as listener:
+                print("Mouse listener started successfully")  # Debug print
+                while self.is_running:
+                    time.sleep(0.01)
+        except Exception as e:
+            print(f"Error in mouse listener: {e}")
             
     def on_closing(self):
         self.stop_connection()
