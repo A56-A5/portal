@@ -24,8 +24,6 @@ class BarrierApp:
         self.client_socket = None
         self.mouse_thread = None
         self.mouse_controller = mouse.Controller()
-        self.pointer_on_server = True
-        self.pointer_on_client = False
         
         self.setup_gui()
         
@@ -156,35 +154,14 @@ class BarrierApp:
             print(f"Successfully connected to server at {server_ip}:{self.port}")
             
             def client_thread():
-                width, height = self.get_screen_size()
                 while self.is_running:
                     try:
                         data = self.client_socket.recv(1024)
                         if not data:
                             print("Server disconnected")
                             break
-                        lines = data.decode().splitlines()
-                        for line in lines:
-                            if not line:
-                                continue
-                            mouse_data = json.loads(line)
-                            if mouse_data["type"] == "move":
-                                x, y = mouse_data["x"], mouse_data["y"]
-                                # Check if mouse is at screen edge
-                                if x <= 0 or x >= width - 1 or y <= 0 or y >= height - 1:
-                                    self.client_socket.sendall(b'RETURN\n')
-                                    self.pointer_on_client = False
-                                    print("Mouse returned to server")
-                                else:
-                                    self.mouse_controller.position = (x, y)
-                            elif mouse_data["type"] == "click":
-                                button = getattr(mouse.Button, mouse_data["button"].split('.')[-1], mouse.Button.left)
-                                if mouse_data["pressed"]:
-                                    self.mouse_controller.press(button)
-                                else:
-                                    self.mouse_controller.release(button)
-                            elif mouse_data["type"] == "scroll":
-                                self.mouse_controller.scroll(mouse_data["dx"], mouse_data["dy"])
+                        mouse_data = json.loads(data.decode())
+                        self.mouse_controller.position = (mouse_data["x"], mouse_data["y"])
                     except Exception as e:
                         if self.is_running:
                             print(f"Client error: {e}")
@@ -206,78 +183,16 @@ class BarrierApp:
             raise
             
     def handle_client(self, client_socket):
-        width, height = self.get_screen_size()
-        
         def on_mouse_move(x, y):
-            if not self.is_running:
-                return True
-                
-            if not self.pointer_on_server:
-                return True
-                
-            # Check if mouse is at screen edge
-            if x <= 0 or x >= width - 1 or y <= 0 or y >= height - 1:
-                self.pointer_on_server = False
-                self.pointer_on_client = True
+            if self.is_running:
                 try:
-                    client_socket.sendall(f'ENTER:{x},{y}\n'.encode())
-                    print("Mouse entered client")
+                    data = json.dumps({"x": x, "y": y})
+                    client_socket.sendall(data.encode())
                 except Exception as e:
-                    print(f"Error sending ENTER: {e}")
-                return True
-                
-            try:
-                data = json.dumps({"type": "move", "x": x, "y": y})
-                client_socket.sendall(data.encode() + b'\n')
-            except Exception as e:
-                print(f"Error sending mouse data: {e}")
-            return True
+                    print(f"Error sending mouse data: {e}")
                     
-        def on_mouse_click(x, y, button, pressed):
-            if not self.is_running or not self.pointer_on_server:
-                return
-            try:
-                data = json.dumps({
-                    "type": "click",
-                    "button": str(button),
-                    "pressed": pressed
-                })
-                client_socket.sendall(data.encode() + b'\n')
-            except Exception as e:
-                print(f"Error sending click data: {e}")
-                    
-        def on_mouse_scroll(x, y, dx, dy):
-            if not self.is_running or not self.pointer_on_server:
-                return
-            try:
-                data = json.dumps({
-                    "type": "scroll",
-                    "dx": dx,
-                    "dy": dy
-                })
-                client_socket.sendall(data.encode() + b'\n')
-            except Exception as e:
-                print(f"Error sending scroll data: {e}")
-                    
-        with mouse.Listener(
-            on_move=on_mouse_move,
-            on_click=on_mouse_click,
-            on_scroll=on_mouse_scroll
-        ) as listener:
+        with mouse.Listener(on_move=on_mouse_move) as listener:
             while self.is_running:
-                try:
-                    data = client_socket.recv(1024)
-                    if not data:
-                        print("Client disconnected")
-                        break
-                    if b'RETURN' in data:
-                        self.pointer_on_server = True
-                        self.pointer_on_client = False
-                        print("Mouse returned to server")
-                except Exception as e:
-                    if self.is_running:
-                        print(f"Server error: {e}")
-                    break
                 time.sleep(0.01)
             
     def on_closing(self):
