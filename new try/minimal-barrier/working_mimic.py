@@ -199,20 +199,15 @@ class MouseSyncApp:
                             print("[Client] Server disconnected")
                             break
                             
-                        print(f"[Client] Received raw data: {data}")  # Debug log
-                            
                         # Add received data to buffer
                         buffer += data
-                        print(f"[Client] Current buffer: {buffer}")  # Debug log
                         
                         # Process complete JSON messages
                         while '\n' in buffer:
                             message, buffer = buffer.split('\n', 1)
-                            print(f"[Client] Processing message: {message}")  # Debug log
                             try:
                                 mouse_data = json.loads(message)
                                 x, y = mouse_data["x"], mouse_data["y"]
-                                print(f"[Client] Parsed coordinates: X={x}, Y={y}")  # Debug log
                                 
                                 # Check if mouse is at screen edges
                                 if x <= 0:
@@ -227,15 +222,10 @@ class MouseSyncApp:
                                 # Only move if position has changed
                                 if last_position != (x, y):
                                     print(f"[Client] Moving mouse to: X={x}, Y={y}")
-                                    try:
-                                        self.mouse_controller.position = (x, y)
-                                        print("[Client] Mouse position updated successfully")
-                                    except Exception as move_error:
-                                        print(f"[Client] Error setting mouse position: {move_error}")
+                                    self.mouse_controller.position = (x, y)
                                     last_position = (x, y)
                             except json.JSONDecodeError as e:
                                 print(f"[Client] Error decoding mouse data: {e}")
-                                print(f"[Client] Problematic message: {message}")  # Debug log
                             except Exception as e:
                                 print(f"[Client] Error moving mouse: {e}")
                                 

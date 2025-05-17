@@ -5,6 +5,9 @@ import threading
 import json
 from pynput import mouse
 import time
+import ctypes
+import win32api
+import win32con
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -26,8 +29,31 @@ class MouseSyncApp:
         self.server_socket = None
         self.client_socket = None
         self.mouse_controller = mouse.Controller()
+        self.original_cursor_visibility = True
         
         self.setup_gui()
+        
+    def hide_cursor(self):
+        """Hide the cursor using Windows API"""
+        try:
+            win32api.ShowCursor(False)
+            print("[Server] Cursor hidden")
+        except Exception as e:
+            print(f"[Server] Error hiding cursor: {e}")
+            
+    def show_cursor(self):
+        """Show the cursor using Windows API"""
+        try:
+            win32api.ShowCursor(True)
+            print("[Server] Cursor shown")
+        except Exception as e:
+            print(f"[Server] Error showing cursor: {e}")
+            
+    def clamp_mouse(self, x, y):
+        """Clamp mouse position to screen boundaries"""
+        x = max(0, min(x, self.screen_width - 1))
+        y = max(0, min(y, self.screen_height - 1))
+        return x, y
         
     def setup_gui(self):
         # Mode selection
@@ -84,6 +110,8 @@ class MouseSyncApp:
             if self.is_server.get():
                 print("[Server] Starting server...")
                 self.start_server()
+                # Hide cursor when server starts
+                self.hide_cursor()
             else:
                 print(f"[Client] Connecting to server at {self.server_ip.get()}...")
                 self.start_client()
@@ -100,6 +128,8 @@ class MouseSyncApp:
         if self.server_socket:
             self.server_socket.close()
             print("[Server] Server socket closed")
+            # Show cursor when server stops
+            self.show_cursor()
         if self.client_socket:
             self.client_socket.close()
             print("[Client] Client socket closed")
@@ -143,6 +173,9 @@ class MouseSyncApp:
             nonlocal last_position
             if self.is_running:
                 try:
+                    # Clamp mouse position
+                    x, y = self.clamp_mouse(x, y)
+                    
                     # Check if mouse is at screen edges
                     if x <= 0:
                         print(f"[Server] Mouse at LEFT edge: X={x}")
