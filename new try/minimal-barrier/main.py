@@ -71,11 +71,10 @@ class MouseSyncApp:
         self.virtual_pointer.overrideredirect(True)  # Remove window decorations
         self.virtual_pointer.attributes('-topmost', True)  # Keep on top
         self.virtual_pointer.attributes('-alpha', 0.8)  # Slight transparency
-        self.virtual_pointer.attributes('-transparentcolor', 'black')  # Make background transparent
         
         # Create canvas for the red dot
         self.pointer_canvas = tk.Canvas(self.virtual_pointer, width=10, height=10, 
-                                      bg='black', highlightthickness=0)
+                                      bg='white', highlightthickness=0)
         self.pointer_canvas.pack()
         
         # Draw red dot
