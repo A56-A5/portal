@@ -5,6 +5,7 @@ import threading
 import json
 from pynput import mouse
 import time
+import platform
 import ctypes
 import win32api
 import win32con
@@ -30,21 +31,38 @@ class MouseSyncApp:
         self.client_socket = None
         self.mouse_controller = mouse.Controller()
         self.original_cursor_visibility = True
+        self.system = platform.system()
         
         self.setup_gui()
         
     def hide_cursor(self):
-        """Hide the cursor using Windows API"""
+        """Hide the cursor using platform-specific methods"""
         try:
-            win32api.ShowCursor(False)
+            if self.system == "Windows":
+                # Windows implementation
+                ctypes.windll.user32.ShowCursor(False)
+            elif self.system == "Linux":
+                # Linux implementation using Xlib
+                try:
+                    from Xlib import display
+                    display.Display().screen().root.warp_pointer(0, 0)
+                    self.root.config(cursor="none")
+                except ImportError:
+                    print("[Server] Xlib not available, using fallback method")
+                    self.root.config(cursor="none")
             print("[Server] Cursor hidden")
         except Exception as e:
             print(f"[Server] Error hiding cursor: {e}")
             
     def show_cursor(self):
-        """Show the cursor using Windows API"""
+        """Show the cursor using platform-specific methods"""
         try:
-            win32api.ShowCursor(True)
+            if self.system == "Windows":
+                # Windows implementation
+                ctypes.windll.user32.ShowCursor(True)
+            elif self.system == "Linux":
+                # Linux implementation
+                self.root.config(cursor="")
             print("[Server] Cursor shown")
         except Exception as e:
             print(f"[Server] Error showing cursor: {e}")
