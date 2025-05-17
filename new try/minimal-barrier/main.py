@@ -65,7 +65,7 @@ class MouseSyncApp:
         self.setup_gui()
         
     def lock_cursor(self):
-        """Disable mouse input and hide cursor globally on server"""
+        """Hide cursor and block input on server"""
         if self.cursor_locked:
             return
             
@@ -75,16 +75,16 @@ class MouseSyncApp:
                 for _ in range(50):
                     win32api.ShowCursor(False)
                 
-                # Disable mouse input globally
+                # Block input at system level
                 try:
-                    # Block mouse input
+                    # Block all input
                     ctypes.windll.user32.BlockInput(True)
                     # Hide cursor system-wide
                     ctypes.windll.user32.SystemParametersInfoW(0x101F, 0, None, 0x01 | 0x02)  # SPI_SETMOUSECLICKLOCK
                     ctypes.windll.user32.SystemParametersInfoW(0x101D, 0, None, 0x01 | 0x02)  # SPI_SETMOUSESONAR
                     ctypes.windll.user32.SystemParametersInfoW(0x1021, 0, None, 0x01 | 0x02)  # SPI_SETMOUSEVANISH
                 except:
-                    print("[Server] Could not disable mouse input")
+                    print("[Server] Could not block input")
                 
             elif self.system == "Linux":
                 try:
@@ -94,16 +94,16 @@ class MouseSyncApp:
                     # Disable mouse input
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
                 except:
-                    print("[Server] Failed to disable mouse input on Linux")
+                    print("[Server] Failed to block input on Linux")
             
             self.cursor_locked = True
-            print("[Server] Mouse input disabled and cursor hidden")
+            print("[Server] Input blocked and cursor hidden")
             
         except Exception as e:
-            print(f"[Server] Error disabling mouse input: {e}")
+            print(f"[Server] Error blocking input: {e}")
             
     def unlock_cursor(self):
-        """Enable mouse input and show cursor on server"""
+        """Enable input and show cursor on server"""
         if not self.cursor_locked:
             return
             
@@ -113,16 +113,16 @@ class MouseSyncApp:
                 for _ in range(50):
                     win32api.ShowCursor(True)
                 
-                # Enable mouse input globally
+                # Enable input at system level
                 try:
-                    # Unblock mouse input
+                    # Unblock all input
                     ctypes.windll.user32.BlockInput(False)
                     # Restore cursor visibility
                     ctypes.windll.user32.SystemParametersInfoW(0x101F, 1, None, 0x01 | 0x02)
                     ctypes.windll.user32.SystemParametersInfoW(0x101D, 1, None, 0x01 | 0x02)
                     ctypes.windll.user32.SystemParametersInfoW(0x1021, 1, None, 0x01 | 0x02)
                 except:
-                    print("[Server] Could not enable mouse input")
+                    print("[Server] Could not enable input")
                 
             elif self.system == "Linux":
                 try:
@@ -131,13 +131,13 @@ class MouseSyncApp:
                     os.system('pkill unclutter')
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
                 except:
-                    print("[Server] Failed to enable mouse input on Linux")
+                    print("[Server] Failed to enable input on Linux")
             
             self.cursor_locked = False
-            print("[Server] Mouse input enabled and cursor shown")
+            print("[Server] Input enabled and cursor shown")
             
         except Exception as e:
-            print(f"[Server] Error enabling mouse input: {e}")
+            print(f"[Server] Error enabling input: {e}")
             
     def setup_gui(self):
         # Mode selection
@@ -288,7 +288,7 @@ class MouseSyncApp:
                     print(f"[Server] Error sending scroll data: {e}")
                     self.stop_connection()
                     
-        # Hide cursor and lock at edge before starting mouse tracking
+        # Block input and hide cursor before starting mouse tracking
         self.lock_cursor()
         
         # Start mouse tracking in a separate thread
@@ -296,7 +296,8 @@ class MouseSyncApp:
             with mouse.Listener(
                 on_move=on_mouse_move,
                 on_click=on_mouse_click,
-                on_scroll=on_mouse_scroll
+                on_scroll=on_mouse_scroll,
+                suppress=True  # Suppress events from reaching the system
             ) as listener:
                 print("[Server] Mouse listener started")
                 try:
@@ -306,7 +307,7 @@ class MouseSyncApp:
                     print(f"[Server] Mouse tracking error: {e}")
                     self.stop_connection()
                 finally:
-                    # Show cursor when done
+                    # Enable input and show cursor when done
                     self.unlock_cursor()
         
         threading.Thread(target=track_mouse, daemon=True).start()
