@@ -76,12 +76,14 @@ class MouseSyncApp:
                 center_y = self.screen_height // 2
                 win32api.SetCursorPos((center_x, center_y))
                 
-                # Hide cursor
-                for _ in range(20):
+                # Hide cursor more aggressively
+                for _ in range(50):  # Increased attempts
                     win32api.ShowCursor(False)
-                    
-                # Enable cursor confinement
-                ctypes.windll.user32.ClipCursor(ctypes.byref(ctypes.c_void_p(0)))
+                
+                # Create a small rectangle to confine cursor
+                rect = ctypes.c_long * 4
+                rect = rect(center_x, center_y, center_x + 1, center_y + 1)
+                ctypes.windll.user32.ClipCursor(ctypes.byref(rect))
                 
             elif self.system == "Linux":
                 try:
@@ -89,10 +91,11 @@ class MouseSyncApp:
                     root = d.screen().root
                     # Move cursor to center
                     root.warp_pointer(self.screen_width//2, self.screen_height//2)
-                    # Hide cursor
+                    # Hide cursor more aggressively
                     os.system('xsetroot -cursor_name none')
-                    # Lock cursor (using xinput)
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
+                    # Additional cursor hiding
+                    os.system('unclutter -idle 0.1 -root &')
                 except:
                     print("[Server] Failed to lock cursor on Linux")
             
@@ -110,7 +113,7 @@ class MouseSyncApp:
         try:
             if self.system == "Windows":
                 # Show cursor
-                for _ in range(20):
+                for _ in range(50):  # Increased attempts
                     win32api.ShowCursor(True)
                     
                 # Disable cursor confinement
@@ -122,6 +125,8 @@ class MouseSyncApp:
                     os.system('xsetroot -cursor_name left_ptr')
                     # Unlock cursor
                     os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
+                    # Kill unclutter if running
+                    os.system('pkill unclutter')
                 except:
                     print("[Server] Failed to unlock cursor on Linux")
             
@@ -317,6 +322,7 @@ class MouseSyncApp:
                                 # Only move if position has changed
                                 if last_position != (x, y):
                                     print(f"[Client] Moving mouse to: X={x}, Y={y}")
+                                    # Use direct position setting instead of relative movement
                                     self.mouse_controller.position = (x, y)
                                     last_position = (x, y)
                             except json.JSONDecodeError as e:
