@@ -74,9 +74,17 @@ class MouseSyncApp:
                 # Move cursor to edge of screen
                 win32api.SetCursorPos((0, 0))
                 
-                # Hide cursor globally
+                # Hide cursor globally using multiple methods
                 for _ in range(50):
                     win32api.ShowCursor(False)
+                
+                # Try to hide cursor at system level
+                try:
+                    ctypes.windll.user32.SystemParametersInfoW(0x101F, 0, None, 0x01 | 0x02)  # SPI_SETMOUSECLICKLOCK
+                    ctypes.windll.user32.SystemParametersInfoW(0x101D, 0, None, 0x01 | 0x02)  # SPI_SETMOUSESONAR
+                    ctypes.windll.user32.SystemParametersInfoW(0x1021, 0, None, 0x01 | 0x02)  # SPI_SETMOUSEVANISH
+                except:
+                    print("[Server] Could not set system-wide cursor visibility")
                 
                 # Create a tiny rectangle at screen edge to confine cursor
                 rect = ctypes.c_long * 4
@@ -89,9 +97,10 @@ class MouseSyncApp:
                     root = d.screen().root
                     # Move cursor to edge
                     root.warp_pointer(0, 0)
-                    # Hide cursor
+                    # Hide cursor using multiple methods
                     os.system('xsetroot -cursor_name none')
                     os.system('unclutter -idle 0.1 -root &')
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
                 except:
                     print("[Server] Failed to lock cursor on Linux")
             
@@ -247,25 +256,31 @@ class MouseSyncApp:
                         # For Linux, use the raw coordinates
                         physical_x, physical_y = x, y
                     
-                    # Only send if physical position has changed
-                    if last_physical_pos != (physical_x, physical_y):
-                        # Send the physical mouse position
-                        data = json.dumps({"x": physical_x, "y": physical_y}) + '\n'
-                        client_socket.sendall(data.encode())
-                        print(f"[Server] Physical mouse position: X={physical_x}, Y={physical_y}")
-                        last_physical_pos = (physical_x, physical_y)
+                    # Calculate movement delta
+                    if last_physical_pos is not None:
+                        delta_x = physical_x - last_physical_pos[0]
+                        delta_y = physical_y - last_physical_pos[1]
                         
-                        # Keep cursor locked at edge
-                        if self.system == "Windows":
-                            win32api.SetCursorPos((0, 0))
-                        elif self.system == "Linux":
-                            try:
-                                d = display.Display()
-                                root = d.screen().root
-                                root.warp_pointer(0, 0)
-                            except:
-                                pass
-                                
+                        # Only send if there's actual movement
+                        if delta_x != 0 or delta_y != 0:
+                            # Send the movement delta
+                            data = json.dumps({"dx": delta_x, "dy": delta_y}) + '\n'
+                            client_socket.sendall(data.encode())
+                            print(f"[Server] Mouse movement: dx={delta_x}, dy={delta_y}")
+                    
+                    last_physical_pos = (physical_x, physical_y)
+                    
+                    # Keep cursor locked at edge
+                    if self.system == "Windows":
+                        win32api.SetCursorPos((0, 0))
+                    elif self.system == "Linux":
+                        try:
+                            d = display.Display()
+                            root = d.screen().root
+                            root.warp_pointer(0, 0)
+                        except:
+                            pass
+                            
                 except Exception as e:
                     print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
@@ -273,18 +288,22 @@ class MouseSyncApp:
         # Lock cursor at edge before starting mouse tracking
         self.lock_cursor()
         
-        with mouse.Listener(on_move=on_mouse_move) as listener:
-            print("[Server] Mouse listener started")
-            try:
-                while self.is_running:
-                    time.sleep(0.01)
-            except Exception as e:
-                print(f"[Server] Mouse tracking error: {e}")
-                self.stop_connection()
-            finally:
-                # Show cursor when done
-                self.unlock_cursor()
+        # Start mouse tracking in a separate thread
+        def track_mouse():
+            with mouse.Listener(on_move=on_mouse_move) as listener:
+                print("[Server] Mouse listener started")
+                try:
+                    while self.is_running:
+                        time.sleep(0.01)
+                except Exception as e:
+                    print(f"[Server] Mouse tracking error: {e}")
+                    self.stop_connection()
+                finally:
+                    # Show cursor when done
+                    self.unlock_cursor()
         
+        threading.Thread(target=track_mouse, daemon=True).start()
+                
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
@@ -303,7 +322,9 @@ class MouseSyncApp:
             def client_thread():
                 print("[Client] Starting mouse tracking...")
                 buffer = ""
-                last_position = None
+                current_x = self.screen_width // 2  # Start at screen center
+                current_y = self.screen_height // 2
+                
                 while self.is_running:
                     try:
                         # Receive data in chunks
@@ -320,13 +341,21 @@ class MouseSyncApp:
                             message, buffer = buffer.split('\n', 1)
                             try:
                                 mouse_data = json.loads(message)
-                                x, y = mouse_data["x"], mouse_data["y"]
+                                dx = mouse_data["dx"]
+                                dy = mouse_data["dy"]
                                 
-                                # Move client cursor to match server's physical mouse position
-                                if last_position != (x, y):
-                                    print(f"[Client] Moving mouse to: X={x}, Y={y}")
-                                    self.mouse_controller.position = (x, y)
-                                    last_position = (x, y)
+                                # Update current position with deltas
+                                current_x += dx
+                                current_y += dy
+                                
+                                # Clamp to screen boundaries
+                                current_x = max(0, min(current_x, self.screen_width - 1))
+                                current_y = max(0, min(current_y, self.screen_height - 1))
+                                
+                                # Move client cursor by delta
+                                print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
+                                self.mouse_controller.position = (current_x, current_y)
+                                
                             except json.JSONDecodeError as e:
                                 print(f"[Client] Error decoding mouse data: {e}")
                             except Exception as e:
