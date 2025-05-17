@@ -12,10 +12,16 @@ class MouseSyncApp:
         self.root.title("Mouse Sync")
         self.root.geometry("300x200")
         
+        # Get screen dimensions
+        self.screen_width = self.root.winfo_screenwidth()
+        self.screen_height = self.root.winfo_screenheight()
+        print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
+        print(f"[System] Screen edges: Left=0, Right={self.screen_width}, Top=0, Bottom={self.screen_height}")
+        
         # Variables
         self.is_server = tk.BooleanVar(value=False)
         self.server_ip = tk.StringVar(value="127.0.0.1")
-        self.port = 50007  # Changed to match audio prototype port
+        self.port = 50007
         self.is_running = False
         self.server_socket = None
         self.client_socket = None
@@ -39,6 +45,14 @@ class MouseSyncApp:
         
         self.ip_entry = ttk.Entry(ip_frame, textvariable=self.server_ip)
         self.ip_entry.pack(fill="x", padx=5, pady=5)
+        
+        # Screen info label
+        screen_frame = ttk.LabelFrame(self.root, text="Screen Info", padding=10)
+        screen_frame.pack(fill="x", padx=10, pady=5)
+        
+        self.screen_label = ttk.Label(screen_frame, 
+            text=f"Screen: {self.screen_width}x{self.screen_height}")
+        self.screen_label.pack(fill="x", padx=5, pady=5)
         
         # Control button
         self.start_button = ttk.Button(self.root, text="Start", command=self.toggle_connection)
@@ -129,6 +143,16 @@ class MouseSyncApp:
             nonlocal last_position
             if self.is_running:
                 try:
+                    # Check if mouse is at screen edges
+                    if x <= 0:
+                        print(f"[Server] Mouse at LEFT edge: X={x}")
+                    elif x >= self.screen_width - 1:
+                        print(f"[Server] Mouse at RIGHT edge: X={x}")
+                    if y <= 0:
+                        print(f"[Server] Mouse at TOP edge: Y={y}")
+                    elif y >= self.screen_height - 1:
+                        print(f"[Server] Mouse at BOTTOM edge: Y={y}")
+                    
                     # Only send if position has changed
                     if last_position != (x, y):
                         data = json.dumps({"x": x, "y": y}) + '\n'
@@ -166,6 +190,7 @@ class MouseSyncApp:
             def client_thread():
                 print("[Client] Starting mouse tracking...")
                 buffer = ""
+                last_position = None
                 while self.is_running:
                     try:
                         # Receive data in chunks
@@ -183,9 +208,22 @@ class MouseSyncApp:
                             try:
                                 mouse_data = json.loads(message)
                                 x, y = mouse_data["x"], mouse_data["y"]
-                                print(f"[Client] Moving mouse to: X={x}, Y={y}")
-                                # Move mouse to the received position
-                                self.mouse_controller.position = (x, y)
+                                
+                                # Check if mouse is at screen edges
+                                if x <= 0:
+                                    print(f"[Client] Mouse at LEFT edge: X={x}")
+                                elif x >= self.screen_width - 1:
+                                    print(f"[Client] Mouse at RIGHT edge: X={x}")
+                                if y <= 0:
+                                    print(f"[Client] Mouse at TOP edge: Y={y}")
+                                elif y >= self.screen_height - 1:
+                                    print(f"[Client] Mouse at BOTTOM edge: Y={y}")
+                                
+                                # Only move if position has changed
+                                if last_position != (x, y):
+                                    print(f"[Client] Moving mouse to: X={x}, Y={y}")
+                                    self.mouse_controller.position = (x, y)
+                                    last_position = (x, y)
                             except json.JSONDecodeError as e:
                                 print(f"[Client] Error decoding mouse data: {e}")
                             except Exception as e:
