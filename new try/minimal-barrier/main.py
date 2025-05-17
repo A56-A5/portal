@@ -65,76 +65,75 @@ class MouseSyncApp:
         self.setup_gui()
         
     def lock_cursor(self):
-        """Lock the cursor to prevent movement"""
+        """Hide cursor globally without confining it"""
         if self.cursor_locked:
             return
             
         try:
             if self.system == "Windows":
-                # Lock cursor to center of screen
-                center_x = self.screen_width // 2
-                center_y = self.screen_height // 2
-                win32api.SetCursorPos((center_x, center_y))
-                
-                # Hide cursor more aggressively
-                for _ in range(50):  # Increased attempts
+                # Hide cursor globally
+                for _ in range(50):  # Multiple attempts to ensure it's hidden
                     win32api.ShowCursor(False)
                 
-                # Create a small rectangle to confine cursor
-                rect = ctypes.c_long * 4
-                rect = rect(center_x, center_y, center_x + 1, center_y + 1)
-                ctypes.windll.user32.ClipCursor(ctypes.byref(rect))
+                # Set system-wide cursor visibility
+                try:
+                    # Try to hide cursor at system level
+                    ctypes.windll.user32.SystemParametersInfoW(0x101F, 0, None, 0x01 | 0x02)  # SPI_SETMOUSECLICKLOCK
+                    ctypes.windll.user32.SystemParametersInfoW(0x101D, 0, None, 0x01 | 0x02)  # SPI_SETMOUSESONAR
+                    ctypes.windll.user32.SystemParametersInfoW(0x1021, 0, None, 0x01 | 0x02)  # SPI_SETMOUSEVANISH
+                except:
+                    print("[Server] Could not set system-wide cursor visibility")
                 
             elif self.system == "Linux":
                 try:
-                    d = display.Display()
-                    root = d.screen().root
-                    # Move cursor to center
-                    root.warp_pointer(self.screen_width//2, self.screen_height//2)
-                    # Hide cursor more aggressively
+                    # Hide cursor globally using multiple methods
                     os.system('xsetroot -cursor_name none')
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
-                    # Additional cursor hiding
                     os.system('unclutter -idle 0.1 -root &')
+                    # Additional global cursor hiding
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
                 except:
-                    print("[Server] Failed to lock cursor on Linux")
+                    print("[Server] Failed to hide cursor on Linux")
             
             self.cursor_locked = True
-            print("[Server] Cursor locked")
+            print("[Server] Global cursor hidden")
             
         except Exception as e:
-            print(f"[Server] Error locking cursor: {e}")
+            print(f"[Server] Error hiding cursor: {e}")
             
     def unlock_cursor(self):
-        """Unlock the cursor"""
+        """Show cursor globally"""
         if not self.cursor_locked:
             return
             
         try:
             if self.system == "Windows":
-                # Show cursor
-                for _ in range(50):  # Increased attempts
+                # Show cursor globally
+                for _ in range(50):  # Multiple attempts to ensure it's shown
                     win32api.ShowCursor(True)
-                    
-                # Disable cursor confinement
-                ctypes.windll.user32.ClipCursor(None)
+                
+                # Restore system-wide cursor visibility
+                try:
+                    ctypes.windll.user32.SystemParametersInfoW(0x101F, 1, None, 0x01 | 0x02)  # SPI_SETMOUSECLICKLOCK
+                    ctypes.windll.user32.SystemParametersInfoW(0x101D, 1, None, 0x01 | 0x02)  # SPI_SETMOUSESONAR
+                    ctypes.windll.user32.SystemParametersInfoW(0x1021, 1, None, 0x01 | 0x02)  # SPI_SETMOUSEVANISH
+                except:
+                    print("[Server] Could not restore system-wide cursor visibility")
                 
             elif self.system == "Linux":
                 try:
-                    # Show cursor
+                    # Show cursor globally
                     os.system('xsetroot -cursor_name left_ptr')
-                    # Unlock cursor
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
-                    # Kill unclutter if running
                     os.system('pkill unclutter')
+                    # Restore pointer
+                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
                 except:
-                    print("[Server] Failed to unlock cursor on Linux")
+                    print("[Server] Failed to show cursor on Linux")
             
             self.cursor_locked = False
-            print("[Server] Cursor unlocked")
+            print("[Server] Global cursor shown")
             
         except Exception as e:
-            print(f"[Server] Error unlocking cursor: {e}")
+            print(f"[Server] Error showing cursor: {e}")
             
     def setup_gui(self):
         # Mode selection
@@ -257,7 +256,7 @@ class MouseSyncApp:
                     print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
                     
-        # Lock cursor before starting mouse tracking
+        # Hide cursor before starting mouse tracking
         self.lock_cursor()
         
         with mouse.Listener(on_move=on_mouse_move) as listener:
@@ -269,7 +268,7 @@ class MouseSyncApp:
                 print(f"[Server] Mouse tracking error: {e}")
                 self.stop_connection()
             finally:
-                # Unlock cursor when done
+                # Show cursor when done
                 self.unlock_cursor()
         
     def start_client(self):
