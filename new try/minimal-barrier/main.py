@@ -376,6 +376,13 @@ class MouseSyncApp:
                     except Exception as e:
                         print(f"[Server] Error sending to client: {e}")
                         self.stop_connection()
+                
+                # Block the real mouse movement
+                if self.cursor_locked:
+                    # Get current cursor position
+                    current_x, current_y = win32api.GetCursorPos()
+                    # Reset cursor to original position
+                    win32api.SetCursorPos((current_x - dx, current_y - dy))
                     
         except Exception as e:
             print(f"[Windows] Error handling raw input: {e}")
