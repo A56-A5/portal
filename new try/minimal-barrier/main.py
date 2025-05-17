@@ -330,8 +330,6 @@ class MouseSyncApp:
             def client_thread():
                 print("[Client] Starting mouse tracking...")
                 buffer = ""
-                current_x = self.screen_width // 2  # Start at screen center
-                current_y = self.screen_height // 2
                 
                 while self.is_running:
                     try:
@@ -351,21 +349,13 @@ class MouseSyncApp:
                                 mouse_data = json.loads(message)
                                 
                                 if mouse_data["type"] == "move":
-                                    # Handle movement
+                                    # Handle movement using relative deltas
                                     dx = mouse_data["dx"]
                                     dy = mouse_data["dy"]
                                     
-                                    # Update current position with deltas
-                                    current_x += dx
-                                    current_y += dy
-                                    
-                                    # Clamp to screen boundaries
-                                    current_x = max(0, min(current_x, self.screen_width - 1))
-                                    current_y = max(0, min(current_y, self.screen_height - 1))
-                                    
-                                    # Move client cursor
+                                    # Move client cursor relative to current position
                                     print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
-                                    self.mouse_controller.position = (current_x, current_y)
+                                    self.mouse_controller.move(dx, dy)
                                     
                                 elif mouse_data["type"] == "click":
                                     # Handle click
