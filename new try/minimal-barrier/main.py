@@ -199,10 +199,12 @@ class BarrierApp:
             if self.is_running:
                 try:
                     data = json.dumps({"x": x, "y": y}) + "\n"
+                    print(f"Server sending: X={x}, Y={y}")  # Debug print
                     client_socket.sendall(data.encode())
                 except Exception as e:
                     print(f"Error sending mouse data: {e}")
                     
+        print("Starting mouse tracking on server...")  # Debug print
         with mouse.Listener(on_move=on_mouse_move) as listener:
             while self.is_running:
                 time.sleep(0.01)
