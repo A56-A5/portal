@@ -262,6 +262,17 @@ class MouseSyncApp:
             self.server_socket.listen(1)
             print(f"[Server] Listening on port {self.port}")
             
+            # Initialize virtual pointer at current mouse position
+            if self.system == "Windows":
+                self.virtual_x, self.virtual_y = win32api.GetCursorPos()
+            else:
+                display = display.Display()
+                root = display.screen().root
+                self.virtual_x = root.query_pointer()._data["root_x"]
+                self.virtual_y = root.query_pointer()._data["root_y"]
+            
+            self.update_virtual_pointer(self.virtual_x, self.virtual_y)
+            
             def server_thread():
                 try:
                     print("[Server] Waiting for client connection...")
@@ -325,6 +336,13 @@ class MouseSyncApp:
                             }) + '\n'
                             client_socket.sendall(data.encode())
                             print(f"[Server] Virtual pointer position: x={self.virtual_x}, y={self.virtual_y}")
+                    else:
+                        # Initialize last_position with current position
+                        last_position = (x, y)
+                        # Set initial virtual pointer position
+                        self.virtual_x = x
+                        self.virtual_y = y
+                        self.update_virtual_pointer(self.virtual_x, self.virtual_y)
                     
                     last_position = (x, y)
                             
