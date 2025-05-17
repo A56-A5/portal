@@ -15,7 +15,7 @@ class MouseSyncApp:
         # Variables
         self.is_server = tk.BooleanVar(value=False)
         self.server_ip = tk.StringVar(value="127.0.0.1")
-        self.port = 5000
+        self.port = 50007  # Changed to match audio prototype port
         self.is_running = False
         self.server_socket = None
         self.client_socket = None
@@ -94,66 +94,61 @@ class MouseSyncApp:
         print("[System] Connection stopped")
         
     def start_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(('0.0.0.0', self.port))
-        self.server_socket.listen(1)
-        print(f"[Server] Listening on port {self.port}")
-        print("[Server] Waiting for client connection...")
-        
-        def server_thread():
-            while self.is_running:
-                try:
-                    client, addr = self.server_socket.accept()
-                    print(f"[Server] Client connected from: {addr}")
-                    # Send acknowledgment to client
-                    client.sendall(b'CONNECTED\n')
-                    self.handle_client(client)
-                except Exception as e:
-                    if self.is_running:
-                        print(f"[Server] Error: {e}")
-                    break
-                    
-        threading.Thread(target=server_thread, daemon=True).start()
-        
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind(('0.0.0.0', self.port))
+            self.server_socket.listen(1)
+            print(f"[Server] Listening on port {self.port}")
+            print("[Server] Waiting for client connection...")
+            
+            def server_thread():
+                while self.is_running:
+                    try:
+                        client, addr = self.server_socket.accept()
+                        print(f"[Server] Client connected from: {addr}")
+                        self.handle_client(client)
+                    except Exception as e:
+                        if self.is_running:
+                            print(f"[Server] Error: {e}")
+                        break
+                        
+            threading.Thread(target=server_thread, daemon=True).start()
+            
+        except Exception as e:
+            print(f"[Server] Failed to start: {e}")
+            raise
+            
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.client_socket.connect((self.server_ip.get(), self.port))
+            print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
             
-            # Wait for server acknowledgment
-            data = self.client_socket.recv(1024)
-            if data == b'CONNECTED\n':
-                print(f"[Client] Successfully connected to server at {self.server_ip.get()}:{self.port}")
+            def client_thread():
                 print("[Client] Starting mouse tracking...")
-                
-                def client_thread():
-                    while self.is_running:
-                        try:
-                            data = self.client_socket.recv(1024)
-                            if not data:
-                                print("[Client] Server disconnected")
-                                break
-                            mouse_data = json.loads(data.decode())
-                            x, y = mouse_data["x"], mouse_data["y"]
-                            print(f"[Client] Moving mouse to: X={x}, Y={y}")
-                            self.mouse_controller.position = (x, y)
-                        except Exception as e:
-                            if self.is_running:
-                                print(f"[Client] Error: {e}")
+                while self.is_running:
+                    try:
+                        data = self.client_socket.recv(1024)
+                        if not data:
+                            print("[Client] Server disconnected")
                             break
-                            
-                threading.Thread(target=client_thread, daemon=True).start()
-            else:
-                print("[Client] Failed to receive connection acknowledgment from server")
-                self.client_socket.close()
-                raise Exception("Connection failed - no server acknowledgment")
-                
+                        mouse_data = json.loads(data.decode())
+                        x, y = mouse_data["x"], mouse_data["y"]
+                        print(f"[Client] Moving mouse to: X={x}, Y={y}")
+                        self.mouse_controller.position = (x, y)
+                    except Exception as e:
+                        if self.is_running:
+                            print(f"[Client] Error: {e}")
+                        break
+                        
+            threading.Thread(target=client_thread, daemon=True).start()
+            
         except Exception as e:
             print(f"[Client] Connection error: {e}")
             raise
-        
+            
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
         
