@@ -269,8 +269,16 @@ class MouseSyncApp:
             print("[Server] Creating server socket...")
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            
+            # Try binding to all interfaces
             print(f"[Server] Binding to port {self.port}...")
-            self.server_socket.bind(('0.0.0.0', self.port))
+            try:
+                self.server_socket.bind(('0.0.0.0', self.port))
+            except OSError as e:
+                print(f"[Server] Failed to bind to 0.0.0.0: {str(e)}")
+                print("[Server] Trying localhost instead...")
+                self.server_socket.bind(('127.0.0.1', self.port))
+            
             print("[Server] Starting to listen...")
             self.server_socket.listen(1)
             print(f"[Server] Server is listening on port {self.port}")
@@ -278,17 +286,28 @@ class MouseSyncApp:
             def server_thread():
                 try:
                     print("[Server] Waiting for client connection...")
-                    client, addr = self.server_socket.accept()
-                    print(f"[Server] Client connected from: {addr}")
-                    # Send initial connection acknowledgment
-                    print("[Server] Sending connection acknowledgment...")
-                    client.sendall(b'CONNECTED\n')
-                    print("[Server] Connection acknowledgment sent")
-                    # Hide cursor after connection is established
-                    print("[Server] Hiding cursor...")
-                    self.hide_cursor()
-                    print("[Server] Starting client handler...")
-                    self.handle_client(client)
+                    # Set timeout for accept
+                    self.server_socket.settimeout(5)
+                    try:
+                        client, addr = self.server_socket.accept()
+                        print(f"[Server] Client connected from: {addr}")
+                        # Remove timeout after connection
+                        self.server_socket.settimeout(None)
+                        
+                        # Send initial connection acknowledgment
+                        print("[Server] Sending connection acknowledgment...")
+                        client.sendall(b'CONNECTED\n')
+                        print("[Server] Connection acknowledgment sent")
+                        
+                        # Hide cursor after connection is established
+                        print("[Server] Hiding cursor...")
+                        self.hide_cursor()
+                        print("[Server] Starting client handler...")
+                        self.handle_client(client)
+                    except socket.timeout:
+                        print("[Server] No client connected within timeout period")
+                        if self.is_running:
+                            self.stop_connection()
                 except Exception as e:
                     print(f"[Server] Error in server thread: {str(e)}")
                     if self.is_running:
@@ -301,6 +320,11 @@ class MouseSyncApp:
             
         except Exception as e:
             print(f"[Server] Failed to start server: {str(e)}")
+            if self.server_socket:
+                try:
+                    self.server_socket.close()
+                except:
+                    pass
             raise
             
     def start_client(self):
@@ -309,20 +333,42 @@ class MouseSyncApp:
             self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             print("[Client] Socket created")
             
+            # Set timeout for connection attempt
+            self.client_socket.settimeout(5)  # 5 second timeout
+            print("[Client] Set connection timeout to 5 seconds")
+            
             print("[Client] Connecting to server...")
-            self.client_socket.connect((self.server_ip.get(), self.port))
-            print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
+            try:
+                self.client_socket.connect((self.server_ip.get(), self.port))
+                print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
+            except socket.timeout:
+                print("[Client] Connection timed out - server not responding")
+                raise Exception("Connection timed out - server not responding")
+            except ConnectionRefusedError:
+                print("[Client] Connection refused - server not running or port blocked")
+                raise Exception("Connection refused - server not running or port blocked")
+            except Exception as e:
+                print(f"[Client] Connection failed: {str(e)}")
+                raise
+            
+            # Remove timeout after connection
+            self.client_socket.settimeout(None)
+            print("[Client] Connection timeout removed")
             
             # Wait for server acknowledgment
             print("[Client] Waiting for server acknowledgment...")
-            data = self.client_socket.recv(1024)
-            print(f"[Client] Received data: {data}")
+            try:
+                data = self.client_socket.recv(1024)
+                print(f"[Client] Received data: {data}")
+            except socket.timeout:
+                print("[Client] Timeout waiting for server acknowledgment")
+                raise Exception("Timeout waiting for server acknowledgment")
             
             if data == b'CONNECTED\n':
                 print("[Client] Received connection acknowledgment from server")
             else:
-                print("[Client] Did not receive proper connection acknowledgment")
-                raise Exception("Connection failed - no server acknowledgment")
+                print(f"[Client] Unexpected acknowledgment: {data}")
+                raise Exception("Connection failed - unexpected server acknowledgment")
             
             def client_thread():
                 print("[Client] Starting mouse tracking...")
@@ -377,6 +423,11 @@ class MouseSyncApp:
             
         except Exception as e:
             print(f"[Client] Connection error: {str(e)}")
+            if self.client_socket:
+                try:
+                    self.client_socket.close()
+                except:
+                    pass
             raise
             
     def on_closing(self):
