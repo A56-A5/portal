@@ -62,8 +62,37 @@ class MouseSyncApp:
         self.cursor_hidden = False
         self.cursor_locked = False
         
+        # Platform-specific mouse movement
+        if self.system == "Windows":
+            self.move_mouse = self.move_mouse_windows
+        else:
+            self.move_mouse = self.move_mouse_linux
+            
         self.setup_gui()
         
+    def move_mouse_windows(self, dx, dy):
+        """Move mouse on Windows using win32api"""
+        try:
+            current_x, current_y = win32api.GetCursorPos()
+            new_x = current_x + dx
+            new_y = current_y + dy
+            win32api.SetCursorPos((new_x, new_y))
+        except Exception as e:
+            print(f"[Client] Error moving mouse on Windows: {e}")
+            
+    def move_mouse_linux(self, dx, dy):
+        """Move mouse on Linux using xlib"""
+        try:
+            display = display.Display()
+            root = display.screen().root
+            current_x, current_y = root.query_pointer()._data["root_x"], root.query_pointer()._data["root_y"]
+            new_x = current_x + dx
+            new_y = current_y + dy
+            root.warp_pointer(new_x, new_y)
+            display.sync()
+        except Exception as e:
+            print(f"[Client] Error moving mouse on Linux: {e}")
+
     def lock_cursor(self):
         """Hide cursor and block input on server"""
         if self.cursor_locked:
@@ -349,20 +378,17 @@ class MouseSyncApp:
                                 mouse_data = json.loads(message)
                                 
                                 if mouse_data["type"] == "move":
-                                    # Handle movement using relative deltas
+                                    # Handle movement using pure relative deltas
                                     dx = mouse_data["dx"]
                                     dy = mouse_data["dy"]
                                     
-                                    # Get current position
-                                    current_x, current_y = self.mouse_controller.position
-                                    
-                                    # Calculate new position
-                                    new_x = current_x + dx
-                                    new_y = current_y + dy
-                                    
-                                    # Move client cursor to new position
+                                    # Move mouse using relative movement
                                     print(f"[Client] Moving mouse by: dx={dx}, dy={dy}")
-                                    self.mouse_controller.position = (new_x, new_y)
+                                    if self.system == "Windows":
+                                        win32api.mouse_event(win32con.MOUSEEVENTF_MOVE, dx, dy, 0, 0)
+                                    else:
+                                        # For Linux, use XTest extension for relative movement
+                                        os.system(f'xdotool mousemove_relative {dx} {dy}')
                                     
                                 elif mouse_data["type"] == "click":
                                     # Handle click
