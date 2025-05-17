@@ -66,6 +66,24 @@ class MouseSyncApp:
         self.virtual_x = self.screen_width // 2
         self.virtual_y = self.screen_height // 2
         
+        # Create virtual pointer window
+        self.virtual_pointer = tk.Toplevel(self.root)
+        self.virtual_pointer.overrideredirect(True)  # Remove window decorations
+        self.virtual_pointer.attributes('-topmost', True)  # Keep on top
+        self.virtual_pointer.attributes('-alpha', 0.8)  # Slight transparency
+        self.virtual_pointer.attributes('-transparentcolor', 'black')  # Make background transparent
+        
+        # Create canvas for the red dot
+        self.pointer_canvas = tk.Canvas(self.virtual_pointer, width=10, height=10, 
+                                      bg='black', highlightthickness=0)
+        self.pointer_canvas.pack()
+        
+        # Draw red dot
+        self.pointer_canvas.create_oval(0, 0, 10, 10, fill='red', outline='red')
+        
+        # Hide virtual pointer initially
+        self.virtual_pointer.withdraw()
+        
         # Platform-specific mouse movement
         if self.system == "Windows":
             self.move_mouse = self.move_mouse_windows
@@ -265,6 +283,15 @@ class MouseSyncApp:
             print(f"[Server] Failed to start: {e}")
             raise
             
+    def update_virtual_pointer(self, x, y):
+        """Update the position of the virtual pointer dot"""
+        if self.is_server.get():
+            # Position the window at the virtual pointer coordinates
+            self.virtual_pointer.geometry(f"+{x-5}+{y-5}")  # Center the dot
+            self.virtual_pointer.deiconify()  # Show the pointer
+        else:
+            self.virtual_pointer.withdraw()  # Hide the pointer on client
+
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
         last_position = None
@@ -287,6 +314,9 @@ class MouseSyncApp:
                             # Clamp virtual pointer to screen boundaries
                             self.virtual_x = max(0, min(self.virtual_x, self.screen_width - 1))
                             self.virtual_y = max(0, min(self.virtual_y, self.screen_height - 1))
+                            
+                            # Update virtual pointer visualization
+                            self.update_virtual_pointer(self.virtual_x, self.virtual_y)
                             
                             # Send the virtual pointer position
                             data = json.dumps({
@@ -467,6 +497,8 @@ class MouseSyncApp:
             print("[Server] Server socket closed")
             # Unlock cursor when server stops
             self.unlock_cursor()
+            # Hide virtual pointer
+            self.virtual_pointer.withdraw()
         if self.client_socket:
             self.client_socket.close()
             print("[Client] Client socket closed")
@@ -479,6 +511,7 @@ class MouseSyncApp:
         print("[System] Application closing...")
         self.unlock_cursor()
         self.stop_connection()
+        self.virtual_pointer.destroy()  # Clean up virtual pointer window
         self.root.destroy()
 
 if __name__ == "__main__":
