@@ -15,6 +15,7 @@ if platform.system() == "Windows":
         import win32api
         import win32con
         import win32gui
+        from ctypes import windll, Structure, c_long, byref
     except ImportError:
         print("[System] win32api not available, using ctypes fallback")
 elif platform.system() == "Linux":
@@ -24,6 +25,9 @@ elif platform.system() == "Linux":
         from Xlib.protocol import rq
     except ImportError:
         print("[System] Xlib not available, using Tkinter fallback")
+
+class POINT(Structure):
+    _fields_ = [("x", c_long), ("y", c_long)]
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -48,8 +52,25 @@ class MouseSyncApp:
         self.original_cursor_visibility = True
         self.system = platform.system()
         self.cursor_hidden = False
+        self.last_mouse_pos = None
         
         self.setup_gui()
+        
+    def get_mouse_position(self):
+        """Get current mouse position using platform-specific methods"""
+        if self.system == "Windows":
+            pt = POINT()
+            windll.user32.GetCursorPos(byref(pt))
+            return pt.x, pt.y
+        elif self.system == "Linux":
+            try:
+                d = display.Display()
+                root = d.screen().root
+                root.query_pointer()
+                return root.query_pointer().root_x, root.query_pointer().root_y
+            except:
+                return 0, 0
+        return 0, 0
         
     def hide_cursor(self):
         """Hide the global cursor using platform-specific methods"""
@@ -63,29 +84,23 @@ class MouseSyncApp:
                 for _ in range(20):  # Try multiple times to ensure it's hidden
                     win32api.ShowCursor(False)
                 
-                # Disable mouse input
-                if not ctypes.windll.user32.BlockInput(True):
-                    print("[Server] Failed to block input, trying alternative method")
-                    # Alternative method using SetCursorPos to move cursor off screen
-                    win32api.SetCursorPos((self.screen_width * 2, self.screen_height * 2))
+                # Move cursor to center of screen before hiding
+                win32api.SetCursorPos((self.screen_width//2, self.screen_height//2))
             elif self.system == "Linux":
                 # Linux implementation using Xlib
                 try:
                     d = display.Display()
                     root = d.screen().root
-                    # Hide cursor by moving it far off screen
-                    root.warp_pointer(self.screen_width * 2, self.screen_height * 2)
-                    # Disable mouse input
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
-                    # Additional attempt to hide cursor
+                    # Move cursor to center before hiding
+                    root.warp_pointer(self.screen_width//2, self.screen_height//2)
+                    # Hide cursor
                     os.system('xsetroot -cursor_name none')
                 except (NameError, ImportError):
                     print("[Server] Xlib not available, using fallback method")
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 0')
                     os.system('xsetroot -cursor_name none')
             
             self.cursor_hidden = True
-            print("[Server] Global cursor hidden and disabled")
+            print("[Server] Global cursor hidden")
         except Exception as e:
             print(f"[Server] Error hiding cursor: {e}")
             
@@ -97,9 +112,7 @@ class MouseSyncApp:
         try:
             if self.system == "Windows":
                 # Windows implementation - show cursor globally
-                # First enable mouse input
-                ctypes.windll.user32.BlockInput(False)
-                # Then show cursor multiple times to ensure it's visible
+                # Show cursor multiple times to ensure it's visible
                 for _ in range(20):  # Try multiple times to ensure it's shown
                     win32api.ShowCursor(True)
                 # Move cursor to center of screen
@@ -109,27 +122,53 @@ class MouseSyncApp:
                 try:
                     d = display.Display()
                     root = d.screen().root
-                    # Enable mouse input
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
                     # Show cursor
                     root.warp_pointer(self.screen_width//2, self.screen_height//2)
                     # Restore default cursor
                     os.system('xsetroot -cursor_name left_ptr')
                 except (NameError, ImportError):
                     print("[Server] Xlib not available, using fallback method")
-                    os.system('xinput set-prop "Virtual core pointer" "Device Enabled" 1')
                     os.system('xsetroot -cursor_name left_ptr')
             
             self.cursor_hidden = False
-            print("[Server] Global cursor shown and enabled")
+            print("[Server] Global cursor shown")
         except Exception as e:
             print(f"[Server] Error showing cursor: {e}")
             
-    def clamp_mouse(self, x, y):
-        """Clamp mouse position to screen boundaries"""
-        x = max(0, min(x, self.screen_width - 1))
-        y = max(0, min(y, self.screen_height - 1))
-        return x, y
+    def handle_client(self, client_socket):
+        print("[Server] Starting mouse tracking...")
+        last_position = None
+        
+        def track_mouse():
+            """Track mouse movement using platform-specific methods"""
+            while self.is_running:
+                try:
+                    x, y = self.get_mouse_position()
+                    if last_position != (x, y):
+                        # Clamp coordinates
+                        x = max(0, min(x, self.screen_width - 1))
+                        y = max(0, min(y, self.screen_height - 1))
+                        
+                        # Send position to client
+                        data = json.dumps({"x": x, "y": y}) + '\n'
+                        client_socket.sendall(data.encode())
+                        print(f"[Server] Mouse position: X={x}, Y={y}")
+                        last_position = (x, y)
+                except Exception as e:
+                    print(f"[Server] Error tracking mouse: {e}")
+                    break
+                time.sleep(0.01)  # Small delay to prevent high CPU usage
+        
+        # Start mouse tracking in a separate thread
+        tracking_thread = threading.Thread(target=track_mouse, daemon=True)
+        tracking_thread.start()
+        
+        try:
+            while self.is_running:
+                time.sleep(0.1)
+        except Exception as e:
+            print(f"[Server] Mouse tracking error: {e}")
+            self.stop_connection()
         
     def setup_gui(self):
         # Mode selection
@@ -241,46 +280,6 @@ class MouseSyncApp:
             print(f"[Server] Failed to start: {e}")
             raise
             
-    def handle_client(self, client_socket):
-        print("[Server] Starting mouse tracking...")
-        last_position = None
-        
-        def on_mouse_move(x, y):
-            nonlocal last_position
-            if self.is_running:
-                try:
-                    # Clamp mouse position
-                    x, y = self.clamp_mouse(x, y)
-                    
-                    # Check if mouse is at screen edges
-                    if x <= 0:
-                        print(f"[Server] Mouse at LEFT edge: X={x}")
-                    elif x >= self.screen_width - 1:
-                        print(f"[Server] Mouse at RIGHT edge: X={x}")
-                    if y <= 0:
-                        print(f"[Server] Mouse at TOP edge: Y={y}")
-                    elif y >= self.screen_height - 1:
-                        print(f"[Server] Mouse at BOTTOM edge: Y={y}")
-                    
-                    # Only send if position has changed
-                    if last_position != (x, y):
-                        data = json.dumps({"x": x, "y": y}) + '\n'
-                        client_socket.sendall(data.encode())
-                        print(f"[Server] Mouse position: X={x}, Y={y}")
-                        last_position = (x, y)
-                except Exception as e:
-                    print(f"[Server] Error sending mouse data: {e}")
-                    self.stop_connection()
-                    
-        with mouse.Listener(on_move=on_mouse_move) as listener:
-            print("[Server] Mouse listener started")
-            try:
-                while self.is_running:
-                    time.sleep(0.01)
-            except Exception as e:
-                print(f"[Server] Mouse tracking error: {e}")
-                self.stop_connection()
-        
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
