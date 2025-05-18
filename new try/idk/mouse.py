@@ -117,10 +117,17 @@ if platform.system() == "Linux":
         import Xlib.ext.xtest
         display = Xlib.display.Display()
         root = display.screen().root
-        # Initialize XTest extension
-        major_opcode = display.get_extension_major(Xlib.ext.xtest.XTEST_EXTENSION_NAME)
+        
+        # Initialize XTest extension like barrier does
+        major_opcode = display.get_extension_major("XTEST")
         if major_opcode is None:
             raise Exception("XTest extension not available")
+            
+        # Get the XTest extension
+        xtest = display.get_extension("XTEST")
+        if xtest is None:
+            raise Exception("Could not get XTest extension")
+            
     except ImportError:
         print("Please install python-xlib: pip install python-xlib")
         sys.exit(1)
@@ -135,7 +142,7 @@ if platform.system() == "Linux":
     
     def set_mouse_position(x, y):
         """Set mouse position on Linux using XTest"""
-        Xlib.ext.xtest.XTestFakeMotionEvent(display, -1, x, y, 0)
+        xtest.fake_motion_event(display, -1, x, y, 0)
         display.sync()
 
 def server():
