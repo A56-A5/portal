@@ -38,25 +38,6 @@ class MSLLHOOKSTRUCT(ctypes.Structure):
 
 # Global variables
 client_socket = None
-screen_x = 0
-screen_y = 0
-screen_w = 0
-screen_h = 0
-screen_center_x = 0
-screen_center_y = 0
-
-def get_screen_info():
-    """Get screen dimensions and center"""
-    global screen_x, screen_y, screen_w, screen_h, screen_center_x, screen_center_y
-    user32 = ctypes.windll.user32
-    screen_w = user32.GetSystemMetrics(0)  # SM_CXSCREEN
-    screen_h = user32.GetSystemMetrics(1)  # SM_CYSCREEN
-    screen_center_x = screen_w // 2
-    screen_center_y = screen_h // 2
-
-def warp_cursor_to_center():
-    """Warp cursor to screen center"""
-    ctypes.windll.user32.SetCursorPos(screen_center_x, screen_center_y)
 
 # Mouse hook callback
 def mouse_hook_proc(nCode, wParam, lParam):
@@ -71,26 +52,33 @@ def mouse_hook_proc(nCode, wParam, lParam):
                 if wParam == WM_MOUSEMOVE:
                     # Send absolute position for movement
                     data = f"MOVE:{ms.pt.x},{ms.pt.y}\n"
+                    print(f"Server sending: {data.strip()}")  # Debug print
                     client_socket.send(data.encode())
-                    # Warp cursor back to center after sending
-                    warp_cursor_to_center()
+                    return 1  # Eat the event
                 elif wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
                     # Send button down events
                     data = f"DOWN:{wParam}\n"
+                    print(f"Server sending: {data.strip()}")  # Debug print
                     client_socket.send(data.encode())
+                    return 1  # Eat the event
                 elif wParam in (WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP):
                     # Send button up events
                     data = f"UP:{wParam}\n"
+                    print(f"Server sending: {data.strip()}")  # Debug print
                     client_socket.send(data.encode())
+                    return 1  # Eat the event
                 elif wParam in (WM_MOUSEWHEEL, WM_MOUSEHWHEEL):
                     # Send wheel events
                     wheel_data = ms.mouseData >> 16
                     data = f"WHEEL:{wheel_data}\n"
+                    print(f"Server sending: {data.strip()}")  # Debug print
                     client_socket.send(data.encode())
-            except:
+                    return 1  # Eat the event
+            except Exception as e:
+                print(f"Server error sending event: {e}")  # Debug print
                 pass
     
-    # Always pass the event through
+    # Pass the event through if we didn't handle it
     return ctypes.windll.user32.CallNextHookEx(None, nCode, wParam, lParam)
 
 # Convert the callback to a C function
@@ -117,8 +105,22 @@ if platform.system() == "Linux":
         import Xlib.ext.xtest
         display = Xlib.display.Display()
         root = display.screen().root
+        
+        # Initialize XTest extension
+        major_opcode = display.get_extension_major("XTEST")
+        if major_opcode is None:
+            raise Exception("XTest extension not available")
+            
+        # Get the XTest extension
+        xtest = display.get_extension("XTEST")
+        if xtest is None:
+            raise Exception("Could not get XTest extension")
+            
     except ImportError:
         print("Please install python-xlib: pip install python-xlib")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error initializing XTest: {e}")
         sys.exit(1)
     
     def get_mouse_position():
@@ -128,7 +130,17 @@ if platform.system() == "Linux":
     
     def set_mouse_position(x, y):
         """Set mouse position on Linux using XTest"""
-        Xlib.ext.xtest.fake_motion_event(display, -1, x, y, 0)
+        # Get screen dimensions
+        screen = display.screen()
+        width = screen.width_in_pixels
+        height = screen.height_in_pixels
+        
+        # Clamp coordinates to screen bounds
+        x = max(0, min(x, width - 1))
+        y = max(0, min(y, height - 1))
+        
+        # Use XTest to move cursor, using DefaultScreen like barrier
+        xtest.fake_motion_event(display, display.default_screen, x, y, 0)
         display.sync()
 
 def server():
@@ -138,9 +150,6 @@ def server():
         sys.exit(1)
     
     global client_socket
-    
-    # Get screen info
-    get_screen_info()
     
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_IP, PORT))
@@ -189,10 +198,12 @@ def client():
                     message, buffer = buffer.split('\n', 1)
                     try:
                         msg_type, msg_data = message.split(':', 1)
+                        print(f"Client received: {message.strip()}")  # Debug print
                         
                         if msg_type == "MOVE":
                             # For movement, use absolute position
                             x, y = map(int, msg_data.split(','))
+                            print(f"Client moving to: {x}, {y}")  # Debug print
                             set_mouse_position(x, y)
                         elif msg_type == "DOWN":
                             # Handle button down
@@ -203,7 +214,8 @@ def client():
                         elif msg_type == "WHEEL":
                             # Handle wheel
                             pass
-                    except ValueError:
+                    except ValueError as e:
+                        print(f"Client error parsing message: {e}")  # Debug print
                         continue  # Skip invalid messages
     except Exception as e:
         print(f"Client error: {e}")
