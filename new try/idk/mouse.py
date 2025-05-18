@@ -95,11 +95,29 @@ def client():
         client_socket.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2 or sys.argv[1] not in ['server', 'client']:
-        print("Usage: python mouse.py [server|client]")
-        sys.exit(1)
+    print("\n=== Mouse Control Setup ===")
+    print("1. Run as Server (Windows)")
+    print("2. Run as Client (Linux)")
+    print("3. Exit")
     
-    if sys.argv[1] == 'server':
-        server()
-    else:
-        client()
+    while True:
+        try:
+            choice = input("\nEnter your choice (1-3): ")
+            
+            if choice == "1":
+                print("\nStarting server...")
+                server()
+            elif choice == "2":
+                print("\nStarting client...")
+                client()
+            elif choice == "3":
+                print("Exiting...")
+                sys.exit(0)
+            else:
+                print("Invalid choice. Please enter 1, 2, or 3.")
+        except KeyboardInterrupt:
+            print("\nExiting...")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Error: {e}")
+            print("Please try again.")
