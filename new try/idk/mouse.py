@@ -98,29 +98,27 @@ class MouseSyncApp:
     def stop_connection(self):
         print("[System] Stopping connection...")
         self.is_running = False
+        if self.overlay:
+            self.overlay.destroy()
+            print("[Overlay] Overlay removed")
         if self.server_socket:
             self.server_socket.close()
             print("[Server] Server socket closed")
         if self.client_socket:
             self.client_socket.close()
             print("[Client] Client socket closed")
-        if self.overlay:
-            self.overlay.destroy()
-            self.overlay = None
-            print("[Overlay] Invisible overlay removed")
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
         
     def create_invisible_overlay(self):
-        # Create a fullscreen, transparent, topmost window
         self.overlay = tk.Toplevel(self.root)
         self.overlay.overrideredirect(True)
-        self.overlay.attributes("-fullscreen", True)
+        self.overlay.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
+        self.overlay.attributes("-alpha", 0.01)  # Almost invisible
         self.overlay.attributes("-topmost", True)
-        self.overlay.attributes("-alpha", 0.01)  # Nearly invisible
-        self.overlay.configure(cursor="none")  # Hide cursor
-        print("[Overlay] Invisible full-screen overlay created with hidden cursor")
+        self.overlay.configure(cursor="none")  # Hide the mouse cursor
+        print("[Overlay] Invisible overlay created and always on top")
 
     def start_server(self):
         try:
@@ -129,9 +127,6 @@ class MouseSyncApp:
             self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
             print(f"[Server] Listening on port {self.port}")
-
-            # Create overlay to hide cursor
-            self.create_invisible_overlay()
             
             def server_thread():
                 try:
@@ -140,6 +135,7 @@ class MouseSyncApp:
                     print(f"[Server] Client connected from: {addr}")
                     client.sendall(b'CONNECTED\n')
                     print("[Server] Sent connection acknowledgment")
+                    self.create_invisible_overlay()
                     self.handle_client(client)
                 except Exception as e:
                     if self.is_running:
@@ -198,6 +194,7 @@ class MouseSyncApp:
             if data == b'CONNECTED\n':
                 print("[Client] Received connection acknowledgment from server")
             else:
+                print("[Client] Did not receive proper connection acknowledgment")
                 raise Exception("Connection failed - no server acknowledgment")
             
             def client_thread():
