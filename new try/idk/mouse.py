@@ -1,25 +1,52 @@
 import socket
 import threading
-import win32api
-import win32con
 import time
 import sys
+import platform
 
 # Server configuration
-SERVER_IP = "192.168.1.71"
-CLIENT_IP = "192.168.1.74"
+SERVER_IP = "192.168.1.71"  # Windows machine
+CLIENT_IP = "192.168.1.74"  # Linux machine
 PORT = 5000
 
-def get_mouse_position():
-    """Get current mouse position"""
-    return win32api.GetCursorPos()
+# Platform-specific imports and functions
+if platform.system() == "Windows":
+    import win32api
+    import win32con
+    
+    def get_mouse_position():
+        """Get current mouse position on Windows"""
+        return win32api.GetCursorPos()
+    
+    def set_mouse_position(x, y):
+        """Set mouse position on Windows"""
+        win32api.SetCursorPos((x, y))
 
-def set_mouse_position(x, y):
-    """Set mouse position"""
-    win32api.SetCursorPos((x, y))
+elif platform.system() == "Linux":
+    try:
+        import Xlib.display
+        display = Xlib.display.Display()
+        root = display.screen().root
+    except ImportError:
+        print("Please install python-xlib: pip install python-xlib")
+        sys.exit(1)
+    
+    def get_mouse_position():
+        """Get current mouse position on Linux"""
+        pos = root.query_pointer()._data
+        return (pos["root_x"], pos["root_y"])
+    
+    def set_mouse_position(x, y):
+        """Set mouse position on Linux"""
+        root.warp_pointer(x, y)
+        display.sync()
 
 def server():
     """Server that captures mouse movements and sends them to client"""
+    if platform.system() != "Windows":
+        print("Server must run on Windows")
+        sys.exit(1)
+        
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_IP, PORT))
     server_socket.listen(1)
@@ -47,6 +74,10 @@ def server():
 
 def client():
     """Client that receives mouse positions and updates local mouse"""
+    if platform.system() != "Linux":
+        print("Client must run on Linux")
+        sys.exit(1)
+        
     client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     
     try:
