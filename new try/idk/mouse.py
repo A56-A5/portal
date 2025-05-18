@@ -14,54 +14,56 @@ if platform.system() == "Windows":
     import win32api
     import win32con
     import ctypes
-    from ctypes import wintypes
+    from ctypes import wintypes, CFUNCTYPE, POINTER, c_int, c_void_p, byref
     
-    # Windows raw input structures
-    class MOUSEINPUT(ctypes.Structure):
+    # Windows hook structures
+    class MSLLHOOKSTRUCT(ctypes.Structure):
         _fields_ = [
-            ("dx", wintypes.LONG),
-            ("dy", wintypes.LONG),
+            ("pt", wintypes.POINT),
             ("mouseData", wintypes.DWORD),
-            ("dwFlags", wintypes.DWORD),
+            ("flags", wintypes.DWORD),
             ("time", wintypes.DWORD),
-            ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG))
+            ("dwExtraInfo", c_void_p)
         ]
 
-    class INPUT(ctypes.Structure):
-        class _INPUT(ctypes.Union):
-            _fields_ = [
-                ("mi", MOUSEINPUT),
-                ("padding", ctypes.c_byte * 8)
-            ]
-        _anonymous_ = ("_input",)
-        _fields_ = [
-            ("type", wintypes.DWORD),
-            ("_input", _INPUT)
-        ]
+    # Global variables for the hook
+    mouse_dx = 0
+    mouse_dy = 0
+    client_socket = None
 
-    def get_raw_mouse_movement():
-        """Get raw mouse movement without affecting cursor position"""
-        try:
-            # Get raw input data
-            raw_input = INPUT()
-            raw_input.type = win32con.INPUT_MOUSE
-            raw_input.mi = MOUSEINPUT()
-            
-            # Get the raw input data
-            ctypes.windll.user32.GetRawInputData(
-                ctypes.byref(raw_input),
-                win32con.RID_INPUT,
-                ctypes.byref(raw_input),
-                ctypes.sizeof(raw_input),
-                ctypes.sizeof(INPUT)
-            )
-            
-            return raw_input.mi.dx, raw_input.mi.dy
-        except Exception:
-            # Fallback to GetAsyncKeyState if raw input fails
-            dx = win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000
-            dy = win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000
-            return dx, dy
+    # Mouse hook callback
+    def mouse_hook_proc(nCode, wParam, lParam):
+        global mouse_dx, mouse_dy, client_socket
+        if nCode >= 0:
+            if wParam == win32con.WM_MOUSEMOVE:
+                ms = ctypes.cast(lParam, POINTER(MSLLHOOKSTRUCT)).contents
+                mouse_dx = ms.pt.x
+                mouse_dy = ms.pt.y
+                if client_socket:
+                    try:
+                        data = f"{mouse_dx},{mouse_dy}\n"
+                        client_socket.send(data.encode())
+                    except:
+                        pass
+        return ctypes.windll.user32.CallNextHookEx(None, nCode, wParam, lParam)
+
+    # Convert the callback to a C function
+    HOOKPROC = CFUNCTYPE(c_int, c_int, wintypes.WPARAM, wintypes.LPARAM)
+    mouse_hook = HOOKPROC(mouse_hook_proc)
+
+    def install_mouse_hook():
+        """Install the mouse hook"""
+        hook_id = ctypes.windll.user32.SetWindowsHookExA(
+            win32con.WH_MOUSE_LL,
+            mouse_hook,
+            ctypes.windll.kernel32.GetModuleHandleW(None),
+            0
+        )
+        return hook_id
+
+    def uninstall_mouse_hook(hook_id):
+        """Uninstall the mouse hook"""
+        ctypes.windll.user32.UnhookWindowsHookEx(hook_id)
 
 elif platform.system() == "Linux":
     try:
@@ -87,7 +89,9 @@ def server():
     if platform.system() != "Windows":
         print("Server must run on Windows")
         sys.exit(1)
-        
+    
+    global client_socket
+    
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_IP, PORT))
     server_socket.listen(1)
@@ -96,19 +100,19 @@ def server():
     client_socket, addr = server_socket.accept()
     print(f"Connected to client: {addr}")
     
+    # Install the mouse hook
+    hook_id = install_mouse_hook()
+    
     try:
-        while True:
-            # Get raw mouse movement without affecting cursor
-            dx, dy = get_raw_mouse_movement()
-            
-            if dx != 0 or dy != 0:
-                # Send delta movement to client with newline to separate messages
-                data = f"{dx},{dy}\n"
-                client_socket.send(data.encode())
-            time.sleep(0.01)  # Small delay to prevent high CPU usage
+        # Message loop to keep the hook active
+        msg = wintypes.MSG()
+        while ctypes.windll.user32.GetMessageA(byref(msg), None, 0, 0) != 0:
+            ctypes.windll.user32.TranslateMessage(byref(msg))
+            ctypes.windll.user32.DispatchMessageA(byref(msg))
     except Exception as e:
         print(f"Server error: {e}")
     finally:
+        uninstall_mouse_hook(hook_id)
         client_socket.close()
         server_socket.close()
 
