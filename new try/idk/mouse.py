@@ -173,24 +173,41 @@ class MouseSyncApp:
         self.overlay.focus_force()
         print("[Overlay] Overlay is now active and covering full screen")
     
-    def handle_client(self, client_socket):
-        print("[Server] Starting mouse tracking...")
-        last_position = None
-
-        def on_mouse_move(x, y):
-            nonlocal last_position
-            if self.is_running:
+        def handle_client(self, client_socket):
+            print("[Server] Starting mouse tracking...")
+        
+            self.create_overlay()
+        
+            def track_mouse_position():
+                last_position = None
+                controller = mouse.Controller()
                 try:
-                    if last_position != (x, y):
-                        data = json.dumps({"x": x, "y": y}) + '\n'
-                        client_socket.sendall(data.encode())
-                        last_position = (x, y)
+                    while self.is_running:
+                        x, y = controller.position
+        
+                        # Edge logging (optional)
+                        if x <= 0:
+                            print(f"[Server] Mouse at LEFT edge: X={x}")
+                        elif x >= self.screen_width - 1:
+                            print(f"[Server] Mouse at RIGHT edge: X={x}")
+                        if y <= 0:
+                            print(f"[Server] Mouse at TOP edge: Y={y}")
+                        elif y >= self.screen_height - 1:
+                            print(f"[Server] Mouse at BOTTOM edge: Y={y}")
+        
+                        # Only send if position changed
+                        if last_position != (x, y):
+                            data = json.dumps({"x": x, "y": y}) + '\n'
+                            client_socket.sendall(data.encode())
+                            last_position = (x, y)
+        
+                        time.sleep(0.01)
                 except Exception as e:
                     print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
-
-        self.listener = mouse.Listener(on_move=on_mouse_move)
-        self.listener.start()
+        
+            threading.Thread(target=track_mouse_position, daemon=True).start()
+        
 
     def start_client(self):
         try:
