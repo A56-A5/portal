@@ -65,8 +65,8 @@ def server():
             dy = current_pos[1] - last_pos[1]
             
             if dx != 0 or dy != 0:
-                # Send delta movement to client
-                data = f"{dx},{dy}"
+                # Send delta movement to client with newline to separate messages
+                data = f"{dx},{dy}\n"
                 client_socket.send(data.encode())
                 last_pos = current_pos
             time.sleep(0.01)  # Small delay to prevent high CPU usage
@@ -89,18 +89,22 @@ def client():
         print(f"Connected to server at {SERVER_IP}:{PORT}")
         
         current_pos = get_mouse_position()
+        buffer = ""
         
         while True:
-            data = client_socket.recv(1024).decode().strip()
+            data = client_socket.recv(1024).decode()
             if data:
-                try:
-                    dx, dy = map(int, data.split(','))
-                    # Update current position with delta
-                    current_pos = (current_pos[0] + dx, current_pos[1] + dy)
-                    set_mouse_position(current_pos[0], current_pos[1])
-                except ValueError as e:
-                    print(f"Error parsing data: {e}")
-                    continue
+                buffer += data
+                # Process complete messages
+                while '\n' in buffer:
+                    message, buffer = buffer.split('\n', 1)
+                    try:
+                        dx, dy = map(int, message.split(','))
+                        # Update current position with delta
+                        current_pos = (current_pos[0] + dx, current_pos[1] + dy)
+                        set_mouse_position(current_pos[0], current_pos[1])
+                    except ValueError:
+                        continue  # Skip invalid messages
     except Exception as e:
         print(f"Client error: {e}")
     finally:
