@@ -1,4 +1,3 @@
-
 import tkinter as tk
 from tkinter import ttk, messagebox
 import socket
@@ -6,6 +5,7 @@ import threading
 import json
 from pynput import mouse
 import time
+import platform
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -32,30 +32,35 @@ class MouseSyncApp:
         self.setup_gui()
 
     def setup_gui(self):
+        # Mode selection
         mode_frame = ttk.LabelFrame(self.root, text="Mode", padding=10)
         mode_frame.pack(fill="x", padx=10, pady=5)
 
-        ttk.Radiobutton(mode_frame, text="Server", variable=self.is_server, 
-                       value=True, command=self.update_mode).pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="Client", variable=self.is_server, 
-                       value=False, command=self.update_mode).pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="Server", variable=self.is_server,
+                        value=True, command=self.update_mode).pack(side="left", padx=5)
+        ttk.Radiobutton(mode_frame, text="Client", variable=self.is_server,
+                        value=False, command=self.update_mode).pack(side="left", padx=5)
 
+        # Server IP input
         ip_frame = ttk.LabelFrame(self.root, text="Server IP", padding=10)
         ip_frame.pack(fill="x", padx=10, pady=5)
 
         self.ip_entry = ttk.Entry(ip_frame, textvariable=self.server_ip)
         self.ip_entry.pack(fill="x", padx=5, pady=5)
 
+        # Screen info label
         screen_frame = ttk.LabelFrame(self.root, text="Screen Info", padding=10)
         screen_frame.pack(fill="x", padx=10, pady=5)
 
-        self.screen_label = ttk.Label(screen_frame, 
-            text=f"Screen: {self.screen_width}x{self.screen_height}")
+        self.screen_label = ttk.Label(screen_frame,
+                                      text=f"Screen: {self.screen_width}x{self.screen_height}")
         self.screen_label.pack(fill="x", padx=5, pady=5)
 
+        # Control button
         self.start_button = ttk.Button(self.root, text="Start", command=self.toggle_connection)
         self.start_button.pack(pady=10)
 
+        # Status label
         self.status_label = ttk.Label(self.root, text="Status: Disconnected")
         self.status_label.pack(pady=5)
 
@@ -93,6 +98,9 @@ class MouseSyncApp:
     def stop_connection(self):
         print("[System] Stopping connection...")
         self.is_running = False
+        if self.overlay:
+            self.overlay.destroy()
+            self.overlay = None
         if self.server_socket:
             self.server_socket.close()
             print("[Server] Server socket closed")
@@ -101,7 +109,6 @@ class MouseSyncApp:
             print("[Client] Client socket closed")
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
-        self.destroy_overlay()
         print("[System] Connection stopped")
 
     def start_server(self):
@@ -133,22 +140,20 @@ class MouseSyncApp:
             raise
 
     def create_overlay(self):
-        if self.overlay:
-            return
-        self.overlay = tk.Toplevel(self.root)
-        self.overlay.attributes("-fullscreen", True)
+        print("[Overlay] Creating full-screen transparent overlay")
+        self.overlay = tk.Toplevel()
+        self.overlay.overrideredirect(True)
+        self.overlay.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
         self.overlay.attributes("-topmost", True)
-        self.overlay.config(bg="black")
         self.overlay.attributes("-alpha", 0.01)
-        self.overlay.config(cursor="none")
-        self.overlay.focus_force()
-        print("[Overlay] Fullscreen overlay created")
+        self.overlay.configure(bg='black')
 
-    def destroy_overlay(self):
-        if self.overlay:
-            self.overlay.destroy()
-            self.overlay = None
-            print("[Overlay] Overlay destroyed")
+        # Hide mouse cursor
+        self.overlay.config(cursor="none")
+
+        self.overlay.lift()
+        self.overlay.update()
+        print("[Overlay] Overlay is now active")
 
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
@@ -166,14 +171,8 @@ class MouseSyncApp:
                     print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
 
-        with mouse.Listener(on_move=on_mouse_move) as listener:
-            print("[Server] Mouse listener started")
-            try:
-                while self.is_running:
-                    time.sleep(0.01)
-            except Exception as e:
-                print(f"[Server] Mouse tracking error: {e}")
-                self.stop_connection()
+        self.listener = mouse.Listener(on_move=on_mouse_move)
+        self.listener.start()
 
     def start_client(self):
         try:
@@ -189,7 +188,7 @@ class MouseSyncApp:
                 raise Exception("Connection failed - no server acknowledgment")
 
             def client_thread():
-                print("[Client] Starting mouse tracking...")
+                print("[Client] Starting mouse update...")
                 buffer = ""
                 last_position = None
                 while self.is_running:
@@ -208,7 +207,7 @@ class MouseSyncApp:
                                     self.mouse_controller.position = (x, y)
                                     last_position = (x, y)
                             except json.JSONDecodeError as e:
-                                print(f"[Client] Error decoding mouse data: {e}")
+                                print(f"[Client] JSON decode error: {e}")
                             except Exception as e:
                                 print(f"[Client] Error moving mouse: {e}")
                     except Exception as e:
