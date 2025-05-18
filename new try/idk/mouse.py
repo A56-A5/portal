@@ -114,8 +114,11 @@ def uninstall_mouse_hook(hook_id):
 if platform.system() == "Linux":
     try:
         import Xlib.display
+        import Xlib.ext.xtest
         display = Xlib.display.Display()
         root = display.screen().root
+        # Initialize XTest extension
+        Xlib.ext.xtest.XTestQueryExtension(display)
     except ImportError:
         print("Please install python-xlib: pip install python-xlib")
         sys.exit(1)
@@ -126,8 +129,8 @@ if platform.system() == "Linux":
         return (pos["root_x"], pos["root_y"])
     
     def set_mouse_position(x, y):
-        """Set mouse position on Linux"""
-        root.warp_pointer(x, y)
+        """Set mouse position on Linux using XTest"""
+        Xlib.ext.xtest.XTestFakeMotionEvent(display, -1, x, y, 0)
         display.sync()
 
 def server():
