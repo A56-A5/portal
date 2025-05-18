@@ -38,6 +38,25 @@ class MSLLHOOKSTRUCT(ctypes.Structure):
 
 # Global variables
 client_socket = None
+screen_x = 0
+screen_y = 0
+screen_w = 0
+screen_h = 0
+screen_center_x = 0
+screen_center_y = 0
+
+def get_screen_info():
+    """Get screen dimensions and center"""
+    global screen_x, screen_y, screen_w, screen_h, screen_center_x, screen_center_y
+    user32 = ctypes.windll.user32
+    screen_w = user32.GetSystemMetrics(0)  # SM_CXSCREEN
+    screen_h = user32.GetSystemMetrics(1)  # SM_CYSCREEN
+    screen_center_x = screen_w // 2
+    screen_center_y = screen_h // 2
+
+def warp_cursor_to_center():
+    """Warp cursor to screen center"""
+    ctypes.windll.user32.SetCursorPos(screen_center_x, screen_center_y)
 
 # Mouse hook callback
 def mouse_hook_proc(nCode, wParam, lParam):
@@ -53,6 +72,8 @@ def mouse_hook_proc(nCode, wParam, lParam):
                     # Send absolute position for movement
                     data = f"MOVE:{ms.pt.x},{ms.pt.y}\n"
                     client_socket.send(data.encode())
+                    # Warp cursor back to center after sending
+                    warp_cursor_to_center()
                 elif wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
                     # Send button down events
                     data = f"DOWN:{wParam}\n"
@@ -116,6 +137,9 @@ def server():
         sys.exit(1)
     
     global client_socket
+    
+    # Get screen info
+    get_screen_info()
     
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind((SERVER_IP, PORT))
