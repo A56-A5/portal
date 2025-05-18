@@ -3,69 +3,94 @@ import threading
 import time
 import sys
 import platform
+import ctypes
+from ctypes import wintypes, CFUNCTYPE, POINTER, c_int, c_void_p, byref
 
 # Server configuration
 SERVER_IP = "192.168.1.71"  # Windows machine
 CLIENT_IP = "192.168.1.74"  # Linux machine
 PORT = 5000
 
-# Platform-specific imports and functions
-if platform.system() == "Windows":
-    import win32api
-    import win32con
-    import ctypes
-    from ctypes import wintypes, CFUNCTYPE, POINTER, c_int, c_void_p, byref
+# Windows constants
+WH_MOUSE_LL = 14
+WM_MOUSEMOVE = 0x0200
+WM_LBUTTONDOWN = 0x0201
+WM_LBUTTONUP = 0x0202
+WM_RBUTTONDOWN = 0x0204
+WM_RBUTTONUP = 0x0205
+WM_MBUTTONDOWN = 0x0207
+WM_MBUTTONUP = 0x0208
+WM_MOUSEWHEEL = 0x020A
+WM_MOUSEHWHEEL = 0x020E
+
+# Windows structures
+class POINT(ctypes.Structure):
+    _fields_ = [("x", wintypes.LONG), ("y", wintypes.LONG)]
+
+class MSLLHOOKSTRUCT(ctypes.Structure):
+    _fields_ = [
+        ("pt", POINT),
+        ("mouseData", wintypes.DWORD),
+        ("flags", wintypes.DWORD),
+        ("time", wintypes.DWORD),
+        ("dwExtraInfo", c_void_p)
+    ]
+
+# Global variables
+client_socket = None
+
+# Mouse hook callback
+def mouse_hook_proc(nCode, wParam, lParam):
+    global client_socket
     
-    # Windows hook structures
-    class MSLLHOOKSTRUCT(ctypes.Structure):
-        _fields_ = [
-            ("pt", wintypes.POINT),
-            ("mouseData", wintypes.DWORD),
-            ("flags", wintypes.DWORD),
-            ("time", wintypes.DWORD),
-            ("dwExtraInfo", c_void_p)
-        ]
+    if nCode >= 0:
+        ms = ctypes.cast(lParam, POINTER(MSLLHOOKSTRUCT)).contents
+        
+        if client_socket:
+            try:
+                # Handle different types of events
+                if wParam == WM_MOUSEMOVE:
+                    # Send absolute position for movement
+                    data = f"MOVE:{ms.pt.x},{ms.pt.y}\n"
+                    client_socket.send(data.encode())
+                elif wParam in (WM_LBUTTONDOWN, WM_RBUTTONDOWN, WM_MBUTTONDOWN):
+                    # Send button down events
+                    data = f"DOWN:{wParam}\n"
+                    client_socket.send(data.encode())
+                elif wParam in (WM_LBUTTONUP, WM_RBUTTONUP, WM_MBUTTONUP):
+                    # Send button up events
+                    data = f"UP:{wParam}\n"
+                    client_socket.send(data.encode())
+                elif wParam in (WM_MOUSEWHEEL, WM_MOUSEHWHEEL):
+                    # Send wheel events
+                    wheel_data = ms.mouseData >> 16
+                    data = f"WHEEL:{wheel_data}\n"
+                    client_socket.send(data.encode())
+            except:
+                pass
+    
+    # Always pass the event through
+    return ctypes.windll.user32.CallNextHookEx(None, nCode, wParam, lParam)
 
-    # Global variables for the hook
-    mouse_dx = 0
-    mouse_dy = 0
-    client_socket = None
+# Convert the callback to a C function
+HOOKPROC = CFUNCTYPE(c_int, c_int, wintypes.WPARAM, wintypes.LPARAM)
+mouse_hook = HOOKPROC(mouse_hook_proc)
 
-    # Mouse hook callback
-    def mouse_hook_proc(nCode, wParam, lParam):
-        global mouse_dx, mouse_dy, client_socket
-        if nCode >= 0:
-            if wParam == win32con.WM_MOUSEMOVE:
-                ms = ctypes.cast(lParam, POINTER(MSLLHOOKSTRUCT)).contents
-                mouse_dx = ms.pt.x
-                mouse_dy = ms.pt.y
-                if client_socket:
-                    try:
-                        data = f"{mouse_dx},{mouse_dy}\n"
-                        client_socket.send(data.encode())
-                    except:
-                        pass
-        return ctypes.windll.user32.CallNextHookEx(None, nCode, wParam, lParam)
+def install_mouse_hook():
+    """Install the mouse hook"""
+    hook_id = ctypes.windll.user32.SetWindowsHookExA(
+        WH_MOUSE_LL,
+        mouse_hook,
+        ctypes.windll.kernel32.GetModuleHandleW(None),
+        0
+    )
+    return hook_id
 
-    # Convert the callback to a C function
-    HOOKPROC = CFUNCTYPE(c_int, c_int, wintypes.WPARAM, wintypes.LPARAM)
-    mouse_hook = HOOKPROC(mouse_hook_proc)
+def uninstall_mouse_hook(hook_id):
+    """Uninstall the mouse hook"""
+    ctypes.windll.user32.UnhookWindowsHookEx(hook_id)
 
-    def install_mouse_hook():
-        """Install the mouse hook"""
-        hook_id = ctypes.windll.user32.SetWindowsHookExA(
-            win32con.WH_MOUSE_LL,
-            mouse_hook,
-            ctypes.windll.kernel32.GetModuleHandleW(None),
-            0
-        )
-        return hook_id
-
-    def uninstall_mouse_hook(hook_id):
-        """Uninstall the mouse hook"""
-        ctypes.windll.user32.UnhookWindowsHookEx(hook_id)
-
-elif platform.system() == "Linux":
+if platform.system() == "Linux":
     try:
         import Xlib.display
         display = Xlib.display.Display()
@@ -128,7 +153,6 @@ def client():
         client_socket.connect((SERVER_IP, PORT))
         print(f"Connected to server at {SERVER_IP}:{PORT}")
         
-        current_pos = get_mouse_position()
         buffer = ""
         
         while True:
@@ -139,10 +163,21 @@ def client():
                 while '\n' in buffer:
                     message, buffer = buffer.split('\n', 1)
                     try:
-                        dx, dy = map(int, message.split(','))
-                        # Update current position with delta
-                        current_pos = (current_pos[0] + dx, current_pos[1] + dy)
-                        set_mouse_position(current_pos[0], current_pos[1])
+                        msg_type, msg_data = message.split(':', 1)
+                        
+                        if msg_type == "MOVE":
+                            # For movement, use absolute position
+                            x, y = map(int, msg_data.split(','))
+                            set_mouse_position(x, y)
+                        elif msg_type == "DOWN":
+                            # Handle button down
+                            pass
+                        elif msg_type == "UP":
+                            # Handle button up
+                            pass
+                        elif msg_type == "WHEEL":
+                            # Handle wheel
+                            pass
                     except ValueError:
                         continue  # Skip invalid messages
     except Exception as e:
