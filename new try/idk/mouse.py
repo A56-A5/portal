@@ -118,9 +118,14 @@ if platform.system() == "Linux":
         display = Xlib.display.Display()
         root = display.screen().root
         # Initialize XTest extension
-        Xlib.ext.xtest.XTestQueryExtension(display)
+        major_opcode = display.get_extension_major(Xlib.ext.xtest.XTEST_EXTENSION_NAME)
+        if major_opcode is None:
+            raise Exception("XTest extension not available")
     except ImportError:
         print("Please install python-xlib: pip install python-xlib")
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error initializing XTest: {e}")
         sys.exit(1)
     
     def get_mouse_position():
