@@ -14,8 +14,13 @@ class MouseSyncApp:
         self.root.geometry("300x200")
 
         # Get screen dimensions
-        self.screen_width = self.root.winfo_screenwidth()
-        self.screen_height = self.root.winfo_screenheight()
+        temp_root = tk.Tk()
+        temp_root.withdraw()
+        self.screen_width = temp_root.winfo_screenwidth()
+        self.screen_height = temp_root.winfo_screenheight()
+        temp_root.destroy()
+        
+
         print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
         print(f"[System] Screen edges: Left=0, Right={self.screen_width}, Top=0, Bottom={self.screen_height}")
 
@@ -141,20 +146,33 @@ class MouseSyncApp:
 
     def create_overlay(self):
         print("[Overlay] Creating full-screen transparent overlay")
+    
+        # Use a new root window to get accurate screen size
+        screen_root = tk.Tk()
+        screen_root.withdraw()
+        screen_width = screen_root.winfo_screenwidth()
+        screen_height = screen_root.winfo_screenheight()
+        screen_root.destroy()
+        print(f"[Overlay] Detected screen size: {screen_width}x{screen_height}")
+    
         self.overlay = tk.Toplevel()
         self.overlay.overrideredirect(True)
-        self.overlay.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
-        self.overlay.attributes("-topmost", True)
-        self.overlay.attributes("-alpha", 0.01)
+        self.overlay.geometry(f"{screen_width}x{screen_height}+0+0")
         self.overlay.configure(bg='black')
-
-        # Hide mouse cursor
+    
+        # Make fully transparent but allow mouse events
+        self.overlay.attributes("-alpha", 0.01)
+        self.overlay.attributes("-topmost", True)
+    
+        # Hide cursor
         self.overlay.config(cursor="none")
-
+    
+        # Ensure it stays on top
         self.overlay.lift()
-        self.overlay.update()
-        print("[Overlay] Overlay is now active")
-
+        self.overlay.update_idletasks()
+        self.overlay.focus_force()
+        print("[Overlay] Overlay is now active and covering full screen")
+    
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
         last_position = None
