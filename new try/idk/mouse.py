@@ -106,15 +106,10 @@ if platform.system() == "Linux":
         display = Xlib.display.Display()
         root = display.screen().root
         
-        # Initialize XTest extension
-        major_opcode = display.get_extension_major("XTEST")
-        if major_opcode is None:
-            raise Exception("XTest extension not available")
-            
-        # Get the XTest extension
+        # Initialize XTest extension - using the correct method
         xtest = display.get_extension("XTEST")
         if xtest is None:
-            raise Exception("Could not get XTest extension")
+            raise Exception("XTest extension not available")
             
     except ImportError:
         print("Please install python-xlib: pip install python-xlib")
