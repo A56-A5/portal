@@ -26,7 +26,6 @@ class MouseSyncApp:
         self.server_socket = None
         self.client_socket = None
         self.mouse_controller = mouse.Controller()
-        self.overlay = None
         
         self.setup_gui()
         
@@ -104,24 +103,10 @@ class MouseSyncApp:
         if self.client_socket:
             self.client_socket.close()
             print("[Client] Client socket closed")
-        if self.overlay:
-            self.overlay.destroy()
-            self.overlay = None
-            print("[Overlay] Invisible overlay removed")
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
         
-    def create_invisible_overlay(self):
-        # Create a fullscreen, transparent, topmost window
-        self.overlay = tk.Toplevel(self.root)
-        self.overlay.overrideredirect(True)
-        self.overlay.attributes("-fullscreen", True)
-        self.overlay.attributes("-topmost", True)
-        self.overlay.attributes("-alpha", 0.01)  # Nearly invisible
-        self.overlay.configure(cursor="none")  # Hide cursor
-        print("[Overlay] Invisible full-screen overlay created with hidden cursor")
-
     def start_server(self):
         try:
             self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -129,15 +114,13 @@ class MouseSyncApp:
             self.server_socket.bind(('0.0.0.0', self.port))
             self.server_socket.listen(1)
             print(f"[Server] Listening on port {self.port}")
-
-            # Create overlay to hide cursor
-            self.create_invisible_overlay()
             
             def server_thread():
                 try:
                     print("[Server] Waiting for client connection...")
                     client, addr = self.server_socket.accept()
                     print(f"[Server] Client connected from: {addr}")
+                    # Send initial connection acknowledgment
                     client.sendall(b'CONNECTED\n')
                     print("[Server] Sent connection acknowledgment")
                     self.handle_client(client)
@@ -160,6 +143,7 @@ class MouseSyncApp:
             nonlocal last_position
             if self.is_running:
                 try:
+                    # Check if mouse is at screen edges
                     if x <= 0:
                         print(f"[Server] Mouse at LEFT edge: X={x}")
                     elif x >= self.screen_width - 1:
@@ -169,6 +153,7 @@ class MouseSyncApp:
                     elif y >= self.screen_height - 1:
                         print(f"[Server] Mouse at BOTTOM edge: Y={y}")
                     
+                    # Only send if position has changed
                     if last_position != (x, y):
                         data = json.dumps({"x": x, "y": y}) + '\n'
                         client_socket.sendall(data.encode())
@@ -194,10 +179,12 @@ class MouseSyncApp:
             self.client_socket.connect((self.server_ip.get(), self.port))
             print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
             
+            # Wait for server acknowledgment
             data = self.client_socket.recv(1024)
             if data == b'CONNECTED\n':
                 print("[Client] Received connection acknowledgment from server")
             else:
+                print("[Client] Did not receive proper connection acknowledgment")
                 raise Exception("Connection failed - no server acknowledgment")
             
             def client_thread():
@@ -206,16 +193,23 @@ class MouseSyncApp:
                 last_position = None
                 while self.is_running:
                     try:
+                        # Receive data in chunks
                         data = self.client_socket.recv(1024).decode()
                         if not data:
                             print("[Client] Server disconnected")
                             break
+                            
+                        # Add received data to buffer
                         buffer += data
+                        
+                        # Process complete JSON messages
                         while '\n' in buffer:
                             message, buffer = buffer.split('\n', 1)
                             try:
                                 mouse_data = json.loads(message)
                                 x, y = mouse_data["x"], mouse_data["y"]
+                                
+                                # Check if mouse is at screen edges
                                 if x <= 0:
                                     print(f"[Client] Mouse at LEFT edge: X={x}")
                                 elif x >= self.screen_width - 1:
@@ -224,6 +218,8 @@ class MouseSyncApp:
                                     print(f"[Client] Mouse at TOP edge: Y={y}")
                                 elif y >= self.screen_height - 1:
                                     print(f"[Client] Mouse at BOTTOM edge: Y={y}")
+                                
+                                # Only move if position has changed
                                 if last_position != (x, y):
                                     print(f"[Client] Moving mouse to: X={x}, Y={y}")
                                     self.mouse_controller.position = (x, y)
@@ -232,6 +228,7 @@ class MouseSyncApp:
                                 print(f"[Client] Error decoding mouse data: {e}")
                             except Exception as e:
                                 print(f"[Client] Error moving mouse: {e}")
+                                
                     except Exception as e:
                         if self.is_running:
                             print(f"[Client] Error: {e}")
@@ -252,4 +249,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = MouseSyncApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()
+    root.mainloop() 
