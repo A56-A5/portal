@@ -60,9 +60,13 @@ def server():
     try:
         while True:
             current_pos = get_mouse_position()
-            if current_pos != last_pos:
-                # Send mouse position to client
-                data = f"{current_pos[0]},{current_pos[1]}"
+            # Calculate delta movement
+            dx = current_pos[0] - last_pos[0]
+            dy = current_pos[1] - last_pos[1]
+            
+            if dx != 0 or dy != 0:
+                # Send delta movement to client
+                data = f"{dx},{dy}"
                 client_socket.send(data.encode())
                 last_pos = current_pos
             time.sleep(0.01)  # Small delay to prevent high CPU usage
@@ -73,7 +77,7 @@ def server():
         server_socket.close()
 
 def client():
-    """Client that receives mouse positions and updates local mouse"""
+    """Client that receives mouse movements and updates local mouse"""
     if platform.system() != "Linux":
         print("Client must run on Linux")
         sys.exit(1)
@@ -84,11 +88,19 @@ def client():
         client_socket.connect((SERVER_IP, PORT))
         print(f"Connected to server at {SERVER_IP}:{PORT}")
         
+        current_pos = get_mouse_position()
+        
         while True:
-            data = client_socket.recv(1024).decode()
+            data = client_socket.recv(1024).decode().strip()
             if data:
-                x, y = map(int, data.split(','))
-                set_mouse_position(x, y)
+                try:
+                    dx, dy = map(int, data.split(','))
+                    # Update current position with delta
+                    current_pos = (current_pos[0] + dx, current_pos[1] + dy)
+                    set_mouse_position(current_pos[0], current_pos[1])
+                except ValueError as e:
+                    print(f"Error parsing data: {e}")
+                    continue
     except Exception as e:
         print(f"Client error: {e}")
     finally:
