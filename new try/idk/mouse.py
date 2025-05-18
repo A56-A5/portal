@@ -13,14 +13,55 @@ PORT = 5000
 if platform.system() == "Windows":
     import win32api
     import win32con
+    import ctypes
+    from ctypes import wintypes
     
-    def get_mouse_position():
-        """Get current mouse position on Windows"""
-        return win32api.GetCursorPos()
-    
-    def set_mouse_position(x, y):
-        """Set mouse position on Windows"""
-        win32api.SetCursorPos((x, y))
+    # Windows raw input structures
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [
+            ("dx", wintypes.LONG),
+            ("dy", wintypes.LONG),
+            ("mouseData", wintypes.DWORD),
+            ("dwFlags", wintypes.DWORD),
+            ("time", wintypes.DWORD),
+            ("dwExtraInfo", ctypes.POINTER(wintypes.ULONG))
+        ]
+
+    class INPUT(ctypes.Structure):
+        class _INPUT(ctypes.Union):
+            _fields_ = [
+                ("mi", MOUSEINPUT),
+                ("padding", ctypes.c_byte * 8)
+            ]
+        _anonymous_ = ("_input",)
+        _fields_ = [
+            ("type", wintypes.DWORD),
+            ("_input", _INPUT)
+        ]
+
+    def get_raw_mouse_movement():
+        """Get raw mouse movement without affecting cursor position"""
+        try:
+            # Get raw input data
+            raw_input = INPUT()
+            raw_input.type = win32con.INPUT_MOUSE
+            raw_input.mi = MOUSEINPUT()
+            
+            # Get the raw input data
+            ctypes.windll.user32.GetRawInputData(
+                ctypes.byref(raw_input),
+                win32con.RID_INPUT,
+                ctypes.byref(raw_input),
+                ctypes.sizeof(raw_input),
+                ctypes.sizeof(INPUT)
+            )
+            
+            return raw_input.mi.dx, raw_input.mi.dy
+        except Exception:
+            # Fallback to GetAsyncKeyState if raw input fails
+            dx = win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000
+            dy = win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000
+            return dx, dy
 
 elif platform.system() == "Linux":
     try:
@@ -55,20 +96,15 @@ def server():
     client_socket, addr = server_socket.accept()
     print(f"Connected to client: {addr}")
     
-    last_pos = get_mouse_position()
-    
     try:
         while True:
-            current_pos = get_mouse_position()
-            # Calculate delta movement
-            dx = current_pos[0] - last_pos[0]
-            dy = current_pos[1] - last_pos[1]
+            # Get raw mouse movement without affecting cursor
+            dx, dy = get_raw_mouse_movement()
             
             if dx != 0 or dy != 0:
                 # Send delta movement to client with newline to separate messages
                 data = f"{dx},{dy}\n"
                 client_socket.send(data.encode())
-                last_pos = current_pos
             time.sleep(0.01)  # Small delay to prevent high CPU usage
     except Exception as e:
         print(f"Server error: {e}")
