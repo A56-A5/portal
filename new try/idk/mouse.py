@@ -13,9 +13,13 @@ class MouseSyncApp:
         self.root.title("Mouse Sync")
         self.root.geometry("300x200")
 
+        # Get screen dimensions
         self.screen_width = self.root.winfo_screenwidth()
         self.screen_height = self.root.winfo_screenheight()
+        print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
+        print(f"[System] Screen edges: Left=0, Right={self.screen_width}, Top=0, Bottom={self.screen_height}")
 
+        # Variables
         self.is_server = tk.BooleanVar(value=False)
         self.server_ip = tk.StringVar(value="127.0.0.1")
         self.port = 50007
@@ -32,9 +36,9 @@ class MouseSyncApp:
         mode_frame.pack(fill="x", padx=10, pady=5)
 
         ttk.Radiobutton(mode_frame, text="Server", variable=self.is_server, 
-                        value=True, command=self.update_mode).pack(side="left", padx=5)
+                       value=True, command=self.update_mode).pack(side="left", padx=5)
         ttk.Radiobutton(mode_frame, text="Client", variable=self.is_server, 
-                        value=False, command=self.update_mode).pack(side="left", padx=5)
+                       value=False, command=self.update_mode).pack(side="left", padx=5)
 
         ip_frame = ttk.LabelFrame(self.root, text="Server IP", padding=10)
         ip_frame.pack(fill="x", padx=10, pady=5)
@@ -60,8 +64,10 @@ class MouseSyncApp:
     def update_mode(self):
         if self.is_server.get():
             self.ip_entry.config(state="disabled")
+            print("[Mode] Switched to Server mode")
         else:
             self.ip_entry.config(state="normal")
+            print("[Mode] Switched to Client mode")
 
     def toggle_connection(self):
         if not self.is_running:
@@ -72,95 +78,157 @@ class MouseSyncApp:
     def start_connection(self):
         try:
             if self.is_server.get():
+                print("[Server] Starting server...")
                 self.start_server()
             else:
+                print(f"[Client] Connecting to server at {self.server_ip.get()}...")
                 self.start_client()
             self.is_running = True
             self.start_button.config(text="Stop")
             self.status_label.config(text="Status: Connected")
         except Exception as e:
+            print(f"[Error] Connection failed: {str(e)}")
             messagebox.showerror("Error", f"Failed to start: {str(e)}")
 
     def stop_connection(self):
+        print("[System] Stopping connection...")
         self.is_running = False
         if self.server_socket:
             self.server_socket.close()
+            print("[Server] Server socket closed")
         if self.client_socket:
             self.client_socket.close()
+            print("[Client] Client socket closed")
+        self.start_button.config(text="Start")
+        self.status_label.config(text="Status: Disconnected")
+        self.destroy_overlay()
+        print("[System] Connection stopped")
+
+    def start_server(self):
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.server_socket.bind(('0.0.0.0', self.port))
+            self.server_socket.listen(1)
+            print(f"[Server] Listening on port {self.port}")
+
+            def server_thread():
+                try:
+                    print("[Server] Waiting for client connection...")
+                    client, addr = self.server_socket.accept()
+                    print(f"[Server] Client connected from: {addr}")
+                    client.sendall(b'CONNECTED\n')
+                    print("[Server] Sent connection acknowledgment")
+                    self.create_overlay()
+                    self.handle_client(client)
+                except Exception as e:
+                    if self.is_running:
+                        print(f"[Server] Error: {e}")
+                    self.stop_connection()
+
+            threading.Thread(target=server_thread, daemon=True).start()
+
+        except Exception as e:
+            print(f"[Server] Failed to start: {e}")
+            raise
+
+    def create_overlay(self):
+        if self.overlay:
+            return
+        self.overlay = tk.Toplevel(self.root)
+        self.overlay.attributes("-fullscreen", True)
+        self.overlay.attributes("-topmost", True)
+        self.overlay.config(bg="black")
+        self.overlay.attributes("-alpha", 0.01)
+        self.overlay.config(cursor="none")
+        self.overlay.focus_force()
+        print("[Overlay] Fullscreen overlay created")
+
+    def destroy_overlay(self):
         if self.overlay:
             self.overlay.destroy()
             self.overlay = None
-        self.start_button.config(text="Start")
-        self.status_label.config(text="Status: Disconnected")
-
-    def start_server(self):
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(('0.0.0.0', self.port))
-        self.server_socket.listen(1)
-
-        def server_thread():
-            client, addr = self.server_socket.accept()
-            client.sendall(b'CONNECTED\n')
-            self.create_invisible_overlay()
-            self.handle_client(client)
-
-        threading.Thread(target=server_thread, daemon=True).start()
-
-    def create_invisible_overlay(self):
-        self.overlay = tk.Toplevel(self.root)
-        self.overlay.overrideredirect(True)
-        self.overlay.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
-        self.overlay.attributes("-alpha", 0.01)
-        self.overlay.attributes("-topmost", True)
-        self.overlay.configure(cursor="none")
-        self.overlay.update_idletasks()
-        self.overlay.lift()
-        self.overlay.focus_force()
+            print("[Overlay] Overlay destroyed")
 
     def handle_client(self, client_socket):
+        print("[Server] Starting mouse tracking...")
         last_position = None
+
         def on_mouse_move(x, y):
             nonlocal last_position
-            if self.is_running and last_position != (x, y):
-                data = json.dumps({"x": x, "y": y}) + '\n'
+            if self.is_running:
                 try:
-                    client_socket.sendall(data.encode())
-                    last_position = (x, y)
-                except:
+                    if last_position != (x, y):
+                        data = json.dumps({"x": x, "y": y}) + '\n'
+                        client_socket.sendall(data.encode())
+                        last_position = (x, y)
+                except Exception as e:
+                    print(f"[Server] Error sending mouse data: {e}")
                     self.stop_connection()
 
         with mouse.Listener(on_move=on_mouse_move) as listener:
-            while self.is_running:
-                time.sleep(0.01)
+            print("[Server] Mouse listener started")
+            try:
+                while self.is_running:
+                    time.sleep(0.01)
+            except Exception as e:
+                print(f"[Server] Mouse tracking error: {e}")
+                self.stop_connection()
 
     def start_client(self):
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((self.server_ip.get(), self.port))
-        ack = self.client_socket.recv(1024)
-        if ack != b'CONNECTED\n':
-            raise Exception("No ack from server")
+        try:
+            print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
+            self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.client_socket.connect((self.server_ip.get(), self.port))
+            print(f"[Client] Connected to server at {self.server_ip.get()}:{self.port}")
 
-        def client_thread():
-            buffer = ""
-            while self.is_running:
-                try:
-                    data = self.client_socket.recv(1024).decode()
-                    if not data:
+            data = self.client_socket.recv(1024)
+            if data == b'CONNECTED\n':
+                print("[Client] Received connection acknowledgment from server")
+            else:
+                raise Exception("Connection failed - no server acknowledgment")
+
+            def client_thread():
+                print("[Client] Starting mouse tracking...")
+                buffer = ""
+                last_position = None
+                while self.is_running:
+                    try:
+                        data = self.client_socket.recv(1024).decode()
+                        if not data:
+                            print("[Client] Server disconnected")
+                            break
+                        buffer += data
+                        while '\n' in buffer:
+                            message, buffer = buffer.split('\n', 1)
+                            try:
+                                mouse_data = json.loads(message)
+                                x, y = mouse_data["x"], mouse_data["y"]
+                                if last_position != (x, y):
+                                    self.mouse_controller.position = (x, y)
+                                    last_position = (x, y)
+                            except json.JSONDecodeError as e:
+                                print(f"[Client] Error decoding mouse data: {e}")
+                            except Exception as e:
+                                print(f"[Client] Error moving mouse: {e}")
+                    except Exception as e:
+                        if self.is_running:
+                            print(f"[Client] Error: {e}")
                         break
-                    buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        payload = json.loads(line)
-                        x, y = payload["x"], payload["y"]
-                        self.mouse_controller.position = (x, y)
-                except:
-                    self.stop_connection()
-                    break
 
-        threading.Thread(target=client_thread, daemon=True).start()
+            threading.Thread(target=client_thread, daemon=True).start()
+
+        except Exception as e:
+            print(f"[Client] Connection error: {e}")
+            raise
+
+    def on_closing(self):
+        print("[System] Application closing...")
+        self.stop_connection()
+        self.root.destroy()
 
 if __name__ == "__main__":
     root = tk.Tk()
     app = MouseSyncApp(root)
+    root.protocol("WM_DELETE_WINDOW", app.on_closing)
     root.mainloop()
