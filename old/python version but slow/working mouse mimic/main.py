@@ -12,12 +12,9 @@ class MouseSyncApp:
         self.root.title("Mouse Sync")
         self.root.geometry("300x200")
         
-        # Get screen dimensions using temporary root (more reliable)
-        temp_root = tk.Tk()
-        temp_root.withdraw()
-        self.screen_width = temp_root.winfo_screenwidth()
-        self.screen_height = temp_root.winfo_screenheight()
-        temp_root.destroy()
+        # Get screen dimensions
+        self.screen_width = self.root.winfo_screenwidth()
+        self.screen_height = self.root.winfo_screenheight()
         print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
         print(f"[System] Screen edges: Left=0, Right={self.screen_width}, Top=0, Bottom={self.screen_height}")
         
@@ -29,7 +26,6 @@ class MouseSyncApp:
         self.server_socket = None
         self.client_socket = None
         self.mouse_controller = mouse.Controller()
-        self.overlay = None
         
         self.setup_gui()
         
@@ -101,95 +97,15 @@ class MouseSyncApp:
     def stop_connection(self):
         print("[System] Stopping connection...")
         self.is_running = False
-        
-        # Close overlay if open
-        if self.overlay:
-            try:
-                self.overlay.destroy()
-            except Exception:
-                pass
-            self.overlay = None
-
         if self.server_socket:
-            try:
-                self.server_socket.close()
-            except Exception:
-                pass
-            self.server_socket = None
+            self.server_socket.close()
             print("[Server] Server socket closed")
         if self.client_socket:
-            try:
-                self.client_socket.close()
-            except Exception:
-                pass
-            self.client_socket = None
+            self.client_socket.close()
             print("[Client] Client socket closed")
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
-        
-    def create_overlay(self):
-        print("[Overlay] Creating full-screen transparent overlay")
-
-        # Use a new root window to get accurate screen size
-        screen_root = tk.Tk()
-        screen_root.withdraw()
-        screen_width = screen_root.winfo_screenwidth()
-        screen_height = screen_root.winfo_screenheight()
-        screen_root.destroy()
-        print(f"[Overlay] Detected screen size: {screen_width}x{screen_height}")
-
-        self.overlay = tk.Toplevel()
-        self.overlay.overrideredirect(True)
-        self.overlay.geometry(f"{screen_width}x{screen_height}+0+0")
-        self.overlay.configure(bg='black')
-
-        # Make almost fully transparent but allow mouse events to go through
-        self.overlay.attributes("-alpha", 0.01)
-        self.overlay.attributes("-topmost", True)
-
-        # Hide cursor on overlay
-        self.overlay.config(cursor="none")
-
-        # Bring overlay on top
-        self.overlay.lift()
-        self.overlay.update_idletasks()
-        self.overlay.focus_force()
-        print("[Overlay] Overlay is now active and covering full screen")
-        
-    def handle_client(self, client_socket):
-        print("[Server] Starting mouse tracking...")
-        self.create_overlay()
-
-        def track_mouse_position():
-            last_position = None
-            controller = mouse.Controller()
-            try:
-                while self.is_running:
-                    x, y = controller.position
-
-                    # Edge logging (optional)
-                    if x <= 0:
-                        print(f"[Server] Mouse at LEFT edge: X={x}")
-                    elif x >= self.screen_width - 1:
-                        print(f"[Server] Mouse at RIGHT edge: X={x}")
-                    if y <= 0:
-                        print(f"[Server] Mouse at TOP edge: Y={y}")
-                    elif y >= self.screen_height - 1:
-                        print(f"[Server] Mouse at BOTTOM edge: Y={y}")
-
-                    # Only send if position changed
-                    if last_position != (x, y):
-                        data = json.dumps({"x": x, "y": y}) + '\n'
-                        client_socket.sendall(data.encode())
-                        last_position = (x, y)
-
-                    time.sleep(0.01)
-            except Exception as e:
-                print(f"[Server] Error sending mouse data: {e}")
-                self.stop_connection()
-
-        threading.Thread(target=track_mouse_position, daemon=True).start()
         
     def start_server(self):
         try:
@@ -219,6 +135,43 @@ class MouseSyncApp:
             print(f"[Server] Failed to start: {e}")
             raise
             
+    def handle_client(self, client_socket):
+        print("[Server] Starting mouse tracking...")
+        last_position = None
+        
+        def on_mouse_move(x, y):
+            nonlocal last_position
+            if self.is_running:
+                try:
+                    # Check if mouse is at screen edges
+                    if x <= 0:
+                        print(f"[Server] Mouse at LEFT edge: X={x}")
+                    elif x >= self.screen_width - 1:
+                        print(f"[Server] Mouse at RIGHT edge: X={x}")
+                    if y <= 0:
+                        print(f"[Server] Mouse at TOP edge: Y={y}")
+                    elif y >= self.screen_height - 1:
+                        print(f"[Server] Mouse at BOTTOM edge: Y={y}")
+                    
+                    # Only send if position has changed
+                    if last_position != (x, y):
+                        data = json.dumps({"x": x, "y": y}) + '\n'
+                        client_socket.sendall(data.encode())
+                        print(f"[Server] Mouse position: X={x}, Y={y}")
+                        last_position = (x, y)
+                except Exception as e:
+                    print(f"[Server] Error sending mouse data: {e}")
+                    self.stop_connection()
+                    
+        with mouse.Listener(on_move=on_mouse_move) as listener:
+            print("[Server] Mouse listener started")
+            try:
+                while self.is_running:
+                    time.sleep(0.01)
+            except Exception as e:
+                print(f"[Server] Mouse tracking error: {e}")
+                self.stop_connection()
+        
     def start_client(self):
         try:
             print(f"[Client] Attempting to connect to {self.server_ip.get()}:{self.port}")
@@ -256,7 +209,7 @@ class MouseSyncApp:
                                 mouse_data = json.loads(message)
                                 x, y = mouse_data["x"], mouse_data["y"]
                                 
-                                # Edge logging (optional)
+                                # Check if mouse is at screen edges
                                 if x <= 0:
                                     print(f"[Client] Mouse at LEFT edge: X={x}")
                                 elif x >= self.screen_width - 1:
@@ -266,7 +219,7 @@ class MouseSyncApp:
                                 elif y >= self.screen_height - 1:
                                     print(f"[Client] Mouse at BOTTOM edge: Y={y}")
                                 
-                                # Only move if position changed
+                                # Only move if position has changed
                                 if last_position != (x, y):
                                     print(f"[Client] Moving mouse to: X={x}, Y={y}")
                                     self.mouse_controller.position = (x, y)
@@ -286,7 +239,7 @@ class MouseSyncApp:
         except Exception as e:
             print(f"[Client] Connection error: {e}")
             raise
-            w
+            
     def on_closing(self):
         print("[System] Application closing...")
         self.stop_connection()
@@ -296,4 +249,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = MouseSyncApp(root)
     root.protocol("WM_DELETE_WINDOW", app.on_closing)
-    root.mainloop()
+    root.mainloop() 
