@@ -4,7 +4,7 @@ import socket
 import threading
 import json
 from pynput import mouse
-from pynput.mouse import Controller
+import sys
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -22,7 +22,7 @@ class MouseSyncApp:
         self.is_running = False
         self.server_socket = None
         self.client_socket = None
-        self.mouse_controller = Controller()
+        self.mouse_controller = mouse.Controller()
         self.overlay = None
 
         self.setup_gui()
@@ -115,8 +115,15 @@ class MouseSyncApp:
         self.overlay.overrideredirect(True)
         self.overlay.attributes("-topmost", True)
         self.overlay.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
-        self.overlay.attributes("-alpha", 0.01)
-        self.overlay.configure(bg="black")
+
+        if sys.platform.startswith('linux'):
+            transparent_color = "magenta"
+            self.overlay.config(bg=transparent_color)
+            self.overlay.wm_attributes("-transparentcolor", transparent_color)
+        else:
+            self.overlay.attributes("-alpha", 0.01)
+            self.overlay.configure(bg="black")
+
         self.overlay.config(cursor="none")
         self.overlay.lift()
         self.overlay.focus_force()
@@ -124,22 +131,29 @@ class MouseSyncApp:
         print("[Overlay] Overlay is now active and covering full screen")
 
     def handle_client(self, client_socket):
-        print("[Server] Starting absolute normalized mouse position tracking...")
+        print("[Server] Starting raw mouse delta tracking...")
         self.root.after(0, self.create_overlay)
+
+        last_position = [None]
 
         def on_move(x, y):
             if not self.is_running:
                 return False
-            try:
-                # Normalize x and y by server screen size (values between 0 and 1)
-                normalized_x = x / self.screen_width
-                normalized_y = y / self.screen_height
-                data = json.dumps({"x": normalized_x, "y": normalized_y}) + '\n'
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Send error: {e}")
-                self.stop_connection()
-                return False
+            if last_position[0] is None:
+                last_position[0] = (x, y)
+                return
+            last_x, last_y = last_position[0]
+            dx = x - last_x
+            dy = y - last_y
+            last_position[0] = (x, y)
+            if dx or dy:
+                try:
+                    data = json.dumps({"dx": dx, "dy": dy}) + '\n'
+                    client_socket.sendall(data.encode())
+                except Exception as e:
+                    print(f"[Server] Send error: {e}")
+                    self.stop_connection()
+                    return False
 
         def listener_thread():
             print("[Server] Mouse listener thread started")
@@ -178,13 +192,8 @@ class MouseSyncApp:
         if data != b'CONNECTED\n':
             raise Exception("Failed handshake with server")
 
-        # Get client screen size here:
-        client_screen_width = self.root.winfo_screenwidth()
-        client_screen_height = self.root.winfo_screenheight()
-        print(f"[Client] Screen dimensions: {client_screen_width}x{client_screen_height}")
-
         def client_thread():
-            print("[Client] Receiving mouse positions...")
+            print("[Client] Receiving mouse movements...")
             buffer = ""
             while self.is_running:
                 try:
@@ -196,14 +205,10 @@ class MouseSyncApp:
                     while '\n' in buffer:
                         msg, buffer = buffer.split('\n', 1)
                         try:
-                            pos = json.loads(msg)
-                            # Reconstruct absolute client position:
-                            abs_x = int(pos['x'] * client_screen_width)
-                            abs_y = int(pos['y'] * client_screen_height)
-                            # Move mouse to absolute position
-                            self.mouse_controller.position = (abs_x, abs_y)
+                            delta = json.loads(msg)
+                            self.mouse_controller.move(delta['dx'], delta['dy'])
                         except Exception as e:
-                            print(f"[Client] Error parsing position: {e}")
+                            print(f"[Client] Error parsing delta: {e}")
                 except Exception as e:
                     if self.is_running:
                         print(f"[Client] Error: {e}")
