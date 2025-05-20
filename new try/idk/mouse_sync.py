@@ -2,13 +2,14 @@ import sys
 import socket
 import threading
 import json
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QVBoxLayout, QLabel, QPushButton,
+    QRadioButton, QLineEdit, QGroupBox, QHBoxLayout, QMessageBox
+)
+from PyQt5.QtCore import Qt
 from pynput import mouse
 from pynput.mouse import Controller
-from PyQt5.QtWidgets import (
-    QApplication, QWidget, QLabel, QPushButton, QVBoxLayout,
-    QHBoxLayout, QLineEdit, QRadioButton, QGroupBox, QMessageBox
-)
-from PyQt5.QtCore import Qt, QTimer
+
 
 class MouseSyncApp(QWidget):
     def __init__(self):
@@ -16,8 +17,9 @@ class MouseSyncApp(QWidget):
         self.setWindowTitle("Mouse Sync")
         self.setGeometry(100, 100, 300, 400)
 
-        self.screen_width = QApplication.primaryScreen().size().width()
-        self.screen_height = QApplication.primaryScreen().size().height()
+        screen = QApplication.primaryScreen().geometry()
+        self.screen_width = screen.width()
+        self.screen_height = screen.height()
         print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
 
         self.is_server = True
@@ -27,35 +29,42 @@ class MouseSyncApp(QWidget):
         self.server_socket = None
         self.client_socket = None
         self.mouse_controller = Controller()
-        self.overlay = None
 
-        self.setup_ui()
+        self.init_ui()
 
-    def setup_ui(self):
+    def init_ui(self):
         layout = QVBoxLayout()
 
+        # Mode
         mode_group = QGroupBox("Mode")
         mode_layout = QHBoxLayout()
         self.server_radio = QRadioButton("Server")
         self.client_radio = QRadioButton("Client")
         self.server_radio.setChecked(True)
         self.server_radio.toggled.connect(self.update_mode)
-        self.client_radio.toggled.connect(self.update_mode)
         mode_layout.addWidget(self.server_radio)
         mode_layout.addWidget(self.client_radio)
         mode_group.setLayout(mode_layout)
         layout.addWidget(mode_group)
 
+        # Server IP
+        ip_group = QGroupBox("Server IP")
+        ip_layout = QVBoxLayout()
         self.ip_input = QLineEdit(self.server_ip)
-        layout.addWidget(QLabel("Server IP"))
-        layout.addWidget(self.ip_input)
+        ip_layout.addWidget(self.ip_input)
+        ip_group.setLayout(ip_layout)
+        layout.addWidget(ip_group)
 
-        layout.addWidget(QLabel(f"Screen: {self.screen_width}x{self.screen_height}"))
+        # Screen info
+        screen_info = QLabel(f"Screen: {self.screen_width}x{self.screen_height}")
+        layout.addWidget(screen_info)
 
+        # Start/Stop button
         self.start_button = QPushButton("Start")
         self.start_button.clicked.connect(self.toggle_connection)
         layout.addWidget(self.start_button)
 
+        # Status
         self.status_label = QLabel("Status: Disconnected")
         layout.addWidget(self.status_label)
 
@@ -64,7 +73,7 @@ class MouseSyncApp(QWidget):
 
     def update_mode(self):
         self.is_server = self.server_radio.isChecked()
-        self.ip_input.setEnabled(not self.is_server)
+        self.ip_input.setDisabled(self.is_server)
         print(f"[Mode] Switched to {'Server' if self.is_server else 'Client'} mode")
 
     def toggle_connection(self):
@@ -78,6 +87,7 @@ class MouseSyncApp(QWidget):
             if self.is_server:
                 self.start_server()
             else:
+                self.server_ip = self.ip_input.text()
                 self.start_client()
             self.is_running = True
             self.start_button.setText("Stop")
@@ -90,42 +100,34 @@ class MouseSyncApp(QWidget):
         print("[System] Stopping connection...")
         self.is_running = False
 
-        if self.overlay:
-            self.overlay.close()
-            self.overlay = None
-
         if self.server_socket:
-            self.server_socket.close()
+            try:
+                self.server_socket.close()
+            except:
+                pass
             self.server_socket = None
 
         if self.client_socket:
-            self.client_socket.close()
+            try:
+                self.client_socket.close()
+            except:
+                pass
             self.client_socket = None
 
         self.start_button.setText("Start")
         self.status_label.setText("Status: Disconnected")
         print("[System] Connection stopped")
 
-    def create_overlay(self):
-        print("[Overlay] Creating full-screen transparent overlay")
-        self.overlay = QWidget()
-        self.overlay.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-        self.overlay.setAttribute(Qt.WA_TranslucentBackground)
-        self.overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-        self.overlay.setCursor(Qt.BlankCursor)
-        self.overlay.show()
-
     def handle_client(self, client_socket):
-        print("[Server] Starting absolute normalized mouse position tracking...")
-        QTimer.singleShot(0, self.create_overlay)
+        print("[Server] Tracking mouse and sending normalized positions...")
 
         def on_move(x, y):
             if not self.is_running:
                 return False
             try:
-                normalized_x = x / self.screen_width
-                normalized_y = y / self.screen_height
-                data = json.dumps({"x": normalized_x, "y": normalized_y}) + '\n'
+                norm_x = x / self.screen_width
+                norm_y = y / self.screen_height
+                data = json.dumps({"x": norm_x, "y": norm_y}) + "\n"
                 client_socket.sendall(data.encode())
             except Exception as e:
                 print(f"[Server] Send error: {e}")
@@ -151,7 +153,7 @@ class MouseSyncApp(QWidget):
                 print("[Server] Waiting for client...")
                 client, addr = self.server_socket.accept()
                 print(f"[Server] Client connected: {addr}")
-                client.sendall(b'CONNECTED\n')
+                client.sendall(b"CONNECTED\n")
                 self.handle_client(client)
             except Exception as e:
                 if self.is_running:
@@ -162,15 +164,16 @@ class MouseSyncApp(QWidget):
 
     def start_client(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((self.ip_input.text(), self.port))
-        print(f"[Client] Connected to server {self.ip_input.text()}:{self.port}")
+        self.client_socket.connect((self.server_ip, self.port))
+        print(f"[Client] Connected to server {self.server_ip}:{self.port}")
 
         data = self.client_socket.recv(1024)
-        if data != b'CONNECTED\n':
+        if data != b"CONNECTED\n":
             raise Exception("Failed handshake with server")
 
-        client_screen_width = QApplication.primaryScreen().size().width()
-        client_screen_height = QApplication.primaryScreen().size().height()
+        screen = QApplication.primaryScreen().geometry()
+        client_screen_width = screen.width()
+        client_screen_height = screen.height()
         print(f"[Client] Screen dimensions: {client_screen_width}x{client_screen_height}")
 
         def client_thread():
@@ -184,14 +187,20 @@ class MouseSyncApp(QWidget):
                         break
                     buffer += data
                     while '\n' in buffer:
-                        msg, buffer = buffer.split('\n', 1)
+                        line, buffer = buffer.split('\n', 1)
+                        line = line.strip()
+                        if not line:
+                            continue
                         try:
-                            pos = json.loads(msg)
-                            abs_x = int(pos['x'] * client_screen_width)
-                            abs_y = int(pos['y'] * client_screen_height)
-                            self.mouse_controller.position = (abs_x, abs_y)
-                        except Exception as e:
-                            print(f"[Client] Error parsing position: {e}")
+                            pos = json.loads(line)
+                            if 'x' in pos and 'y' in pos:
+                                abs_x = int(pos['x'] * client_screen_width)
+                                abs_y = int(pos['y'] * client_screen_height)
+                                self.mouse_controller.position = (abs_x, abs_y)
+                            else:
+                                print(f"[Client] Missing keys: {pos}")
+                        except json.JSONDecodeError as e:
+                            print(f"[Client] JSON decode error: {e}, data: {line}")
                 except Exception as e:
                     if self.is_running:
                         print(f"[Client] Error: {e}")
@@ -202,6 +211,7 @@ class MouseSyncApp(QWidget):
     def closeEvent(self, event):
         self.stop_connection()
         event.accept()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
