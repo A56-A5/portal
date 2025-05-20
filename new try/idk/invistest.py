@@ -1,35 +1,16 @@
-# transparent_overlay.py
-import sys
-from PyQt5 import QtWidgets, QtCore, QtGui
+import tkinter as tk
 
-class TransparentOverlay(QtWidgets.QWidget):
-    def __init__(self):
-        super().__init__()
+root = tk.Tk()
 
-        # Frameless, always-on-top, and bypass window manager
-        self.setWindowFlags(
-            QtCore.Qt.WindowStaysOnTopHint |
-            QtCore.Qt.FramelessWindowHint |
-            QtCore.Qt.X11BypassWindowManagerHint
-        )
+# Make window full-screen
+root.attributes('-fullscreen', True)
 
-        # Fully transparent background
-        self.setAttribute(QtCore.Qt.WA_TranslucentBackground)
-        self.setAttribute(QtCore.Qt.WA_NoSystemBackground, True)
+# Hide the mouse cursor inside this window
+root.config(cursor='none')
+def exit_fullscreen(event=None):
+    root.attributes('-fullscreen', False)
+    root.config(cursor='arrow')  # Show cursor again
 
-        # Hide mouse cursor
-        self.setCursor(QtCore.Qt.BlankCursor)
+root.bind('<Escape>', exit_fullscreen)
 
-        # Fullscreen geometry
-        screen_geometry = QtWidgets.QApplication.desktop().screenGeometry()
-        self.setGeometry(screen_geometry)
-
-    def paintEvent(self, event):
-        # No painting = fully transparent. You can draw here if needed.
-        pass
-
-if __name__ == "__main__":
-    app = QtWidgets.QApplication(sys.argv)
-    overlay = TransparentOverlay()
-    overlay.showFullScreen()
-    sys.exit(app.exec_())
+root.mainloop()
