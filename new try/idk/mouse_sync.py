@@ -125,14 +125,22 @@ class MouseSyncApp(QWidget):
     def create_overlay(self):
         print("[Overlay] Creating full-screen transparent overlay")
         self.overlay = QWidget()
-        self.overlay.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+
+        # Window flags to create a frameless, always on top, tool window that blocks input
+        self.overlay.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+            # Qt.WindowTransparentForInput  # DON'T add this flag, it lets mouse clicks pass through, we want the opposite
+        )
+
         self.overlay.setAttribute(Qt.WA_TranslucentBackground)
-        # Cursor visible - no hiding!
-        # self.overlay.setCursor(Qt.BlankCursor)  # <-- REMOVED this line
+        self.overlay.setCursor(Qt.BlankCursor)  # Hide cursor
         self.overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-        self.overlay.setWindowOpacity(0.01)
+        self.overlay.setWindowOpacity(0.0)  # Fully transparent
         self.overlay.show()
-        print("[Overlay] Overlay is now active and covering full screen")
+        self.overlay.raise_()  # Make sure overlay is on top
+        print("[Overlay] Overlay is now active and covering full screen, mouse hidden, blocking input")
 
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
