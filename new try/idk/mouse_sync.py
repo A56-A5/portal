@@ -7,7 +7,6 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QRadioButton, QButtonGroup, QFrame
 )
 from PyQt5.QtCore import Qt, QTimer
-from PyQt5.QtGui import QCursor
 from pynput import mouse
 from pynput.mouse import Controller
 
