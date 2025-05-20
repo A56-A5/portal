@@ -7,7 +7,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QRadioButton, QButtonGroup, QFrame
 )
 from PyQt5.QtCore import Qt, QTimer
-from pynput import mouse, Button
+from pynput import mouse 
+from pynput.mouse import Button
 from pynput.mouse import Controller
 
 class MouseSyncApp(QWidget):

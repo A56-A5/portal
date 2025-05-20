@@ -3,7 +3,8 @@ from tkinter import ttk, messagebox
 import socket
 import threading
 import json
-from pynput import mouse, Button
+from pynput import mouse 
+from pynput.mouse import Button
 from pynput.mouse import Controller
 
 class MouseSyncApp:
