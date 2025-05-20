@@ -127,16 +127,10 @@ class MouseSyncApp(QWidget):
         self.overlay = QWidget()
         self.overlay.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.overlay.setAttribute(Qt.WA_TranslucentBackground)
-        self.overlay.setCursor(Qt.BlankCursor)
+        # Cursor visible - no hiding!
+        # self.overlay.setCursor(Qt.BlankCursor)  # <-- REMOVED this line
         self.overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
         self.overlay.setWindowOpacity(0.01)
-
-        # Grab mouse and keyboard input to hide cursor properly
-        self.overlay.setMouseTracking(True)
-        self.overlay.grabMouse()
-        self.overlay.grabKeyboard()
-        self.overlay.setFocus()
-
         self.overlay.show()
         print("[Overlay] Overlay is now active and covering full screen")
 
