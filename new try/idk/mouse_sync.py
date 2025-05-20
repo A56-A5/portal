@@ -10,7 +10,7 @@ class MouseSyncApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Mouse Sync")
-        self.root.geometry("300x500")
+        self.root.geometry("300x200")
 
         temp_root = tk.Tk()
         temp_root.withdraw()
