@@ -149,12 +149,21 @@ class MouseSyncApp:
             while self.is_running:
                 try:
                     cx, cy = self.screen_width // 2, self.screen_height // 2
+                    if last_position[0] is not None:
+                        last_x, last_y = last_position[0]
+                        dx = cx - last_x
+                        dy = cy - last_y
+                        if dx != 0 or dy != 0:
+                            print(f"[Server] Reset ΔX={dx}, ΔY={dy}")
+                            data = json.dumps({"dx": dx, "dy": dy}) + '\n'
+                            client_socket.sendall(data.encode())
+                    # Reset the mouse to center
                     self.mouse_controller.position = (cx, cy)
                     last_position[0] = (cx, cy)
                 except Exception as e:
                     print(f"[Server] Center reset error: {e}")
                 time.sleep(0.5)
-
+        
         threading.Thread(target=listener_thread, daemon=True).start()
         threading.Thread(target=reset_mouse_thread, daemon=True).start()
 
