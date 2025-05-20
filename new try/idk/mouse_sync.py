@@ -2,31 +2,28 @@ import sys
 import socket
 import threading
 import json
-import platform
-import tkinter as tk
-from tkinter import ttk, messagebox
+from PyQt5.QtWidgets import (
+    QApplication, QWidget, QLabel, QPushButton,
+    QVBoxLayout, QHBoxLayout, QLineEdit, QRadioButton, QButtonGroup, QFrame
+)
+from PyQt5.QtCore import Qt, QTimer
 from pynput import mouse
 from pynput.mouse import Controller
 
-# If on Linux, import PyQt5 for overlay
-if sys.platform.startswith("linux"):
-    from PyQt5.QtWidgets import (
-        QApplication, QWidget
-    )
-    from PyQt5.QtCore import Qt, QTimer
 
-class MouseSyncApp:
-    def __init__(self, root):
-        self.root = root
-        self.root.title("Mouse Sync")
-        self.root.geometry("300x400")
+class MouseSyncApp(QWidget):
+    def __init__(self):
+        super().__init__()
 
-        self.screen_width = self.root.winfo_screenwidth()
-        self.screen_height = self.root.winfo_screenheight()
+        self.setWindowTitle("Mouse Sync")
+        self.setFixedSize(300, 400)
+
+        self.screen_width = QApplication.primaryScreen().size().width()
+        self.screen_height = QApplication.primaryScreen().size().height()
         print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
 
-        self.is_server = tk.BooleanVar(value=False)
-        self.server_ip = tk.StringVar(value="127.0.0.1")
+        self.is_server = True
+        self.server_ip = "127.0.0.1"
         self.port = 50007
         self.is_running = False
         self.server_socket = None
@@ -34,46 +31,51 @@ class MouseSyncApp:
         self.mouse_controller = Controller()
         self.overlay = None
 
-        # Linux PyQt5 app instance (only if linux)
-        self.qt_app = None
-        if sys.platform.startswith("linux"):
-            self.qt_app = QApplication([])
+        self.setup_ui()
 
-        self.setup_gui()
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
 
-    def setup_gui(self):
-        mode_frame = ttk.LabelFrame(self.root, text="Mode", padding=10)
-        mode_frame.pack(fill="x", padx=10, pady=5)
+        # Mode selection
+        mode_frame = QFrame()
+        mode_layout = QHBoxLayout()
+        self.server_radio = QRadioButton("Server")
+        self.server_radio.setChecked(True)
+        self.client_radio = QRadioButton("Client")
 
-        ttk.Radiobutton(mode_frame, text="Server", variable=self.is_server,
-                        value=True, command=self.update_mode).pack(side="left", padx=5)
-        ttk.Radiobutton(mode_frame, text="Client", variable=self.is_server,
-                        value=False, command=self.update_mode).pack(side="left", padx=5)
+        mode_group = QButtonGroup()
+        mode_group.addButton(self.server_radio)
+        mode_group.addButton(self.client_radio)
+        self.server_radio.toggled.connect(self.update_mode)
 
-        ip_frame = ttk.LabelFrame(self.root, text="Server IP", padding=10)
-        ip_frame.pack(fill="x", padx=10, pady=5)
+        mode_layout.addWidget(self.server_radio)
+        mode_layout.addWidget(self.client_radio)
+        mode_frame.setLayout(mode_layout)
+        layout.addWidget(QLabel("Mode:"))
+        layout.addWidget(mode_frame)
 
-        self.ip_entry = ttk.Entry(ip_frame, textvariable=self.server_ip)
-        self.ip_entry.pack(fill="x", padx=5, pady=5)
+        # IP Entry
+        layout.addWidget(QLabel("Server IP:"))
+        self.ip_input = QLineEdit(self.server_ip)
+        self.ip_input.setEnabled(False)
+        layout.addWidget(self.ip_input)
 
-        screen_frame = ttk.LabelFrame(self.root, text="Screen Info", padding=10)
-        screen_frame.pack(fill="x", padx=10, pady=5)
+        # Screen info
+        layout.addWidget(QLabel(f"Screen: {self.screen_width}x{self.screen_height}"))
 
-        self.screen_label = ttk.Label(screen_frame,
-                                      text=f"Screen: {self.screen_width}x{self.screen_height}")
-        self.screen_label.pack(fill="x", padx=5, pady=5)
+        # Start/Stop button
+        self.start_button = QPushButton("Start")
+        self.start_button.clicked.connect(self.toggle_connection)
+        layout.addWidget(self.start_button)
 
-        self.start_button = ttk.Button(self.root, text="Start", command=self.toggle_connection)
-        self.start_button.pack(pady=10)
-
-        self.status_label = ttk.Label(self.root, text="Status: Disconnected")
-        self.status_label.pack(pady=5)
-
-        self.update_mode()
+        # Status label
+        self.status_label = QLabel("Status: Disconnected")
+        layout.addWidget(self.status_label)
 
     def update_mode(self):
-        self.ip_entry.config(state="disabled" if self.is_server.get() else "normal")
-        print(f"[Mode] Switched to {'Server' if self.is_server.get() else 'Client'} mode")
+        self.is_server = self.server_radio.isChecked()
+        self.ip_input.setEnabled(not self.is_server)
+        print(f"[Mode] Switched to {'Server' if self.is_server else 'Client'} mode")
 
     def toggle_connection(self):
         if not self.is_running:
@@ -83,38 +85,25 @@ class MouseSyncApp:
 
     def start_connection(self):
         try:
-            if self.is_server.get():
+            if self.is_server:
                 self.start_server()
             else:
                 self.start_client()
             self.is_running = True
-            self.start_button.config(text="Stop")
-            self.status_label.config(text="Status: Connected")
+            self.start_button.setText("Stop")
+            self.status_label.setText("Status: Connected")
         except Exception as e:
             print(f"[Error] Connection failed: {e}")
-            messagebox.showerror("Error", f"Failed to start: {e}")
-            self.status_label.config(text="Status: Error")
+            self.status_label.setText("Status: Error")
             self.stop_connection()
 
     def stop_connection(self):
         print("[System] Stopping connection...")
         self.is_running = False
 
-        # Destroy overlay differently depending on platform
         if self.overlay:
-            if sys.platform.startswith("linux"):
-                self.overlay.close()
-                self.overlay = None
-                # Also quit Qt app event loop if needed
-                # This doesn't exit program, just stops event processing
-                if self.qt_app:
-                    self.qt_app.processEvents()
-            else:
-                try:
-                    self.overlay.destroy()
-                except:
-                    pass
-                self.overlay = None
+            self.overlay.close()
+            self.overlay = None
 
         if self.server_socket:
             try:
@@ -130,60 +119,41 @@ class MouseSyncApp:
                 pass
             self.client_socket = None
 
-        self.start_button.config(text="Start")
-        self.status_label.config(text="Status: Disconnected")
-        print("[System] Connection stopped")
+        self.start_button.setText("Start")
+        self.status_label.setText("Status: Disconnected")
 
     def create_overlay(self):
-        if sys.platform.startswith("linux"):
-            # PyQt5 overlay on Linux
-            print("[Overlay] Creating PyQt5 full-screen transparent overlay (Linux)")
-            self.overlay = QWidget()
-            self.overlay.setWindowFlags(
-                Qt.FramelessWindowHint |
-                Qt.WindowStaysOnTopHint |
-                Qt.Tool
-            )
-            self.overlay.setAttribute(Qt.WA_TranslucentBackground)
-            self.overlay.setCursor(Qt.BlankCursor)
-            self.overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-            self.overlay.setWindowOpacity(0.0)
-            self.overlay.show()
-            self.overlay.raise_()
-            # Process events for overlay to display
-            self.qt_app.processEvents()
-            print("[Overlay] PyQt5 overlay active")
-        else:
-            # Tkinter overlay on Windows and others
-            print("[Overlay] Creating Tkinter full-screen transparent overlay")
-            self.overlay = tk.Toplevel(self.root)
-            self.overlay.overrideredirect(True)
-            self.overlay.attributes("-topmost", True)
-            self.overlay.geometry(f"{self.screen_width}x{self.screen_height}+0+0")
-            self.overlay.attributes("-alpha", 0.01)
-            self.overlay.configure(bg="black")
-            self.overlay.config(cursor="none")
-            self.overlay.lift()
-            self.overlay.focus_force()
-            self.overlay.update_idletasks()
-            print("[Overlay] Tkinter overlay active")
+        print("[Overlay] Creating full-screen transparent overlay")
+        self.overlay = QWidget()
+
+        # Window flags to create a frameless, always on top, tool window that blocks input
+        self.overlay.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+            # Qt.WindowTransparentForInput  # DON'T add this flag, it lets mouse clicks pass through, we want the opposite
+        )
+
+        self.overlay.setAttribute(Qt.WA_TranslucentBackground)
+        self.overlay.setCursor(Qt.BlankCursor)  # Hide cursor
+        self.overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
+        self.overlay.setWindowOpacity(0.0)  # Fully transparent
+        self.overlay.show()
+        self.overlay.raise_()  # Make sure overlay is on top
+        print("[Overlay] Overlay is now active and covering full screen, mouse hidden, blocking input")
 
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
-        # Schedule overlay creation in GUI thread
-        if sys.platform.startswith("linux"):
-            QTimer.singleShot(0, self.create_overlay)
-        else:
-            self.root.after(0, self.create_overlay)
+        QTimer.singleShot(0, self.create_overlay)
 
         def on_move(x, y):
             if not self.is_running:
                 return False
             try:
-                normalized_x = x / self.screen_width
-                normalized_y = y / self.screen_height
-                data = json.dumps({"x": normalized_x, "y": normalized_y}) + '\n'
-                client_socket.sendall(data.encode())
+                norm_x = x / self.screen_width
+                norm_y = y / self.screen_height
+                payload = json.dumps({"x": norm_x, "y": norm_y}) + "\n"
+                client_socket.sendall(payload.encode())
             except Exception as e:
                 print(f"[Server] Send error: {e}")
                 self.stop_connection()
@@ -202,33 +172,25 @@ class MouseSyncApp:
         self.server_socket.listen(1)
         print(f"[Server] Listening on port {self.port}")
 
-        def server_thread():
+        def accept_thread():
             try:
-                print("[Server] Waiting for client...")
                 client, addr = self.server_socket.accept()
-                print(f"[Server] Client connected: {addr}")
-                client.sendall(b'CONNECTED\n')
+                print(f"[Server] Client connected from {addr}")
+                client.sendall(b"CONNECTED\n")
                 self.handle_client(client)
             except Exception as e:
-                if self.is_running:
-                    print(f"[Server] Error: {e}")
+                print(f"[Server] Error: {e}")
                 self.stop_connection()
 
-        threading.Thread(target=server_thread, daemon=True).start()
+        threading.Thread(target=accept_thread, daemon=True).start()
 
     def start_client(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((self.server_ip.get(), self.port))
-        print(f"[Client] Connected to server {self.server_ip.get()}:{self.port}")
+        self.client_socket.connect((self.ip_input.text(), self.port))
+        print(f"[Client] Connected to server {self.ip_input.text()}:{self.port}")
 
-        data = self.client_socket.recv(1024)
-        if data != b'CONNECTED\n':
-            raise Exception("Failed handshake with server")
-
-        # Get client screen size here:
-        client_screen_width = self.root.winfo_screenwidth()
-        client_screen_height = self.root.winfo_screenheight()
-        print(f"[Client] Screen dimensions: {client_screen_width}x{client_screen_height}")
+        if self.client_socket.recv(1024) != b"CONNECTED\n":
+            raise Exception("Handshake failed")
 
         def client_thread():
             print("[Client] Receiving mouse positions...")
@@ -240,42 +202,29 @@ class MouseSyncApp:
                         print("[Client] Server closed connection")
                         break
                     buffer += data
-                    while '\n' in buffer:
-                        msg, buffer = buffer.split('\n', 1)
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
                         try:
-                            pos = json.loads(msg)
-                            abs_x = int(pos['x'] * client_screen_width)
-                            abs_y = int(pos['y'] * client_screen_height)
-                            self.mouse_controller.position = (abs_x, abs_y)
+                            coords = json.loads(line)
+                            x = int(coords["x"] * self.screen_width)
+                            y = int(coords["y"] * self.screen_height)
+                            self.mouse_controller.position = (x, y)
                         except Exception as e:
-                            print(f"[Client] Error parsing position: {e}")
+                            print(f"[Client] Parse error: {e} → data: {line}")
                 except Exception as e:
                     if self.is_running:
-                        print(f"[Client] Error: {e}")
+                        print(f"[Client] Connection error: {e}")
                     break
 
         threading.Thread(target=client_thread, daemon=True).start()
 
-    def on_closing(self):
+    def closeEvent(self, event):
         self.stop_connection()
-        self.root.destroy()
-        if self.qt_app:
-            self.qt_app.quit()
+        event.accept()
 
 
 if __name__ == "__main__":
-    if sys.platform.startswith("linux"):
-        # Linux uses Tkinter UI but PyQt5 overlay (Qt app created in class)
-        root = tk.Tk()
-        app = MouseSyncApp(root)
-        root.protocol("WM_DELETE_WINDOW", app.on_closing)
-        root.mainloop()
-        # Quit PyQt5 explicitly on exit
-        if app.qt_app:
-            app.qt_app.quit()
-    else:
-        # Windows/macOS etc, pure Tkinter version
-        root = tk.Tk()
-        app = MouseSyncApp(root)
-        root.protocol("WM_DELETE_WINDOW", app.on_closing)
-        root.mainloop()
+    app = QApplication(sys.argv)
+    window = MouseSyncApp()
+    window.show()
+    sys.exit(app.exec_())
