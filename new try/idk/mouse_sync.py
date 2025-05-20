@@ -17,8 +17,8 @@ class MouseSyncApp(QMainWindow):
         self.setWindowTitle("Mouse Sync")
         self.setGeometry(100, 100, 300, 400)
 
-        self.screen_width = QApplication.desktop().screenGeometry().width()
-        self.screen_height = QApplication.desktop().screenGeometry().height()
+        self.screen_width = QApplication.primaryScreen().size().width()
+        self.screen_height = QApplication.primaryScreen().size().height()
         print(f"[System] Screen dimensions: {self.screen_width}x{self.screen_height}")
 
         self.is_server = True
@@ -122,7 +122,7 @@ class MouseSyncApp(QMainWindow):
         print("[System] Connection stopped")
 
     def handle_client(self, client_socket):
-        print("[Server] Starting absolute normalized mouse position tracking...")
+        print("[Server] Starting mouse position tracking...")
 
         def on_move(x, y):
             if not self.is_running:
@@ -130,17 +130,23 @@ class MouseSyncApp(QMainWindow):
             try:
                 normalized_x = x / self.screen_width
                 normalized_y = y / self.screen_height
+                # Clamp between 0 and 1
+                normalized_x = max(0.0, min(1.0, normalized_x))
+                normalized_y = max(0.0, min(1.0, normalized_y))
                 data = json.dumps({"x": normalized_x, "y": normalized_y}) + '\n'
                 client_socket.sendall(data.encode())
             except Exception as e:
                 print(f"[Server] Send error: {e}")
-                self.stop_connection()
                 return False
 
         def listener_thread():
             print("[Server] Mouse listener thread started")
-            with mouse.Listener(on_move=on_move) as listener:
-                listener.join()
+            try:
+                with mouse.Listener(on_move=on_move) as listener:
+                    listener.join()
+            except Exception as e:
+                print(f"[Server] Listener error: {e}")
+                self.stop_connection()
 
         threading.Thread(target=listener_thread, daemon=True).start()
 
@@ -174,8 +180,8 @@ class MouseSyncApp(QMainWindow):
         if data != b'CONNECTED\n':
             raise Exception("Failed handshake with server")
 
-        client_screen_width = QApplication.desktop().screenGeometry().width()
-        client_screen_height = QApplication.desktop().screenGeometry().height()
+        client_screen_width = QApplication.primaryScreen().size().width()
+        client_screen_height = QApplication.primaryScreen().size().height()
         print(f"[Client] Screen dimensions: {client_screen_width}x{client_screen_height}")
 
         def client_thread():
@@ -183,23 +189,26 @@ class MouseSyncApp(QMainWindow):
             buffer = ""
             while self.is_running:
                 try:
-                    data = self.client_socket.recv(1024).decode()
-                    if not data:
-                        print("[Client] Server closed connection")
+                    chunk = self.client_socket.recv(1024).decode()
+                    if not chunk:
+                        print("[Client] Server disconnected.")
                         break
-                    buffer += data
+                    buffer += chunk
                     while '\n' in buffer:
-                        msg, buffer = buffer.split('\n', 1)
+                        line, buffer = buffer.split('\n', 1)
                         try:
-                            pos = json.loads(msg)
-                            abs_x = int(pos['x'] * client_screen_width)
-                            abs_y = int(pos['y'] * client_screen_height)
-                            self.mouse_controller.position = (abs_x, abs_y)
+                            pos = json.loads(line.strip())
+                            if 'x' in pos and 'y' in pos:
+                                abs_x = int(float(pos['x']) * client_screen_width)
+                                abs_y = int(float(pos['y']) * client_screen_height)
+                                self.mouse_controller.position = (abs_x, abs_y)
+                            else:
+                                print(f"[Client] Malformed data: {line}")
                         except Exception as e:
-                            print(f"[Client] Error parsing position: {e}")
+                            print(f"[Client] Error parsing JSON: {e} | Data: {line}")
                 except Exception as e:
                     if self.is_running:
-                        print(f"[Client] Error: {e}")
+                        print(f"[Client] Receive error: {e}")
                     break
 
         threading.Thread(target=client_thread, daemon=True).start()
