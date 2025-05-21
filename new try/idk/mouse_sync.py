@@ -3,9 +3,8 @@ from tkinter import ttk, messagebox
 import socket
 import threading
 import json
-from pynput import mouse 
-from pynput.mouse import Button
-from pynput.mouse import Controller
+from pynput import mouse
+from pynput.mouse import Button, Controller
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -25,7 +24,7 @@ class MouseSyncApp:
         self.client_socket = None
         self.mouse_controller = Controller()
         self.overlay = None
-        self.sharing_active = False  # <=== NEW
+        self.sharing_active = False  # Track if we're sharing to client
 
         self.setup_gui()
 
@@ -107,6 +106,7 @@ class MouseSyncApp:
                 pass
             self.client_socket = None
 
+        self.sharing_active = False
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
@@ -126,7 +126,7 @@ class MouseSyncApp:
         print("[Overlay] Overlay is now active and covering full screen")
 
     def handle_client(self, client_socket):
-        print("[Server] Waiting for edge to activate sharing...")
+        print("[Server] Waiting for mouse to hit right edge to activate...")
 
         def on_move(x, y):
             if not self.is_running:
@@ -136,21 +136,23 @@ class MouseSyncApp:
             at_right_edge = x >= self.screen_width - edge_threshold
             at_left_edge = x <= 0
 
+            # Activate transfer when hitting right edge
             if at_right_edge and not self.sharing_active:
-                print("[Trigger] Right edge reached. Activating client sharing.")
+                print("[Edge] Hit right edge → activating overlay & starting sharing")
                 self.sharing_active = True
-                if not self.overlay:
-                    self.root.after(0, self.create_overlay)
-                self.mouse_controller.position = (1, y)
+                self.root.after(0, self.create_overlay)
+                self.mouse_controller.position = (1, y)  # Warp to left edge of client
 
-            elif at_left_edge and self.sharing_active:
-                print("[Trigger] Left edge reached. Deactivating client sharing.")
+            # Deactivate transfer when hitting left edge
+            if at_left_edge and self.sharing_active:
+                print("[Edge] Hit left edge → stopping sharing & removing overlay")
                 self.sharing_active = False
                 if self.overlay:
                     self.overlay.destroy()
                     self.overlay = None
                 return True
 
+            # Only send position if sharing is active
             if self.sharing_active:
                 try:
                     normalized_x = x / self.screen_width
