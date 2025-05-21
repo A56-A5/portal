@@ -3,8 +3,9 @@ from tkinter import ttk, messagebox
 import socket
 import threading
 import json
-from pynput import mouse
-from pynput.mouse import Button, Controller
+from pynput import mouse 
+from pynput.mouse import Button
+from pynput.mouse import Controller
 
 class MouseSyncApp:
     def __init__(self, root):
@@ -24,7 +25,8 @@ class MouseSyncApp:
         self.client_socket = None
         self.mouse_controller = Controller()
         self.overlay = None
-        self.sharing_active = False  # Track if we're sharing to client
+        self.edge_threshold = 5  # pixels from right edge to consider as edge hit
+        self.transfer_active = False  # flag to track if we're transferring mouse control
 
         self.setup_gui()
 
@@ -84,6 +86,7 @@ class MouseSyncApp:
     def stop_connection(self):
         print("[System] Stopping connection...")
         self.is_running = False
+        self.transfer_active = False
 
         if self.overlay:
             try:
@@ -106,7 +109,6 @@ class MouseSyncApp:
                 pass
             self.client_socket = None
 
-        self.sharing_active = False
         self.start_button.config(text="Start")
         self.status_label.config(text="Status: Disconnected")
         print("[System] Connection stopped")
@@ -126,34 +128,24 @@ class MouseSyncApp:
         print("[Overlay] Overlay is now active and covering full screen")
 
     def handle_client(self, client_socket):
-        print("[Server] Waiting for mouse to hit right edge to activate...")
-
+        print("[Server] Starting mouse position tracking with edge detection...")
+        
         def on_move(x, y):
             if not self.is_running:
                 return False
-
-            edge_threshold = 2
-            at_right_edge = x >= self.screen_width - edge_threshold
-            at_left_edge = x <= 0
-
-            # Activate transfer when hitting right edge
-            if at_right_edge and not self.sharing_active:
-                print("[Edge] Hit right edge → activating overlay & starting sharing")
-                self.sharing_active = True
+                
+            # Check if mouse hits right edge (with small threshold)
+            if x >= self.screen_width - self.edge_threshold and not self.transfer_active:
+                # Teleport mouse to left edge (x=1)
+                self.mouse_controller.position = (1, y)
+                
+                # Activate overlay and start transfer
                 self.root.after(0, self.create_overlay)
-                self.mouse_controller.position = (1, y)  # Warp to left edge of client
-
-            # Deactivate transfer when hitting left edge
-            if at_left_edge and self.sharing_active:
-                print("[Edge] Hit left edge → stopping sharing & removing overlay")
-                self.sharing_active = False
-                if self.overlay:
-                    self.overlay.destroy()
-                    self.overlay = None
-                return True
-
-            # Only send position if sharing is active
-            if self.sharing_active:
+                self.transfer_active = True
+                print("[Server] Right edge detected, starting mouse transfer")
+                
+            # Only send data if transfer is active
+            if self.transfer_active:
                 try:
                     normalized_x = x / self.screen_width
                     normalized_y = y / self.screen_height
@@ -164,29 +156,33 @@ class MouseSyncApp:
                     self.stop_connection()
                     return False
 
-            return True
-
         def on_click(x, y, button, pressed):
-            if not self.is_running or not self.sharing_active:
+            if not self.is_running:
                 return False
-            try:
-                data = json.dumps({"type": "click", "button": button.name, "pressed": pressed}) + '\n'
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Click send error: {e}")
-                self.stop_connection()
-                return False
+                
+            # Only send clicks if transfer is active
+            if self.transfer_active:
+                try:
+                    data = json.dumps({"type": "click", "button": button.name, "pressed": pressed}) + '\n'
+                    client_socket.sendall(data.encode())
+                except Exception as e:
+                    print(f"[Server] Click send error: {e}")
+                    self.stop_connection()
+                    return False
 
         def on_scroll(x, y, dx, dy):
-            if not self.is_running or not self.sharing_active:
+            if not self.is_running:
                 return False
-            try:
-                data = json.dumps({"type": "scroll", "dx": dx, "dy": dy}) + '\n'
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Scroll send error: {e}")
-                self.stop_connection()
-                return False
+                
+            # Only send scrolls if transfer is active
+            if self.transfer_active:
+                try:
+                    data = json.dumps({"type": "scroll", "dx": dx, "dy": dy}) + '\n'
+                    client_socket.sendall(data.encode())
+                except Exception as e:
+                    print(f"[Server] Scroll send error: {e}")
+                    self.stop_connection()
+                    return False
 
         def listener_thread():
             with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
