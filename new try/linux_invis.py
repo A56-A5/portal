@@ -7,9 +7,9 @@ from PyQt5.QtWidgets import (
     QVBoxLayout, QHBoxLayout, QLineEdit, QRadioButton, QButtonGroup, QFrame
 )
 from PyQt5.QtCore import Qt, QTimer
-from pynput import mouse 
-from pynput.mouse import Button
+from pynput import mouse
 from pynput.mouse import Controller
+
 
 class MouseSyncApp(QWidget):
     def __init__(self):
@@ -36,6 +36,7 @@ class MouseSyncApp(QWidget):
     def setup_ui(self):
         layout = QVBoxLayout(self)
 
+        # Mode selection
         mode_frame = QFrame()
         mode_layout = QHBoxLayout()
         self.server_radio = QRadioButton("Server")
@@ -53,17 +54,21 @@ class MouseSyncApp(QWidget):
         layout.addWidget(QLabel("Mode:"))
         layout.addWidget(mode_frame)
 
+        # IP Entry
         layout.addWidget(QLabel("Server IP:"))
         self.ip_input = QLineEdit(self.server_ip)
         self.ip_input.setEnabled(False)
         layout.addWidget(self.ip_input)
 
+        # Screen info
         layout.addWidget(QLabel(f"Screen: {self.screen_width}x{self.screen_height}"))
 
+        # Start/Stop button
         self.start_button = QPushButton("Start")
         self.start_button.clicked.connect(self.toggle_connection)
         layout.addWidget(self.start_button)
 
+        # Status label
         self.status_label = QLabel("Status: Disconnected")
         layout.addWidget(self.status_label)
 
@@ -120,14 +125,22 @@ class MouseSyncApp(QWidget):
     def create_overlay(self):
         print("[Overlay] Creating full-screen transparent overlay")
         self.overlay = QWidget()
-        self.overlay.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+
+        # Window flags to create a frameless, always on top, tool window that blocks input
+        self.overlay.setWindowFlags(
+            Qt.FramelessWindowHint
+            | Qt.WindowStaysOnTopHint
+            | Qt.Tool
+            # Qt.WindowTransparentForInput  # DON'T add this flag, it lets mouse clicks pass through, we want the opposite
+        )
+
         self.overlay.setAttribute(Qt.WA_TranslucentBackground)
-        self.overlay.setCursor(Qt.BlankCursor)
+        self.overlay.setCursor(Qt.BlankCursor)  # Hide cursor
         self.overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-        self.overlay.setWindowOpacity(0.0)
+        self.overlay.setWindowOpacity(0.0)  # Fully transparent
         self.overlay.show()
-        self.overlay.raise_()
-        print("[Overlay] Overlay is now active and covering full screen")
+        self.overlay.raise_()  # Make sure overlay is on top
+        print("[Overlay] Overlay is now active and covering full screen, mouse hidden, blocking input")
 
     def handle_client(self, client_socket):
         print("[Server] Starting mouse tracking...")
@@ -139,37 +152,15 @@ class MouseSyncApp(QWidget):
             try:
                 norm_x = x / self.screen_width
                 norm_y = y / self.screen_height
-                payload = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
+                payload = json.dumps({"x": norm_x, "y": norm_y}) + "\n"
                 client_socket.sendall(payload.encode())
             except Exception as e:
                 print(f"[Server] Send error: {e}")
                 self.stop_connection()
                 return False
 
-        def on_click(x, y, button, pressed):
-            if not self.is_running:
-                return False
-            try:
-                data = json.dumps({"type": "click", "button": button.name, "pressed": pressed}) + "\n"
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Click send error: {e}")
-                self.stop_connection()
-                return False
-
-        def on_scroll(x, y, dx, dy):
-            if not self.is_running:
-                return False
-            try:
-                data = json.dumps({"type": "scroll", "dx": dx, "dy": dy}) + "\n"
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Scroll send error: {e}")
-                self.stop_connection()
-                return False
-
         def listener_thread():
-            with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
+            with mouse.Listener(on_move=on_move) as listener:
                 listener.join()
 
         threading.Thread(target=listener_thread, daemon=True).start()
@@ -202,7 +193,7 @@ class MouseSyncApp(QWidget):
             raise Exception("Handshake failed")
 
         def client_thread():
-            print("[Client] Receiving mouse events...")
+            print("[Client] Receiving mouse positions...")
             buffer = ""
             while self.is_running:
                 try:
@@ -214,19 +205,10 @@ class MouseSyncApp(QWidget):
                     while "\n" in buffer:
                         line, buffer = buffer.split("\n", 1)
                         try:
-                            evt = json.loads(line)
-                            if evt["type"] == "move":
-                                x = int(evt["x"] * self.screen_width)
-                                y = int(evt["y"] * self.screen_height)
-                                self.mouse_controller.position = (x, y)
-                            elif evt["type"] == "click":
-                                btn = getattr(Button, evt['button'])
-                                if evt['pressed']:
-                                    self.mouse_controller.press(btn)
-                                else:
-                                    self.mouse_controller.release(btn)
-                            elif evt["type"] == "scroll":
-                                self.mouse_controller.scroll(evt['dx'], evt['dy'])
+                            coords = json.loads(line)
+                            x = int(coords["x"] * self.screen_width)
+                            y = int(coords["y"] * self.screen_height)
+                            self.mouse_controller.position = (x, y)
                         except Exception as e:
                             print(f"[Client] Parse error: {e} → data: {line}")
                 except Exception as e:
@@ -239,6 +221,7 @@ class MouseSyncApp(QWidget):
     def closeEvent(self, event):
         self.stop_connection()
         event.accept()
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

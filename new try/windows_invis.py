@@ -3,8 +3,7 @@ from tkinter import ttk, messagebox
 import socket
 import threading
 import json
-from pynput import mouse 
-from pynput.mouse import Button
+from pynput import mouse
 from pynput.mouse import Controller
 
 class MouseSyncApp:
@@ -132,39 +131,19 @@ class MouseSyncApp:
             if not self.is_running:
                 return False
             try:
+                # Normalize x and y by server screen size (values between 0 and 1)
                 normalized_x = x / self.screen_width
                 normalized_y = y / self.screen_height
-                data = json.dumps({"type": "move", "x": normalized_x, "y": normalized_y}) + '\n'
+                data = json.dumps({"x": normalized_x, "y": normalized_y}) + '\n'
                 client_socket.sendall(data.encode())
             except Exception as e:
                 print(f"[Server] Send error: {e}")
                 self.stop_connection()
                 return False
 
-        def on_click(x, y, button, pressed):
-            if not self.is_running:
-                return False
-            try:
-                data = json.dumps({"type": "click", "button": button.name, "pressed": pressed}) + '\n'
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Click send error: {e}")
-                self.stop_connection()
-                return False
-
-        def on_scroll(x, y, dx, dy):
-            if not self.is_running:
-                return False
-            try:
-                data = json.dumps({"type": "scroll", "dx": dx, "dy": dy}) + '\n'
-                client_socket.sendall(data.encode())
-            except Exception as e:
-                print(f"[Server] Scroll send error: {e}")
-                self.stop_connection()
-                return False
-
         def listener_thread():
-            with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
+            print("[Server] Mouse listener thread started")
+            with mouse.Listener(on_move=on_move) as listener:
                 listener.join()
 
         threading.Thread(target=listener_thread, daemon=True).start()
@@ -199,12 +178,13 @@ class MouseSyncApp:
         if data != b'CONNECTED\n':
             raise Exception("Failed handshake with server")
 
+        # Get client screen size here:
         client_screen_width = self.root.winfo_screenwidth()
         client_screen_height = self.root.winfo_screenheight()
         print(f"[Client] Screen dimensions: {client_screen_width}x{client_screen_height}")
 
         def client_thread():
-            print("[Client] Receiving mouse events...")
+            print("[Client] Receiving mouse positions...")
             buffer = ""
             while self.is_running:
                 try:
@@ -216,21 +196,14 @@ class MouseSyncApp:
                     while '\n' in buffer:
                         msg, buffer = buffer.split('\n', 1)
                         try:
-                            event = json.loads(msg)
-                            if event["type"] == "move":
-                                abs_x = int(event['x'] * client_screen_width)
-                                abs_y = int(event['y'] * client_screen_height)
-                                self.mouse_controller.position = (abs_x, abs_y)
-                            elif event["type"] == "click":
-                                btn = getattr(Button, event['button'])
-                                if event['pressed']:
-                                    self.mouse_controller.press(btn)
-                                else:
-                                    self.mouse_controller.release(btn)
-                            elif event["type"] == "scroll":
-                                self.mouse_controller.scroll(event['dx'], event['dy'])
+                            pos = json.loads(msg)
+                            # Reconstruct absolute client position:
+                            abs_x = int(pos['x'] * client_screen_width)
+                            abs_y = int(pos['y'] * client_screen_height)
+                            # Move mouse to absolute position
+                            self.mouse_controller.position = (abs_x, abs_y)
                         except Exception as e:
-                            print(f"[Client] Error handling event: {e} → data: {msg}")
+                            print(f"[Client] Error parsing position: {e}")
                 except Exception as e:
                     if self.is_running:
                         print(f"[Client] Error: {e}")
