@@ -1,1 +1,0 @@
-Fixed build on GCC 11.2 (https://github.com/debauchee/barrier/issues/1366).
