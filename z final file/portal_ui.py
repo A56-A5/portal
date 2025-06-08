@@ -1,12 +1,18 @@
 import tkinter as tk
 from tkinter import ttk
+from config import app_config
+import threading
+import threading
+from server import run_server
+from client import run_client
+
 
 class PortalUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Portal")
         self.root.geometry("350x500")
-        self.mode = tk.StringVar(value="server")  # default mode
+        self.mode = tk.StringVar(value=app_config.mode)  # default mode
         self.running = False  # portal running status
 
         # Tabs
@@ -119,12 +125,19 @@ class PortalUI:
         else:
             self.client_ip_entry.config(state='normal', foreground='black')
         self.server_location_label.config(fg='black' if is_server else 'grey')
+        
+        # Update config
+        app_config.mode = self.mode.get()
 
     def toggle_audio(self):
         # Enable or disable audio radio buttons based on the checkbox
         state = 'normal' if self.audio_enabled.get() else 'disabled'
         self.audio_client_to_server_rb.config(state=state)
         self.audio_server_to_client_rb.config(state=state)
+        
+        # Update config
+        app_config.audio_enabled = self.audio_enabled.get()
+        app_config.audio_direction = self.audio_direction.get()
 
     def reload(self):
         # Dummy reload function
@@ -133,14 +146,30 @@ class PortalUI:
     def toggle_portal(self):
         # Toggle portal status and update UI
         self.running = not self.running
+
         if self.running:
             self.status_label.config(text="Portal is running", foreground="green")
             self.start_stop_button.config(text="Stop")
             self.log("Portal started.")
+
+            # Update config with current values
+            app_config.server_direction = self.server_direction.get()
+            if self.client_ip_entry.get() != "Enter Server IP":
+                app_config.client_ip = self.client_ip_entry.get()
+
+            # Start the correct mode in a new thread
+            if app_config.mode == "server":
+                threading.Thread(target=run_server, daemon=True).start()
+            elif app_config.mode == "client":
+                threading.Thread(target=run_client, daemon=True).start()
+            else:
+                self.log("Unknown mode selected.")
         else:
             self.status_label.config(text="Portal is not running", foreground="red")
             self.start_stop_button.config(text="Start")
             self.log("Portal stopped.")
+            app_config.is_running = False
+
 
     def log(self, message):
         # Write logs to the Logs tab
