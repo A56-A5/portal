@@ -8,25 +8,23 @@ def run_client():
 
     print(f"[CLIENT] Connecting to {host}:{port}...")
 
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
-        try:
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1.0)  # Allow checking the stop_flag
             s.connect((host, port))
             print("[CLIENT] Connected to server.")
 
-            while True:
-                msg = input("Enter message (or 'exit'): ")
-                if msg.lower() == "exit":
-                    break
-                s.sendall(msg.encode())
-                data = s.recv(1024)
-                print("[CLIENT] Received:", data.decode())
-        except Exception as e:
-            print(f"[CLIENT] Connection failed: {e}")
+            while not app_config.stop_flag:
+                try:
+                    msg = input("Enter message (or type 'exit'): ")
+                    if msg.lower() == "exit" or app_config.stop_flag:
+                        break
+                    s.sendall(msg.encode())
+                    data = s.recv(1024)
+                    print("[CLIENT] Received:", data.decode())
+                except socket.timeout:
+                    continue
+    except Exception as e:
+        print(f"[CLIENT] Connection error: {e}")
 
-if __name__ == "__main__":
-    if app_config.mode == "client":
-        run_client()
-    else:
-        print("Not in client mode. Please switch to client mode in the UI.")
-
-
+    print("[CLIENT] Shutdown complete.")

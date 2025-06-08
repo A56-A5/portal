@@ -2,7 +2,6 @@ import tkinter as tk
 from tkinter import ttk
 from config import app_config
 import threading
-import threading
 from server import run_server
 from client import run_client
 
@@ -12,10 +11,9 @@ class PortalUI:
         self.root = root
         self.root.title("Portal")
         self.root.geometry("350x500")
-        self.mode = tk.StringVar(value=app_config.mode)  # default mode
-        self.running = False  # portal running status
+        self.mode = tk.StringVar(value=app_config.mode)
+        self.running = False
 
-        # Tabs
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
         self.logs_tab = ttk.Frame(self.tab_control)
@@ -23,25 +21,20 @@ class PortalUI:
         self.tab_control.add(self.logs_tab, text='Logs')
         self.tab_control.pack(expand=1, fill='both')
 
-        # Initialize tabs
         self.create_portal_tab()
         self.create_logs_tab()
 
     def create_logs_tab(self):
-        # Text box for logs output
         self.logs_text = tk.Text(self.logs_tab, state='disabled')
         self.logs_text.pack(expand=True, fill='both')
 
     def create_portal_tab(self):
-        # Mode selector: Server or Client
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
         mode_frame.pack(pady=10, padx=10, fill='x')
 
-        # Server option
-        server_rb = ttk.Radiobutton(mode_frame, text="Server (Share this computer's mouse and keyboard)", variable=self.mode, value="server", command=self.toggle_mode)
+        server_rb = ttk.Radiobutton(mode_frame, text="Server", variable=self.mode, value="server", command=self.toggle_mode)
         server_rb.pack(anchor='w', padx=10, pady=2)
 
-        # Server configuration directly under Server
         self.server_direction = tk.StringVar(value="Top")
         self.server_location_label = tk.Label(mode_frame, text="Choose where the client device is located:", fg='black')
         self.server_location_label.pack(anchor='w', padx=30, pady=(5, 0))
@@ -56,20 +49,15 @@ class PortalUI:
         self.server_right_rb.pack(anchor='w', padx=30)
         self.server_bottom_rb.pack(anchor='w', padx=30)
 
-        # Client option
-        client_rb = ttk.Radiobutton(mode_frame, text="Client (Use another computer's mouse and keyboard)", variable=self.mode, value="client", command=self.toggle_mode)
+        client_rb = ttk.Radiobutton(mode_frame, text="Client", variable=self.mode, value="client", command=self.toggle_mode)
         client_rb.pack(anchor='w', padx=10, pady=10)
 
-        # Client configuration directly under Client
         self.client_ip_entry = ttk.Entry(mode_frame, width=35, foreground='grey')
         self.client_ip_entry.pack(anchor='w', padx=30)
-        self.client_ip_entry.insert(0, "Enter Server IP")  # Placeholder
-
-        # Clear placeholder on focus
+        self.client_ip_entry.insert(0, "Enter Server IP")
         self.client_ip_entry.bind("<FocusIn>", self.clear_placeholder)
         self.client_ip_entry.bind("<FocusOut>", self.restore_placeholder)
 
-        # Audio settings
         audio_frame = ttk.LabelFrame(self.portal_tab, text="Audio")
         audio_frame.pack(pady=10, padx=10, fill='x')
 
@@ -78,13 +66,12 @@ class PortalUI:
         self.audio_checkbox.pack(anchor='w', padx=10, pady=(0, 5))
 
         self.audio_direction = tk.StringVar(value="client_to_server")
-        self.audio_client_to_server_rb = ttk.Radiobutton(audio_frame, text="Play audio from Client to Server", variable=self.audio_direction, value="client_to_server")
-        self.audio_server_to_client_rb = ttk.Radiobutton(audio_frame, text="Play audio from Server to Client", variable=self.audio_direction, value="server_to_client")
+        self.audio_client_to_server_rb = ttk.Radiobutton(audio_frame, text="Client to Server", variable=self.audio_direction, value="client_to_server")
+        self.audio_server_to_client_rb = ttk.Radiobutton(audio_frame, text="Server to Client", variable=self.audio_direction, value="server_to_client")
 
         self.audio_client_to_server_rb.pack(anchor='w', padx=20, pady=2)
         self.audio_server_to_client_rb.pack(anchor='w', padx=20, pady=2)
 
-        # Control section: Status, Reload, Start/Stop
         control_frame = ttk.Frame(self.portal_tab)
         control_frame.pack(pady=20)
 
@@ -97,7 +84,6 @@ class PortalUI:
         self.start_stop_button = ttk.Button(control_frame, text="Start", command=self.toggle_portal)
         self.start_stop_button.grid(row=1, column=1, padx=5)
 
-        # Initialize based on current mode
         self.toggle_mode()
         self.toggle_audio()
 
@@ -112,7 +98,6 @@ class PortalUI:
             self.client_ip_entry.config(foreground='grey')
 
     def toggle_mode(self):
-        # Enable/disable client IP and server direction based on mode
         is_server = self.mode.get() == "server"
         state = 'normal' if is_server else 'disabled'
         for rb in [self.server_top_rb, self.server_left_rb, self.server_right_rb, self.server_bottom_rb]:
@@ -124,40 +109,33 @@ class PortalUI:
             self.client_ip_entry.config(state='disabled', foreground='grey')
         else:
             self.client_ip_entry.config(state='normal', foreground='black')
+
         self.server_location_label.config(fg='black' if is_server else 'grey')
-        
-        # Update config
         app_config.mode = self.mode.get()
 
     def toggle_audio(self):
-        # Enable or disable audio radio buttons based on the checkbox
         state = 'normal' if self.audio_enabled.get() else 'disabled'
         self.audio_client_to_server_rb.config(state=state)
         self.audio_server_to_client_rb.config(state=state)
-        
-        # Update config
         app_config.audio_enabled = self.audio_enabled.get()
         app_config.audio_direction = self.audio_direction.get()
 
     def reload(self):
-        # Dummy reload function
         self.log("Reload clicked.")
 
     def toggle_portal(self):
-        # Toggle portal status and update UI
         self.running = not self.running
 
         if self.running:
+            app_config.stop_flag = False
             self.status_label.config(text="Portal is running", foreground="green")
             self.start_stop_button.config(text="Stop")
             self.log("Portal started.")
 
-            # Update config with current values
             app_config.server_direction = self.server_direction.get()
             if self.client_ip_entry.get() != "Enter Server IP":
                 app_config.client_ip = self.client_ip_entry.get()
 
-            # Start the correct mode in a new thread
             if app_config.mode == "server":
                 threading.Thread(target=run_server, daemon=True).start()
             elif app_config.mode == "client":
@@ -165,14 +143,13 @@ class PortalUI:
             else:
                 self.log("Unknown mode selected.")
         else:
+            app_config.stop_flag = True
             self.status_label.config(text="Portal is not running", foreground="red")
             self.start_stop_button.config(text="Start")
             self.log("Portal stopped.")
             app_config.is_running = False
 
-
     def log(self, message):
-        # Write logs to the Logs tab
         self.logs_text.config(state='normal')
         self.logs_text.insert('end', message + '\n')
         self.logs_text.config(state='disabled')
