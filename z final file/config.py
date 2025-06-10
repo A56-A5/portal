@@ -14,6 +14,9 @@ class AppConfig:
         # Audio sharing enabled or not
         self.audio_enabled = True
 
+        # Flag to check active device 
+        self.active_device = False 
+        
         # Audio direction: "client_to_server" or "server_to_client"
         self.audio_direction = "client_to_server"
 
