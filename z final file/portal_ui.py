@@ -142,9 +142,9 @@ class PortalUI:
 
             os_type = platform.system().lower()
             if app_config.mode == "server":
-                app_config.server_os = self.os_type
+                app_config.server_os = os_type
             else:
-                app_config.client_os = self.os_type
+                app_config.client_os = os_type 
 
             def launch_invis():
                 try:
