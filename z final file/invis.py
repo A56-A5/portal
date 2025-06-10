@@ -68,27 +68,48 @@ class MouseSyncApp:
             overlay.raise_()
             self.overlay = overlay
 
+    def destroy_overlay(self):
+        if self.overlay:
+            if OS == "windows":
+                self.overlay.destroy()
+            elif OS == "linux":
+                self.overlay.close()
+            self.overlay = None
+
     def handle_client(self, client_socket):
-        if OS == "windows":
-            self.gui_app.after(0, self.create_overlay)
-        else:
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(0, self.create_overlay)
-
         def on_move(x, y):
-            # Detect if mouse hits the edge based on direction
-            edge_triggered = False
-            margin = 3  # Pixel sensitivity
-            if app_config.server_direction == "Right" and x >= self.screen_width - margin:
-                edge_triggered = True
-            elif app_config.server_direction == "Left" and x <= margin:
-                edge_triggered = True
-            elif app_config.server_direction == "Top" and y <= margin:
-                edge_triggered = True
-            elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
-                edge_triggered = True
+            margin = 3  # pixel margin
+            triggered = False
 
-            app_config.active_device = edge_triggered
+            # Trigger entry (into client side)
+            if not app_config.active_device:
+                if app_config.server_direction == "Right" and x >= self.screen_width - margin:
+                    app_config.active_device = True
+                    self.gui_app.after(0, self.create_overlay)
+                elif app_config.server_direction == "Left" and x <= margin:
+                    app_config.active_device = True
+                    self.gui_app.after(0, self.create_overlay)
+                elif app_config.server_direction == "Top" and y <= margin:
+                    app_config.active_device = True
+                    self.gui_app.after(0, self.create_overlay)
+                elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
+                    app_config.active_device = True
+                    self.gui_app.after(0, self.create_overlay)
+
+            # Trigger return (back to server)
+            if app_config.active_device:
+                if app_config.server_direction == "Right" and x <= margin:
+                    app_config.active_device = False
+                    self.gui_app.after(0, self.destroy_overlay)
+                elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
+                    app_config.active_device = False
+                    self.gui_app.after(0, self.destroy_overlay)
+                elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
+                    app_config.active_device = False
+                    self.gui_app.after(0, self.destroy_overlay)
+                elif app_config.server_direction == "Bottom" and y <= margin:
+                    app_config.active_device = False
+                    self.gui_app.after(0, self.destroy_overlay)
 
             if not app_config.active_device:
                 return
