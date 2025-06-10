@@ -103,8 +103,6 @@ class MouseSyncApp:
                     temp_x = x
                     temp_y = margin
                     self.gui_app.after(0, self.create_overlay)
-                data = json.dumps({"type": "move", "x": temp_x, "y": temp_y}) + "\n"
-                client_socket.sendall(data.encode())
 
             # Trigger return (back to server)
             if app_config.active_device:
@@ -128,8 +126,11 @@ class MouseSyncApp:
                     temp_x = x
                     temp_y = self.screen_height - margin
                     self.gui_app.after(0, self.destroy_overlay)
+            try:
                 data = json.dumps({"type": "move", "x": temp_x, "y": temp_y}) + "\n"
                 client_socket.sendall(data.encode())
+            except:
+                return False
             
             if not app_config.active_device:
                 return
