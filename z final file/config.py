@@ -11,7 +11,7 @@ class AppConfig:
 
     def set_defaults(self):
         self.mode = "server"
-        self.server_direction = "Top"
+        self.server_direction = "Right"
         self.server_ip = "127.0.0.1"
         self.client_ip = ""
         self.audio_enabled = True

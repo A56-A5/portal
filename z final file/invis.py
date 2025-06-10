@@ -23,6 +23,7 @@ class MouseSyncApp:
         self.gui_app = None
 
         app_config.load()
+        app_config.active_device = False
 
         if OS == "windows":
             import tkinter as tk
@@ -42,6 +43,8 @@ class MouseSyncApp:
             self.screen_height = screen.height()
 
     def create_overlay(self):
+        if not app_config.active_device:
+            return
         if OS == "windows":
             overlay = self.tk.Toplevel(self.gui_app)
             overlay.overrideredirect(True)
@@ -73,8 +76,23 @@ class MouseSyncApp:
             QTimer.singleShot(0, self.create_overlay)
 
         def on_move(x, y):
-            if not app_config.is_running:
-                return False
+            # Detect if mouse hits the edge based on direction
+            edge_triggered = False
+            margin = 3  # Pixel sensitivity
+            if app_config.server_direction == "Right" and x >= self.screen_width - margin:
+                edge_triggered = True
+            elif app_config.server_direction == "Left" and x <= margin:
+                edge_triggered = True
+            elif app_config.server_direction == "Top" and y <= margin:
+                edge_triggered = True
+            elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
+                edge_triggered = True
+
+            app_config.active_device = edge_triggered
+
+            if not app_config.active_device:
+                return
+
             try:
                 norm_x = x / self.screen_width
                 norm_y = y / self.screen_height
@@ -84,6 +102,8 @@ class MouseSyncApp:
                 return False
 
         def on_click(x, y, button, pressed):
+            if not app_config.active_device:
+                return
             try:
                 data = json.dumps({"type": "click", "button": button.name, "pressed": pressed}) + "\n"
                 client_socket.sendall(data.encode())
@@ -91,6 +111,8 @@ class MouseSyncApp:
                 return False
 
         def on_scroll(x, y, dx, dy):
+            if not app_config.active_device:
+                return
             try:
                 data = json.dumps({"type": "scroll", "dx": dx, "dy": dy}) + "\n"
                 client_socket.sendall(data.encode())
@@ -117,7 +139,6 @@ class MouseSyncApp:
                 print(f"[Server] Client connected: {addr}")
                 client.sendall(b'CONNECTED\n')
                 self.handle_client(client)
-                print('Ok"??')
             except Exception as e:
                 print(f"[Server] Error: {e}")
 
