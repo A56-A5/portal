@@ -85,30 +85,48 @@ class MouseSyncApp:
             if not app_config.active_device:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
                     app_config.active_device = True
+                    temp_x = margin
+                    temp_y = y
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Left" and x <= margin:
                     app_config.active_device = True
+                    temp_x = self.screen_width - margin
+                    temp_y = y
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Top" and y <= margin:
                     app_config.active_device = True
+                    temp_x = x
+                    temp_y = self.screen_height - margin
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     app_config.active_device = True
+                    temp_x = x
+                    temp_y = margin
                     self.gui_app.after(0, self.create_overlay)
+                data = json.dumps({"type": "move", "x": temp_x, "y": temp_y}) + "\n"
+                client_socket.sendall(data.encode())
 
             # Trigger return (back to server)
             if app_config.active_device:
                 if app_config.server_direction == "Right" and x <= margin:
                     app_config.active_device = False
+                    temp_x = self.screen_width - margin
+                    temp_y = y
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     app_config.active_device = False
+                    temp_x = margin
+                    temp_y = y
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     app_config.active_device = False
+                    temp_x = x
+                    temp_y = margin
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     app_config.active_device = False
+                    temp_x = x
+                    temp_y = self.screen_height - margin
                     self.gui_app.after(0, self.destroy_overlay)
 
             if not app_config.active_device:
