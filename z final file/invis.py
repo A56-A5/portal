@@ -13,6 +13,7 @@ OS = platform.system().lower()
 
 class MouseSyncApp:
     def __init__(self):
+        self.edge_transition_cooldown = False
         self.port = 50007
         self.mouse_controller = Controller()
         self.server_socket = None
@@ -78,50 +79,65 @@ class MouseSyncApp:
 
     def handle_client(self, client_socket):
         def on_move(x, y):
-            margin = 3  # pixel margin
-            triggered = False
-
-            # Trigger entry
-            if not app_config.active_device:
+            margin = 3
+        
+            # Entry
+            if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (margin, y)
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Left" and x <= margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (self.screen_width - margin, y)
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Top" and y <= margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (x, self.screen_height - margin)
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (x, margin)
                     self.gui_app.after(0, self.create_overlay)
-            
-            # Trigger return
-            if app_config.active_device:
+        
+            # Return
+            elif app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x <= margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (self.screen_width - margin, y)
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (margin, y)
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (x, margin)
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     self.mouse_controller.position = (x, self.screen_height - margin)
                     self.gui_app.after(0, self.destroy_overlay)
-            
+        
+            # Reset cooldown if mouse is not at any edge
+            if (
+                margin < x < self.screen_width - margin and
+                margin < y < self.screen_height - margin
+            ):
+                self.edge_transition_cooldown = False
+        
+            # Send movement
             if not app_config.active_device:
                 return
-
+        
             try:
                 norm_x = x / self.screen_width
                 norm_y = y / self.screen_height
@@ -129,6 +145,7 @@ class MouseSyncApp:
                 client_socket.sendall(data.encode())
             except:
                 return False
+        
 
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
