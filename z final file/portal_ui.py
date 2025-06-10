@@ -1,3 +1,4 @@
+# portal_ui.py
 import tkinter as tk
 from tkinter import ttk
 from config import app_config
@@ -5,7 +6,7 @@ import threading
 import subprocess
 import time
 import platform
-import sys 
+import sys
 
 class PortalUI:
     def __init__(self, root):
@@ -140,11 +141,12 @@ class PortalUI:
             if self.client_ip_entry.get() != "Enter Server IP":
                 app_config.server_ip = self.client_ip_entry.get()
 
-            os_type = platform.system().lower()
-            if app_config.mode == "server":
-                app_config.server_os = os_type
-            else:
-                app_config.client_os = os_type 
+            app_config.mode = self.mode.get()
+            app_config.audio_enabled = self.audio_enabled.get()
+            app_config.audio_direction = self.audio_direction.get()
+            app_config.server_os = self.os_type if app_config.mode == "server" else app_config.server_os
+            app_config.client_os = self.os_type if app_config.mode == "client" else app_config.client_os
+            app_config.save()  # ✅ Save config to file before launching invis
 
             def launch_invis():
                 try:

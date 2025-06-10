@@ -1,3 +1,4 @@
+# invis.py
 import sys
 import socket
 import threading
@@ -7,7 +8,6 @@ from pynput import mouse
 from pynput.mouse import Button, Controller
 from config import app_config
 
-# Platform detection
 OS = platform.system().lower()
 
 class MouseSyncApp:
@@ -16,12 +16,12 @@ class MouseSyncApp:
         self.mouse_controller = Controller()
         self.server_socket = None
         self.client_socket = None
-        self.server_ip = app_config.server_ip
-        self.client_ip = app_config.client_ip
         self.overlay = None
         self.screen_width = None
         self.screen_height = None
         self.gui_app = None
+
+        app_config.load()  # Load updated config
 
         if OS == "windows":
             import tkinter as tk
@@ -113,44 +113,50 @@ class MouseSyncApp:
                 client.sendall(b'CONNECTED\n')
                 self.handle_client(client)
             except Exception as e:
-                if self.is_running:
-                    print(f"[Server] Error: {e}")
-                self.stop_connection()
+                print(f"[Server] Error: {e}")
 
         threading.Thread(target=server_thread, daemon=True).start()
-        
+
     def start_client(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.connect((app_config.server_ip, self.port))
-        if self.client_socket.recv(1024) != b"CONNECTED\n":
-            raise Exception("Handshake failed")
-        print(f"[Client] Connected to server {app_config.server_ip}:{self.port}")
+        try:
+            self.client_socket.connect((app_config.server_ip, self.port))
+            if self.client_socket.recv(1024) != b"CONNECTED\n":
+                raise Exception("Handshake failed")
+            print(f"[Client] Connected to server {app_config.server_ip}:{self.port}")
 
-        def client_thread():
-            buffer = ""
-            while app_config.is_running:
-                data = self.client_socket.recv(1024).decode()
-                if not data:
-                    break
-                buffer += data
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    event = json.loads(line)
-                    if event["type"] == "move":
-                        self.mouse_controller.position = (
-                            int(event["x"] * self.screen_width),
-                            int(event["y"] * self.screen_height)
-                        )
-                    elif event["type"] == "click":
-                        btn = getattr(Button, event['button'])
-                        if event['pressed']:
-                            self.mouse_controller.press(btn)
-                        else:
-                            self.mouse_controller.release(btn)
-                    elif event["type"] == "scroll":
-                        self.mouse_controller.scroll(event['dx'], event['dy'])
+            def client_thread():
+                buffer = ""
+                try:
+                    while app_config.is_running:
+                        data = self.client_socket.recv(1024).decode()
+                        if not data:
+                            break
+                        buffer += data
+                        while "\n" in buffer:
+                            line, buffer = buffer.split("\n", 1)
+                            event = json.loads(line)
+                            if event["type"] == "move":
+                                self.mouse_controller.position = (
+                                    int(event["x"] * self.screen_width),
+                                    int(event["y"] * self.screen_height)
+                                )
+                            elif event["type"] == "click":
+                                btn = getattr(Button, event['button'])
+                                if event['pressed']:
+                                    self.mouse_controller.press(btn)
+                                else:
+                                    self.mouse_controller.release(btn)
+                            elif event["type"] == "scroll":
+                                self.mouse_controller.scroll(event['dx'], event['dy'])
+                except ConnectionResetError:
+                    print("[Client] Server forcibly closed connection.")
+                except Exception as e:
+                    print(f"[Client] Unexpected error: {e}")
 
-        threading.Thread(target=client_thread, daemon=True).start()
+            threading.Thread(target=client_thread, daemon=True).start()
+        except Exception as e:
+            print(f"[Client] Connection failed: {e}")
 
     def run(self):
         app_config.is_running = True
@@ -158,12 +164,13 @@ class MouseSyncApp:
             self.start_server()
         else:
             self.start_client()
-            print(OS)
-
-        if OS == "windows":
-            self.gui_app.mainloop()
-        else:
-            sys.exit(self.gui_app.exec_())
+        try:
+            if OS == "windows":
+                self.gui_app.mainloop()
+            else:
+                sys.exit(self.gui_app.exec_())
+        except KeyboardInterrupt:
+            print("[System] Exiting invis due to keyboard interrupt.")
 
 if __name__ == "__main__":
     MouseSyncApp().run()
