@@ -79,7 +79,7 @@ class MouseSyncApp:
 
     def handle_client(self, client_socket):
         def on_move(x, y):
-            margin = 3
+            margin = 1
         
             # Entry
             if not app_config.active_device and not self.edge_transition_cooldown:
