@@ -16,6 +16,8 @@ class MouseSyncApp:
         self.mouse_controller = Controller()
         self.server_socket = None
         self.client_socket = None
+        self.server_ip = app_config.server_ip
+        self.client_ip = app_config.client_ip
         self.overlay = None
         self.screen_width = None
         self.screen_height = None
