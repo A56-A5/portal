@@ -103,20 +103,28 @@ class MouseSyncApp:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(("0.0.0.0", self.port))
         self.server_socket.listen(1)
-        print(f"[Client] Connected to server {self.server_ip.get()}:{self.port}")
+        print(f"[Server] Listening on port {self.port}")
 
-        def accept_thread():
-            client, _ = self.server_socket.accept()
-            client.sendall(b"CONNECTED\n")
-            self.handle_client(client)
+        def server_thread():
+            try:
+                print("[Server] Waiting for client...")
+                client, addr = self.server_socket.accept()
+                print(f"[Server] Client connected: {addr}")
+                client.sendall(b'CONNECTED\n')
+                self.handle_client(client)
+            except Exception as e:
+                if self.is_running:
+                    print(f"[Server] Error: {e}")
+                self.stop_connection()
 
-        threading.Thread(target=accept_thread, daemon=True).start()
-
+        threading.Thread(target=server_thread, daemon=True).start()
+        
     def start_client(self):
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.connect((app_config.server_ip, self.port))
         if self.client_socket.recv(1024) != b"CONNECTED\n":
             raise Exception("Handshake failed")
+        print(f"[Client] Connected to server {app_config.server_ip}:{self.port}")
 
         def client_thread():
             buffer = ""
@@ -148,7 +156,6 @@ class MouseSyncApp:
         app_config.is_running = True
         if app_config.server_os == OS:
             self.start_server()
-            print(OS)
         else:
             self.start_client()
             print(OS)
