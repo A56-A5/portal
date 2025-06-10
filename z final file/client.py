@@ -16,12 +16,7 @@ def run_client():
 
             while not app_config.stop_flag:
                 try:
-                    msg = input("Enter message (or type 'exit'): ")
-                    if msg.lower() == "exit" or app_config.stop_flag:
-                        break
-                    s.sendall(msg.encode())
-                    data = s.recv(1024)
-                    print("[CLIENT] Received:", data.decode())
+                    continue
                 except socket.timeout:
                     continue
     except Exception as e:

@@ -28,8 +28,7 @@ def run_server():
                     print(f"[SERVER] Connected by {addr}")
 
                     # Start monitor_mouse in a new thread
-                    thread = threading.Thread(target=handle_client, args=(addr,))
-                    thread.daemon = True
+                    thread = threading.Thread(target=handle_client, daemon = True,args=(addr,))
                     thread.start()
 
                     conn.close()
