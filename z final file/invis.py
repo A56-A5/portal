@@ -81,42 +81,42 @@ class MouseSyncApp:
             margin = 3  # pixel margin
             triggered = False
 
-            # Trigger entry (into client side)
+            # Trigger entry
             if not app_config.active_device:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
                     app_config.active_device = True
-                    x = margin
+                    self.mouse_controller.position = (margin, y)
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Left" and x <= margin:
                     app_config.active_device = True
-                    x = self.screen_width - margin
+                    self.mouse_controller.position = (self.screen_width - margin, y)
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Top" and y <= margin:
                     app_config.active_device = True
-                    y = self.screen_height - margin
+                    self.mouse_controller.position = (x, self.screen_height - margin)
                     self.gui_app.after(0, self.create_overlay)
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     app_config.active_device = True
-                    y = margin
+                    self.mouse_controller.position = (x, margin)
                     self.gui_app.after(0, self.create_overlay)
-
-            # Trigger return (back to server)
+            
+            # Trigger return
             if app_config.active_device:
                 if app_config.server_direction == "Right" and x <= margin:
                     app_config.active_device = False
-                    x = self.screen_width - margin
+                    self.mouse_controller.position = (self.screen_width - margin, y)
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     app_config.active_device = False
-                    x = margin
+                    self.mouse_controller.position = (margin, y)
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     app_config.active_device = False
-                    y = margin
+                    self.mouse_controller.position = (x, margin)
                     self.gui_app.after(0, self.destroy_overlay)
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     app_config.active_device = False
-                    y = self.screen_height - margin
+                    self.mouse_controller.position = (x, self.screen_height - margin)
                     self.gui_app.after(0, self.destroy_overlay)
             
             if not app_config.active_device:
