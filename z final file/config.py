@@ -9,7 +9,7 @@ class AppConfig:
         self.server_direction = "Top"
 
         # IP address to connect to (for client mode)
-        self.server_ip = ""
+        self.server_ip = "192.168.1.70"
         self.client_ip = ""
 
         # Audio sharing enabled or not
