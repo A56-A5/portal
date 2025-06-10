@@ -1,18 +1,21 @@
 import tkinter as tk
 from tkinter import ttk
 from config import app_config
-import threading,time
-from server import run_server
-from client import run_client
-
+import threading
+import subprocess
+import time
+import platform
+import sys 
 
 class PortalUI:
     def __init__(self, root):
         self.root = root
+        self.os_type = platform.system().lower()
         self.root.title("Portal")
         self.root.geometry("350x500")
         self.mode = tk.StringVar(value=app_config.mode)
         self.running = False
+        self.invis_process = None
 
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
@@ -81,7 +84,7 @@ class PortalUI:
         self.reload_button = ttk.Button(control_frame, text="Reload", command=lambda: self.toggle_portal("reload"))
         self.reload_button.grid(row=1, column=0, padx=5)
 
-        self.start_stop_button = ttk.Button(control_frame, text="Start", command=lambda: self.toggle_portal("start_stop"))
+        self.start_stop_button = ttk.Button(control_frame, text="Start", command=lambda: self.toggle_portal("start"))
         self.start_stop_button.grid(row=1, column=1, padx=5)
 
         self.toggle_mode()
@@ -121,62 +124,65 @@ class PortalUI:
         app_config.audio_direction = self.audio_direction.get()
 
     def toggle_portal(self, mode):
-        if not self.running: 
+        if mode == "start" and not self.running:
             if getattr(self, 'portal_thread', None) and self.portal_thread.is_alive():
                 self.log("Portal is already running.")
                 return
 
             app_config.stop_flag = False
             self.running = True
+            app_config.is_running = True
             self.status_label.config(text="Portal is running", foreground="green")
             self.start_stop_button.config(text="Stop")
             self.log("Portal started.")
 
             app_config.server_direction = self.server_direction.get()
             if self.client_ip_entry.get() != "Enter Server IP":
-                app_config.client_ip = self.client_ip_entry.get()
+                app_config.server_ip = self.client_ip_entry.get()
 
+            os_type = platform.system().lower()
             if app_config.mode == "server":
-                self.portal_thread = threading.Thread(target=run_server, daemon=True)
-            elif app_config.mode == "client":
-                self.portal_thread = threading.Thread(target=run_client, daemon=True)
+                app_config.server_os = self.os_type
             else:
-                self.log("Unknown mode selected.")
-                return
+                app_config.client_os = self.os_type
 
+            def launch_invis():
+                try:
+                    self.invis_process = subprocess.Popen([sys.executable, "invis.py"])
+                    self.log("invis.py launched.")
+                except Exception as e:
+                    self.log(f"Failed to start invis.py: {e}")
+
+            self.portal_thread = threading.Thread(target=launch_invis, daemon=True)
             self.portal_thread.start()
 
         elif self.running and mode != "reload":
-            if not getattr(self, 'portal_thread', None) or not self.portal_thread.is_alive():
-                self.log("Portal is not running.")
-                return
-
             self.log("Stopping portal...")
             app_config.stop_flag = True
             self.running = False
+            app_config.is_running = False
             self.status_label.config(text="Portal is not running", foreground="red")
             self.start_stop_button.config(text="Start")
-            self.portal_thread.join(timeout=5)  # Give thread time to finish
+            if self.invis_process:
+                self.invis_process.terminate()
+                self.invis_process = None
             self.log("Portal stopped.")
-            app_config.is_running = False
             self.portal_thread = None
 
         elif self.running and mode == "reload":
-            self.log("reloading portal...")
+            self.log("Reloading portal...")
             self.toggle_portal("stop")
-            time.sleep(0.5)  # Small delay to ensure clean stop
+            time.sleep(0.5)
             self.toggle_portal("start")
 
         else:
             self.log(f"Unknown command: {mode}")
-
 
     def log(self, message):
         self.logs_text.config(state='normal')
         self.logs_text.insert('end', message + '\n')
         self.logs_text.config(state='disabled')
         self.logs_text.see('end')
-
 
 if __name__ == "__main__":
     root = tk.Tk()

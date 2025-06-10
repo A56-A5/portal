@@ -9,10 +9,17 @@ class AppConfig:
         self.server_direction = "Top"
 
         # IP address to connect to (for client mode)
-        self.client_ip = ""
+        self.server_ip = ""
+        self.client_ip - ""
 
         # Audio sharing enabled or not
         self.audio_enabled = True
+
+        # Stop flag to control server/client shutdown
+        self.stop_flag = True
+
+        self.server_os = "windows"
+        self.client_os = "linux"
 
         # Flag to check active device 
         self.active_device = False 
