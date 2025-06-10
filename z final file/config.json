@@ -1,0 +1,15 @@
+{
+    "config_path": "config.json",
+    "mode": "server",
+    "server_direction": "Top",
+    "server_ip": "127.0.0.1",
+    "client_ip": "",
+    "audio_enabled": true,
+    "stop_flag": false,
+    "active_device": false,
+    "audio_direction": "client_to_server",
+    "is_running": true,
+    "server_os": "windows",
+    "client_os": "",
+    "platform": "windows"
+}

@@ -3,6 +3,7 @@ import sys
 import socket
 import threading
 import json
+import time
 import platform
 from pynput import mouse
 from pynput.mouse import Button, Controller
@@ -21,7 +22,7 @@ class MouseSyncApp:
         self.screen_height = None
         self.gui_app = None
 
-        app_config.load()  # Load updated config
+        app_config.load()
 
         if OS == "windows":
             import tkinter as tk
@@ -96,7 +97,11 @@ class MouseSyncApp:
             except:
                 return False
 
-        threading.Thread(target=lambda: mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).run(), daemon=True).start()
+        def listener_thread():
+            with mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll) as listener:
+                listener.join()
+
+        threading.Thread(target=listener_thread, daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -164,13 +169,22 @@ class MouseSyncApp:
             self.start_server()
         else:
             self.start_client()
-        try:
+
+        def stop_check_loop():
+            while app_config.is_running and not app_config.stop_flag:
+                time.sleep(0.5)
+            print("[System] Stopping invis.py due to stop_flag.")
             if OS == "windows":
-                self.gui_app.mainloop()
+                self.gui_app.quit()
             else:
-                sys.exit(self.gui_app.exec_())
-        except KeyboardInterrupt:
-            print("[System] Exiting invis due to keyboard interrupt.")
+                self.gui_app.quit()
+
+        threading.Thread(target=stop_check_loop, daemon=True).start()
+
+        if OS == "windows":
+            self.gui_app.mainloop()
+        else:
+            self.gui_app.exec_()
 
 if __name__ == "__main__":
     MouseSyncApp().run()

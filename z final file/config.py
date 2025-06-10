@@ -15,7 +15,7 @@ class AppConfig:
         self.server_ip = "127.0.0.1"
         self.client_ip = ""
         self.audio_enabled = True
-        self.stop_flag = True
+        self.stop_flag = False
         self.active_device = False
         self.audio_direction = "client_to_server"
         self.is_running = False
