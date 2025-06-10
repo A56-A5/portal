@@ -124,6 +124,7 @@ class MouseSyncApp:
         threading.Thread(target=server_thread, daemon=True).start()
 
     def start_client(self):
+        print("[Client] Trying to connect to", app_config.server_ip)
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             self.client_socket.connect((app_config.server_ip, self.port))
@@ -168,7 +169,7 @@ class MouseSyncApp:
         app_config.is_running = True
         if app_config.server_os == OS:
             self.start_server()
-        if app_config.client_os == OS:
+        elif app_config.client_os == OS:
             self.start_client()
 
         def stop_check_loop():
