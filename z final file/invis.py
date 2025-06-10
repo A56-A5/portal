@@ -101,6 +101,7 @@ class MouseSyncApp:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(("0.0.0.0", self.port))
         self.server_socket.listen(1)
+        print(f"[Client] Connected to server {self.server_ip.get()}:{self.port}")
 
         def accept_thread():
             client, _ = self.server_socket.accept()
@@ -145,8 +146,10 @@ class MouseSyncApp:
         app_config.is_running = True
         if app_config.server_os == OS:
             self.start_server()
+            print(OS)
         else:
             self.start_client()
+            print(OS)
 
         if OS == "windows":
             self.gui_app.mainloop()
