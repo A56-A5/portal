@@ -117,6 +117,7 @@ class MouseSyncApp:
                 print(f"[Server] Client connected: {addr}")
                 client.sendall(b'CONNECTED\n')
                 self.handle_client(client)
+                print('Ok"??')
             except Exception as e:
                 print(f"[Server] Error: {e}")
 
@@ -167,7 +168,7 @@ class MouseSyncApp:
         app_config.is_running = True
         if app_config.server_os == OS:
             self.start_server()
-        else:
+        if app_config.client_os == OS:
             self.start_client()
 
         def stop_check_loop():
