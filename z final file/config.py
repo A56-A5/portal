@@ -10,7 +10,7 @@ class AppConfig:
 
         # IP address to connect to (for client mode)
         self.server_ip = ""
-        self.client_ip - ""
+        self.client_ip = ""
 
         # Audio sharing enabled or not
         self.audio_enabled = True
