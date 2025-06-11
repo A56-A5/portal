@@ -166,7 +166,7 @@ class PortalUI:
             self.status_label.config(text="Portal is not running", foreground="red")
             self.start_stop_button.config(text="Start")
             if self.invis_process:
-                self.invis_process.terminate()
+                self.invis_process.kill()
                 self.invis_process = None
             self.log("Portal stopped.")
             self.portal_thread = None
@@ -190,3 +190,4 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = PortalUI(root)
     root.mainloop()
+
