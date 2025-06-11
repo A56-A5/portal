@@ -25,8 +25,9 @@ class PortalUI:
         self.tab_control.add(self.logs_tab, text='Logs')
         self.tab_control.pack(expand=1, fill='both')
 
-        self.create_portal_tab()
+        
         self.create_logs_tab()
+        self.create_portal_tab()
 
     def create_logs_tab(self):
         self.logs_text = tk.Text(self.logs_tab, state='disabled')
@@ -118,7 +119,6 @@ class PortalUI:
 
         self.server_location_label.config(fg='black' if is_server else 'grey')
 
-        # ✅ Fix here: use self.mode.get() instead of app_config.mode
         if current_mode == "client":
             app_config.client_os = self.os_type 
         elif current_mode == "server":
