@@ -8,7 +8,6 @@ import platform
 from pynput import mouse
 from pynput.mouse import Button, Controller
 from config import app_config
-mouse_controller = Controller()
 
 OS = platform.system().lower()
 
@@ -23,6 +22,9 @@ class MouseSyncApp:
         self.screen_width = None
         self.screen_height = None
         self.gui_app = None
+        self.client_thread = None
+        self.listener_thread = None
+
 
         app_config.load()
         app_config.active_device = False
@@ -43,6 +45,28 @@ class MouseSyncApp:
             screen = self.gui_app.primaryScreen().size()
             self.screen_width = screen.width()
             self.screen_height = screen.height()
+            
+    def cleanup(self):
+        print("[System] Cleaning up sockets and resources...")
+        try:
+            if self.client_socket:
+                self.client_socket.shutdown(socket.SHUT_RDWR)
+                self.client_socket.close()
+                self.client_socket = None
+                print("[Client] Socket closed.")
+        except Exception as e:
+            print(f"[Client] Error closing socket: {e}")
+
+        try:
+            if self.server_socket:
+                self.server_socket.close()
+                self.server_socket = None
+                print("[Server] Socket closed.")
+        except Exception as e:
+            print(f"[Server] Error closing socket: {e}")
+
+        if self.overlay:
+            self.destroy_overlay()
 
     def create_overlay(self):
         if not app_config.active_device:
@@ -81,7 +105,7 @@ class MouseSyncApp:
     def handle_client(self, client_socket):
         def on_move(x, y):
             margin = 2
-        
+            mouse_controller = Controller()
             # Entry
             if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
@@ -252,10 +276,8 @@ class MouseSyncApp:
             while app_config.is_running and not app_config.stop_flag:
                 time.sleep(0.5)
             print("[System] Stopping invis.py due to stop_flag.")
-            if OS == "windows":
-                self.gui_app.quit()
-            else:
-                self.gui_app.quit()
+            self.cleanup()
+            self.gui_app.quit()
 
         threading.Thread(target=stop_check_loop, daemon=True).start()
 
