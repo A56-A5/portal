@@ -2,14 +2,14 @@
     "config_path": "config.json",
     "mode": "server",
     "server_direction": "Right",
-    "server_ip": "",
+    "server_ip": "192.168.1.75",
     "client_ip": "",
-    "audio_enabled": false,
+    "audio_enabled": true,
     "stop_flag": false,
     "active_device": false,
     "audio_direction": "client_to_server",
     "is_running": true,
     "server_os": "windows",
-    "client_os": "",
+    "client_os": "windows",
     "platform": "windows"
 }

@@ -115,7 +115,11 @@ class PortalUI:
             self.client_ip_entry.config(state='normal', foreground='black')
 
         self.server_location_label.config(fg='black' if is_server else 'grey')
-        app_config.mode = self.mode.get()
+        if app_config.mode == "client":
+            app_config.client_os = self.os_type 
+        elif app_config.mode == "server":
+            app_config.server_os = self.os_type
+        app_config.save()
 
     def toggle_audio(self):
         state = 'normal' if self.audio_enabled.get() else 'disabled'
@@ -165,9 +169,11 @@ class PortalUI:
             app_config.is_running = False
             self.status_label.config(text="Portal is not running", foreground="red")
             self.start_stop_button.config(text="Start")
-            if self.invis_process:
-                self.invis_process.kill()
+            try:
+                self.invis_process.terminate()
                 self.invis_process = None
+            except Exception as e:
+                print(f"Failed to terminate invis.py: {e}")
             self.log("Portal stopped.")
             self.portal_thread = None
 
