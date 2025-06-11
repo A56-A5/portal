@@ -102,8 +102,10 @@ class PortalUI:
             self.client_ip_entry.config(foreground='grey')
 
     def toggle_mode(self):
-        is_server = self.mode.get() == "server"
+        current_mode = self.mode.get()
+        is_server = current_mode == "server"
         state = 'normal' if is_server else 'disabled'
+
         for rb in [self.server_top_rb, self.server_left_rb, self.server_right_rb, self.server_bottom_rb]:
             rb.config(state=state)
 
@@ -115,11 +117,16 @@ class PortalUI:
             self.client_ip_entry.config(state='normal', foreground='black')
 
         self.server_location_label.config(fg='black' if is_server else 'grey')
-        if app_config.mode == "client":
+
+        # ✅ Fix here: use self.mode.get() instead of app_config.mode
+        if current_mode == "client":
             app_config.client_os = self.os_type 
-        elif app_config.mode == "server":
+        elif current_mode == "server":
             app_config.server_os = self.os_type
+
+        app_config.mode = current_mode  # Also update mode
         app_config.save()
+        self.log(f"Mode set to {current_mode}, OS recorded as {'client' if current_mode == 'client' else 'server'}: {self.os_type}")
 
     def toggle_audio(self):
         state = 'normal' if self.audio_enabled.get() else 'disabled'
