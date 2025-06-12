@@ -1,7 +1,7 @@
 {
     "config_path": "config.json",
-    "mode": "server",
-    "server_direction": "Top",
+    "mode": "client",
+    "server_direction": "Left",
     "server_ip": "192.168.1.75",
     "client_ip": "",
     "audio_enabled": true,

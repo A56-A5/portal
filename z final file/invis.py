@@ -116,8 +116,8 @@ class MouseSyncApp:
                         self.gui_app.after(0,self.create_overlay())
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0,self.create_overlay)
-                        QTimer.singleShot(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
+                        self.create_overlay()
+                        server_mouse_controller.position = (margin, y)
                     print("Mouse Exited from Right edge")
                 elif app_config.server_direction == "Left" and x <= margin:
                     app_config.active_device = True
@@ -159,8 +159,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0, self.destroy_overlay)
-                        QTimer.singleShot(10,lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
+                        self.destroy_overlay()
+                        server_mouse_controller.position = (self.screen_width - margin, y)
                     print("Mouse Entered from Right edge")
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     app_config.active_device = False
