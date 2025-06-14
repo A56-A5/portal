@@ -5,6 +5,8 @@ import threading
 import json
 import time
 import platform
+import win32con
+import win32api
 from pynput import mouse
 from pynput.mouse import Button, Controller
 from config import app_config
@@ -126,8 +128,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.create_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0,self.create_overlay)
-                        QTimer.singleShot(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
+                        self.create_overlay()
+                        server_mouse_controller.position = (self.screen_width - margin, y)
                     print("Mouse Exited from Left edge")
                 elif app_config.server_direction == "Top" and y <= margin:
                     app_config.active_device = True
@@ -136,8 +138,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.create_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0,self.create_overlay)
-                        QTimer.singleShot(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
+                        self.create_overlay()
+                        server_mouse_controller.position = (x, self.screen_height - margin)
                     print("Mouse Exited from Top edge")
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     app_config.active_device = True
@@ -146,8 +148,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.create_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0,self.create_overlay)
-                        QTimer.singleShot(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
+                        self.create_overlay()
+                        server_mouse_controller.position = (x, margin)
                     print("Mouse Exited from Bottom edge")
         
             # Return
@@ -169,8 +171,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0, self.destroy_overlay)
-                        QTimer.singleShot(0,lambda: setattr(server_mouse_controller, 'position', (margin, y)))
+                        self.destroy_overlay()
+                        server_mouse_controller.position = (margin, y)
                     print("Mouse Entered from Left edge")
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     app_config.active_device = False
@@ -179,8 +181,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0, self.destroy_overlay)
-                        QTimer.singleShot(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
+                        self.destroy_overlay()
+                        server_mouse_controller.position = (x, margin)
                     print("Mouse Entered from Top edge")
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     app_config.active_device = False
@@ -189,8 +191,8 @@ class MouseSyncApp:
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
                     elif self.os_type == "linux":
-                        QTimer.singleShot(0, self.destroy_overlay)
-                        QTimer.singleShot(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
+                        self.destroy_overlay()
+                        server_mouse_controller.position = (x, self.screen_height - margin)
                     print("Mouse Entered from Bottom edge")
         
             # Reset cooldown if mouse is not at any edge
@@ -277,10 +279,13 @@ class MouseSyncApp:
                             line, buffer = buffer.split("\n", 1)
                             event = json.loads(line)
                             if event["type"] == "move":
-                                self.mouse_controller.position = (
+                                if self.os_type == "windows":
+                                    self.mouse_controller.position = (
                                     int(event["x"] * self.screen_width),
                                     int(event["y"] * self.screen_height)
-                                )
+                                    )
+                                elif self.os_type == "linux":
+                                    win32api.SetCursorPos((event["x"] * self.screen_width, event["y"] * self.screen_height))
                             elif event["type"] == "click":
                                 btn = getattr(Button, event['button'])
                                 if event['pressed']:
@@ -288,7 +293,10 @@ class MouseSyncApp:
                                 else:
                                     self.mouse_controller.release(btn)
                             elif event["type"] == "scroll":
-                                self.mouse_controller.scroll(event['dx'], event['dy'])
+                                if self.os_type == "windows":
+                                    win32api.mouse_event(win32con.MOUSEEVENTF_WHEEL, 0, 0, event['dy'], 0)
+                                elif self.os_type == "linux":
+                                    self.mouse_controller.scroll(event['dx'], event['dy'])
                 except ConnectionResetError:
                     print("[Client] Server forcibly closed connection.")
                 except Exception as e:
