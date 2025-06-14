@@ -104,7 +104,7 @@ class MouseSyncApp:
 
     def handle_client(self, client_socket):
         last_sent_time = [0]  # Mutable for inner access
-        min_send_interval = 1 / 60  # 60 FPS cap (adjust as needed)
+        min_send_interval = 1 / 30  # 60 FPS cap (adjust as needed)
         def on_move(x, y):
             margin = 2
             server_mouse_controller = Controller()
@@ -205,21 +205,20 @@ class MouseSyncApp:
             # Send movement
             if not app_config.active_device:
                 return
+            
+            if self.os_type == "linux":
+                now = time.time()
+            if now - last_sent_time[0] < min_send_interval:
+                return
+            last_sent_time[0] = now
         
             try:
                 norm_x = x / self.screen_width
                 norm_y = y / self.screen_height
-                if self.os_type == "windows":
-                    data = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
-                    client_socket.sendall(data.encode())
-                if self.os_type == "linux":
-                    now = time.time()
-                    if now - last_sent_time[0] < min_send_interval:
-                        return  # Too soon, skip
-                    last_sent_time[0] = now
-                    data = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
-                    client_socket.sendall(data.encode())
-            except:
+                data = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
+                client_socket.sendall(data.encode())
+            except Exception as e:
+                print(f"[Server] Send failed: {e}")
                 return False
         
 
