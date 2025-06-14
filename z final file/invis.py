@@ -103,6 +103,8 @@ class MouseSyncApp:
             self.overlay = None
 
     def handle_client(self, client_socket):
+        last_sent_time = [0]  # Mutable for inner access
+        min_send_interval = 1 / 60  # 60 FPS cap (adjust as needed)
         def on_move(x, y):
             margin = 2
             server_mouse_controller = Controller()
@@ -207,8 +209,16 @@ class MouseSyncApp:
             try:
                 norm_x = x / self.screen_width
                 norm_y = y / self.screen_height
-                data = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
-                client_socket.sendall(data.encode())
+                if self.os_type == "windows":
+                    data = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
+                    client_socket.sendall(data.encode())
+                if self.os_type == "linux":
+                    now = time.time()
+                    if now - last_sent_time[0] < min_send_interval:
+                        return  # Too soon, skip
+                    last_sent_time[0] = now
+                    data = json.dumps({"type": "move", "x": norm_x, "y": norm_y}) + "\n"
+                    client_socket.sendall(data.encode())
             except:
                 return False
         
@@ -271,7 +281,7 @@ class MouseSyncApp:
             def client_thread():
                 buffer = ""
                 last_move_time = 0
-                move_interval = 1 / 24
+                move_interval = 1 / 30
 
                 try:
                     while app_config.is_running:
@@ -300,10 +310,10 @@ class MouseSyncApp:
                                 )
                             elif self.os_type == "windows" and now - last_move_time >= move_interval:
                                 last_move_time = now
-                                win32api.SetCursorPos((
+                                self.mouse_controller.position = (
                                     int(latest_move_event["x"] * self.screen_width),
                                     int(latest_move_event["y"] * self.screen_height)
-                                ))
+                                )
                         
                         # Process other events normally
                         for event in events_to_process:
