@@ -293,10 +293,7 @@ class MouseSyncApp:
                                 else:
                                     self.mouse_controller.release(btn)
                             elif event["type"] == "scroll":
-                                if self.os_type == "windows":
-                                    win32api.mouse_event(win32con.MOUSEEVENTF_WHEEL, 0, 0, event['dy'], 0)
-                                elif self.os_type == "linux":
-                                    self.mouse_controller.scroll(event['dx'], event['dy'])
+                                self.mouse_controller.scroll(event['dx'], event['dy'])
                 except ConnectionResetError:
                     print("[Client] Server forcibly closed connection.")
                 except Exception as e:
