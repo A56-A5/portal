@@ -5,8 +5,6 @@ import threading
 import json
 import time
 import platform
-import win32con
-import win32api
 from pynput import mouse
 from pynput.mouse import Button, Controller
 from config import app_config
@@ -266,7 +264,8 @@ class MouseSyncApp:
             if self.client_socket.recv(1024) != b"CONNECTED\n":
                 raise Exception("Handshake failed")
             print(f"[Client] Connected to server {app_config.server_ip}:{self.port}")
-
+            if self.os_type == "windows":
+                import win32api
             def client_thread():
                 buffer = ""
                 try:
@@ -279,12 +278,12 @@ class MouseSyncApp:
                             line, buffer = buffer.split("\n", 1)
                             event = json.loads(line)
                             if event["type"] == "move":
-                                if self.os_type == "windows":
+                                if self.os_type == "linux":
                                     self.mouse_controller.position = (
                                     int(event["x"] * self.screen_width),
                                     int(event["y"] * self.screen_height)
                                     )
-                                elif self.os_type == "linux":
+                                elif self.os_type == "windows":
                                     win32api.SetCursorPos((event["x"] * self.screen_width, event["y"] * self.screen_height))
                             elif event["type"] == "click":
                                 btn = getattr(Button, event['button'])
