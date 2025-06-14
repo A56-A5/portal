@@ -270,27 +270,40 @@ class MouseSyncApp:
                 import win32api
             def client_thread():
                 buffer = ""
+                last_move_time = 0
+                move_interval = 1 / 24
+
                 try:
                     while app_config.is_running:
                         data = self.client_socket.recv(1024).decode()
                         if not data:
                             break
                         buffer += data
+                        latest_move_event = None
+                        events_to_process = []
+
                         while "\n" in buffer:
                             line, buffer = buffer.split("\n", 1)
                             event = json.loads(line)
-                            last_move_time = 0
-                            move_interval = 1 / 60 
                             if event["type"] == "move":
-                                now = time.time()
-                                if self.os_type == "linux":
-                                    self.mouse_controller.position = (
-                                    int(event["x"] * self.screen_width),
-                                    int(event["y"] * self.screen_height)
-                                    )
-                                elif self.os_type == "windows" and now - last_move_time >= move_interval:
-                                    last_move_time = now
-                                    win32api.SetCursorPos((int(event["x"] * self.screen_width), int(event["y"] * self.screen_height)))
+                                latest_move_event = event  # Only keep the latest move
+                            else:
+                                events_to_process.append(event)
+
+                        # Process only the latest move
+                        if latest_move_event:
+                            now = time.time()
+                            if self.os_type == "linux":
+                                self.mouse_controller.position = (
+                                    int(latest_move_event["x"] * self.screen_width),
+                                    int(latest_move_event["y"] * self.screen_height)
+                                )
+                            elif self.os_type == "windows" and now - last_move_time >= move_interval:
+                                last_move_time = now
+                                win32api.SetCursorPos((
+                                    int(latest_move_event["x"] * self.screen_width),
+                                    int(latest_move_event["y"] * self.screen_height)
+                                ))
                             elif event["type"] == "click":
                                 btn = getattr(Button, event['button'])
                                 if event['pressed']:
