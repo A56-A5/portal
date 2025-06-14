@@ -248,6 +248,7 @@ class MouseSyncApp:
             try:
                 print("[Server] Waiting for client...")
                 client, addr = self.server_socket.accept()
+                client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 print(f"[Server] Client connected: {addr}")
                 client.sendall(b'CONNECTED\n')
                 self.handle_client(client)
@@ -259,6 +260,7 @@ class MouseSyncApp:
     def start_client(self):
         print("[Client] Trying to connect to", app_config.server_ip)
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         try:
             self.client_socket.connect((app_config.server_ip, self.port))
             if self.client_socket.recv(1024) != b"CONNECTED\n":
@@ -277,14 +279,18 @@ class MouseSyncApp:
                         while "\n" in buffer:
                             line, buffer = buffer.split("\n", 1)
                             event = json.loads(line)
+                            last_move_time = 0
+                            move_interval = 1 / 60 
                             if event["type"] == "move":
+                                now = time.time()
                                 if self.os_type == "linux":
                                     self.mouse_controller.position = (
                                     int(event["x"] * self.screen_width),
                                     int(event["y"] * self.screen_height)
                                     )
-                                elif self.os_type == "windows":
-                                    win32api.SetCursorPos((event["x"] * self.screen_width, event["y"] * self.screen_height))
+                                elif self.os_type == "windows" and now - last_move_time >= move_interval:
+                                    last_move_time = now
+                                    win32api.SetCursorPos((int(event["x"] * self.screen_width), int(event["y"] * self.screen_height)))
                             elif event["type"] == "click":
                                 btn = getattr(Button, event['button'])
                                 if event['pressed']:
