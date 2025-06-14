@@ -103,60 +103,52 @@ class MouseSyncApp:
             self.overlay = None
 
     def handle_client(self, client_socket):
-        last_sent_time = [0]  # Mutable for inner access
-        min_send_interval = 1 / 30  # 60 FPS cap (adjust as needed)
         def on_move(x, y):
             margin = 2
             server_mouse_controller = Controller()
             # Entry
-            from PyQt5.QtCore import QTimer
-            if not app_config.active_device and not self.edge_transition_cooldown:
+            if not app_config.active_device:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
                     app_config.active_device = True
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0,self.create_overlay())
-                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
+                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (margin, y)
                     print("Mouse Exited from Right edge")
                 elif app_config.server_direction == "Left" and x <= margin:
                     app_config.active_device = True
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.create_overlay)
-                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
+                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (self.screen_width - margin, y)
                     print("Mouse Exited from Left edge")
                 elif app_config.server_direction == "Top" and y <= margin:
                     app_config.active_device = True
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.create_overlay)
-                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
+                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (x, self.screen_height - margin)
                     print("Mouse Exited from Top edge")
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     app_config.active_device = True
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.create_overlay)
-                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
+                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (x, margin)
                     print("Mouse Exited from Bottom edge")
         
             # Return
-            elif app_config.active_device and not self.edge_transition_cooldown:
+            elif app_config.active_device:
                 if app_config.server_direction == "Right" and x <= margin:
                     app_config.active_device = False
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
@@ -166,7 +158,6 @@ class MouseSyncApp:
                     print("Mouse Entered from Right edge")
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     app_config.active_device = False
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
@@ -176,7 +167,6 @@ class MouseSyncApp:
                     print("Mouse Entered from Left edge")
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     app_config.active_device = False
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
@@ -186,7 +176,6 @@ class MouseSyncApp:
                     print("Mouse Entered from Top edge")
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     app_config.active_device = False
-                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
@@ -194,23 +183,10 @@ class MouseSyncApp:
                         self.destroy_overlay()
                         server_mouse_controller.position = (x, self.screen_height - margin)
                     print("Mouse Entered from Bottom edge")
-        
-            # Reset cooldown if mouse is not at any edge
-            if (
-                margin < x < self.screen_width - margin and
-                margin < y < self.screen_height - margin
-            ):
-                self.edge_transition_cooldown = False
-        
+            app_config.save()
             # Send movement
             if not app_config.active_device:
                 return
-            
-            if self.os_type == "linux":
-                now = time.time()
-            if now - last_sent_time[0] < min_send_interval:
-                return
-            last_sent_time[0] = now
         
             try:
                 norm_x = x / self.screen_width
@@ -220,7 +196,6 @@ class MouseSyncApp:
             except Exception as e:
                 print(f"[Server] Send failed: {e}")
                 return False
-        
 
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
@@ -275,57 +250,32 @@ class MouseSyncApp:
             if self.client_socket.recv(1024) != b"CONNECTED\n":
                 raise Exception("Handshake failed")
             print(f"[Client] Connected to server {app_config.server_ip}:{self.port}")
-            if self.os_type == "windows":
-                import win32api
             def client_thread():
                 buffer = ""
-                last_move_time = 0
-                move_interval = 1 / 30
-
                 try:
                     while app_config.is_running:
                         data = self.client_socket.recv(1024).decode()
                         if not data:
                             break
                         buffer += data
-                        latest_move_event = None
-                        events_to_process = []
-                        
                         while "\n" in buffer:
                             line, buffer = buffer.split("\n", 1)
-                            event = json.loads(line)
-                            if event["type"] == "move":
-                                latest_move_event = event  # Only keep the latest move
-                            else:
-                                events_to_process.append(event)
-                        
-                        # Process only the latest move
-                        if latest_move_event:
-                            now = time.time()
-                            if self.os_type == "linux":
-                                self.mouse_controller.position = (
-                                    int(latest_move_event["x"] * self.screen_width),
-                                    int(latest_move_event["y"] * self.screen_height)
-                                )
-                            elif self.os_type == "windows" and now - last_move_time >= move_interval:
-                                last_move_time = now
-                                self.mouse_controller.position = (
-                                    int(latest_move_event["x"] * self.screen_width),
-                                    int(latest_move_event["y"] * self.screen_height)
-                                )
-                        
-                        # Process other events normally
-                        for event in events_to_process:
-                            if event["type"] == "click":
-                                btn = getattr(Button, event['button'])
-                                if event['pressed']:
-                                    self.mouse_controller.press(btn)
-                                else:
-                                    self.mouse_controller.release(btn)
-                            elif event["type"] == "scroll":
-                                self.mouse_controller.scroll(event['dx'], event['dy'])
-                except ConnectionResetError:
-                    print("[Client] Server forcibly closed connection.")
+                            try:
+                                evt = json.loads(line)
+                                if evt["type"] == "move":
+                                    x = int(evt["x"] * self.screen_width)
+                                    y = int(evt["y"] * self.screen_height)
+                                    self.mouse_controller.position = (x, y)
+                                elif evt["type"] == "click":
+                                    btn = getattr(Button, evt['button'])
+                                    if evt['pressed']:
+                                        self.mouse_controller.press(btn)
+                                    else:
+                                        self.mouse_controller.release(btn)
+                                elif evt["type"] == "scroll":
+                                    self.mouse_controller.scroll(evt['dx'], evt['dy'])
+                            except ConnectionResetError:
+                                print("[Client] Server forcibly closed connection.")
                 except Exception as e:
                     print(f"[Client] Unexpected error: {e}")
 
