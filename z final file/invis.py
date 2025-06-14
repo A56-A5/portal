@@ -281,7 +281,7 @@ class MouseSyncApp:
                         buffer += data
                         latest_move_event = None
                         events_to_process = []
-
+                        
                         while "\n" in buffer:
                             line, buffer = buffer.split("\n", 1)
                             event = json.loads(line)
@@ -289,7 +289,7 @@ class MouseSyncApp:
                                 latest_move_event = event  # Only keep the latest move
                             else:
                                 events_to_process.append(event)
-
+                        
                         # Process only the latest move
                         if latest_move_event:
                             now = time.time()
@@ -304,7 +304,10 @@ class MouseSyncApp:
                                     int(latest_move_event["x"] * self.screen_width),
                                     int(latest_move_event["y"] * self.screen_height)
                                 ))
-                            elif event["type"] == "click":
+                        
+                        # Process other events normally
+                        for event in events_to_process:
+                            if event["type"] == "click":
                                 btn = getattr(Button, event['button'])
                                 if event['pressed']:
                                     self.mouse_controller.press(btn)
