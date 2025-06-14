@@ -107,48 +107,53 @@ class MouseSyncApp:
             margin = 2
             server_mouse_controller = Controller()
             # Entry
-            if not app_config.active_device:
+            if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0,self.create_overlay())
-                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
+                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (margin, y)
                     print("Mouse Exited from Right edge")
                 elif app_config.server_direction == "Left" and x <= margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.create_overlay)
-                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
+                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (self.screen_width - margin, y)
                     print("Mouse Exited from Left edge")
                 elif app_config.server_direction == "Top" and y <= margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.create_overlay)
-                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
+                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (x, self.screen_height - margin)
                     print("Mouse Exited from Top edge")
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     app_config.active_device = True
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.create_overlay)
-                        self.gui_app.after(1, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
+                        self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
                     elif self.os_type == "linux":
                         self.create_overlay()
                         server_mouse_controller.position = (x, margin)
                     print("Mouse Exited from Bottom edge")
         
             # Return
-            elif app_config.active_device:
+            elif app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x <= margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (self.screen_width - margin, y)))
@@ -158,6 +163,7 @@ class MouseSyncApp:
                     print("Mouse Entered from Right edge")
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (margin, y)))
@@ -167,6 +173,7 @@ class MouseSyncApp:
                     print("Mouse Entered from Left edge")
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, margin)))
@@ -176,6 +183,7 @@ class MouseSyncApp:
                     print("Mouse Entered from Top edge")
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     app_config.active_device = False
+                    self.edge_transition_cooldown = True
                     if self.os_type == "windows":
                         self.gui_app.after(0, self.destroy_overlay)
                         self.gui_app.after(10, lambda: setattr(server_mouse_controller, 'position', (x, self.screen_height - margin)))
@@ -183,6 +191,14 @@ class MouseSyncApp:
                         self.destroy_overlay()
                         server_mouse_controller.position = (x, self.screen_height - margin)
                     print("Mouse Entered from Bottom edge")
+        
+            # Reset cooldown if mouse is not at any edge
+            if (
+                margin < x < self.screen_width - margin and
+                margin < y < self.screen_height - margin
+            ):
+                self.edge_transition_cooldown = False
+         
             app_config.save()
             # Send movement
             if not app_config.active_device:
