@@ -5,36 +5,35 @@ import threading
 import json
 import time
 import platform
-from pynput import mouse
+from pynput import mouse,keyboard
 from pynput.mouse import Button, Controller
 from config import app_config
-
-OS = platform.system().lower()
 
 class MouseSyncApp:
     def __init__(self):
         self.edge_transition_cooldown = False
         self.port = 50007
         self.mouse_controller = Controller()
+        self.keyboard_controller = keyboard.Controller()
         self.server_socket = None
         self.client_socket = None
         self.overlay = None
         self.screen_width = None
         self.screen_height = None
         self.gui_app = None
-        self.last_mouse_position = (0, 0)
+        self.os_type = platform.system().lower()
 
         app_config.load()
         app_config.active_device = False
 
-        if OS == "windows":
+        if self.os_type == "windows":
             import tkinter as tk
             self.tk = tk
             self.gui_app = self.tk.Tk()
             self.gui_app.withdraw()
             self.screen_width = self.gui_app.winfo_screenwidth()
             self.screen_height = self.gui_app.winfo_screenheight()
-        elif OS == "linux":
+        elif self.os_type == "linux":
             from PyQt5.QtWidgets import QApplication, QWidget
             from PyQt5.QtCore import Qt
             self.Qt = Qt
@@ -63,7 +62,7 @@ class MouseSyncApp:
     def create_overlay(self):
         if not app_config.active_device:
             return
-        if OS == "windows":
+        if self.os_type == "windows":
             overlay = self.tk.Toplevel(self.gui_app)
             overlay.overrideredirect(True)
             overlay.attributes("-topmost", True)
@@ -75,7 +74,7 @@ class MouseSyncApp:
             overlay.focus_force()
             overlay.update_idletasks()
             self.overlay = overlay
-        elif OS == "linux":
+        elif self.os_type == "linux":
             overlay = self.QWidget()
             overlay.setWindowFlags(self.Qt.FramelessWindowHint | self.Qt.WindowStaysOnTopHint | self.Qt.Tool)
             overlay.setAttribute(self.Qt.WA_TranslucentBackground)
@@ -88,9 +87,9 @@ class MouseSyncApp:
 
     def destroy_overlay(self):
         if self.overlay:
-            if OS == "windows":
+            if self.os_type == "windows":
                 self.overlay.destroy()
-            elif OS == "linux":
+            elif self.os_type == "linux":
                 self.overlay.close()
             self.overlay = None
 
@@ -126,7 +125,7 @@ class MouseSyncApp:
     def transition(self, to_active, new_position):
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
-        if OS == "windows":
+        if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
             self.gui_app.after(10, lambda: setattr(self.mouse_controller, 'position', new_position))
         else:
@@ -138,7 +137,7 @@ class MouseSyncApp:
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
 
-    def mouse_input_sender(self, client_socket):
+    def input_sender(self, client_socket):
         def send_json(data):
             try:
                 client_socket.sendall((json.dumps(data) + "\n").encode())
@@ -161,12 +160,29 @@ class MouseSyncApp:
             if not app_config.active_device:
                 return
             send_json({"type": "scroll", "dx": dx, "dy": dy})
+        
+        def on_press(key):
+            if not app_config.active_device:
+                return
+            try:
+                send_json({"type": "key_press", "key": key.char})
+            except AttributeError:
+                send_json({"type": "key_press", "key": str(key)})
+
+        def on_release(key):
+            if not app_config.active_device:
+                return
+            try:
+                send_json({"type": "key_release", "key": key.char})
+            except AttributeError:
+                send_json({"type": "key_release", "key": str(key)})
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
+        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=True).start()
 
     def handle_client(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
-        threading.Thread(target=self.mouse_input_sender, args=(client_socket,), daemon=True).start()
+        threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -217,6 +233,13 @@ class MouseSyncApp:
                                     self.mouse_controller.release(btn)
                             elif evt["type"] == "scroll":
                                 self.mouse_controller.scroll(evt['dx'], evt['dy'])
+                            elif evt["type"] == "key_press":
+                                key = getattr(Key, evt["key"].replace("Key.", "")) if "Key." in evt["key"] else evt["key"]
+                                self.keyboard_controller.press(key)
+
+                            elif evt["type"] == "key_release":
+                                key = getattr(Key, evt["key"].replace("Key.", "")) if "Key." in evt["key"] else evt["key"]
+                                self.keyboard_controller.release(key)
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
             threading.Thread(target=receive_thread, daemon=True).start()
@@ -238,7 +261,7 @@ class MouseSyncApp:
 
         threading.Thread(target=monitor_stop, daemon=True).start()
 
-        if OS == "windows":
+        if self.os_type == "windows":
             self.gui_app.mainloop()
         else:
             self.gui_app.exec_()

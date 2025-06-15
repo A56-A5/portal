@@ -119,11 +119,6 @@ class PortalUI:
 
         self.server_location_label.config(fg='black' if is_server else 'grey')
 
-        if current_mode == "client":
-            app_config.client_os = self.os_type 
-        elif current_mode == "server":
-            app_config.server_os = self.os_type
-
         app_config.mode = current_mode  # Also update mode
         app_config.save()
         self.log(f"Mode set to {current_mode}, OS recorded as {'client' if current_mode == 'client' else 'server'}: {self.os_type}")
@@ -155,8 +150,6 @@ class PortalUI:
             app_config.mode = self.mode.get()
             app_config.audio_enabled = self.audio_enabled.get()
             app_config.audio_direction = self.audio_direction.get()
-            app_config.server_os = self.os_type if app_config.mode == "server" else app_config.server_os
-            app_config.client_os = self.os_type if app_config.mode == "client" else app_config.client_os
             app_config.save()  
 
             def launch_invis():
