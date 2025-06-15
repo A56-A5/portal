@@ -238,6 +238,8 @@ class MouseSyncApp:
                         data = self.client_socket.recv(1024).decode()
                     except Exception as e:
                         print(f"[Client] Receive error: {e}")
+                        app_config.is_running = False
+                        self.cleanup()
                         break
                     if not data:
                         break
