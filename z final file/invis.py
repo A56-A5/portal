@@ -195,17 +195,17 @@ class MouseSyncApp:
                     app_config.save()
                     data = {"type": "clipboard", "content": current_clipboard[:10000]}  # Optional: truncate large data
                     client_socket.sendall((json.dumps(data) + "\n").encode())
-    
+
                 app_config.load()
                 if app_config.clipboard != self.last_clipboard:
                     print("[Clipboard] Remote update detected")
                     self.last_clipboard = app_config.clipboard
                     pyperclip.copy(self.last_clipboard)
-    
+
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
-    
+
     def handle_client(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
@@ -285,7 +285,6 @@ class MouseSyncApp:
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
             threading.Thread(target=receive_thread, daemon=True).start()
-            threading.Thread(target=self.clipboard_monitor, args=(self.client_socket,), daemon=True).start()
         except Exception as e:
             print(f"[Client] Connection failed: {e}")
 
