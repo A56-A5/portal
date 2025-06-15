@@ -150,7 +150,7 @@ class MouseSyncApp:
                 print(f"[Sender] Send failed: {e}")
 
         def on_move(x, y):
-            if not app_config.active_device:
+            if not app_config.active_device and app_config.is_running:
                 return
             norm_x = x / self.screen_width
             norm_y = y / self.screen_height
@@ -184,7 +184,7 @@ class MouseSyncApp:
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
         keyboard.Listener(on_press= on_press, on_release= on_release , suppress=True).start()
-    def clipboard_monitor(self):
+    def clipboard_monitor(self,client_socket):
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
@@ -193,6 +193,8 @@ class MouseSyncApp:
                     self.last_clipboard = current_clipboard
                     app_config.clipboard = current_clipboard
                     app_config.save()
+                    data = {"type": "clipboard", "content": current_clipboard}
+                    client_socket.sendall((json.dumps(data) + "\n").encode())
 
                 app_config.load()
                 if app_config.clipboard != self.last_clipboard:
@@ -205,7 +207,7 @@ class MouseSyncApp:
     def handle_client(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
-        threading.Thread(target=self.clipboard_monitor, daemon=True).start()
+        threading.Thread(target=self.clipboard_monitor,args=(client_socket), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -269,9 +271,19 @@ class MouseSyncApp:
                             elif evt["type"] == "key_release":
                                 key = getattr(Key, evt["key"].replace("Key.", "")) if "Key." in evt["key"] else evt["key"]
                                 self.keyboard_controller.release(key)
+                            
+                            elif evt["type"] == "clipboard":
+                                content = evt["content"]
+                                if content != self.last_clipboard:
+                                    print("[Clipboard] Remote clipboard update detected")
+                                    self.last_clipboard = content
+                                    pyperclip.copy(content)
+                                    app_config.clipboard = content
+                                    app_config.save()
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
             threading.Thread(target=receive_thread, daemon=True).start()
+            threading.Thread(target=self.clipboard_monitor, args=(self.client_socket,), daemon=True).start()
         except Exception as e:
             print(f"[Client] Connection failed: {e}")
 
