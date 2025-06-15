@@ -150,24 +150,24 @@ class MouseSyncApp:
                 app_config.is_running = False
                 app_config.save()
                 print(f"[Sender] Send failed: {e}")
-    
+
         def on_move(x, y):
             if not app_config.active_device and app_config.is_running:
                 return
             norm_x = x / self.screen_width
             norm_y = y / self.screen_height
             send_json({"type": "move", "x": norm_x, "y": norm_y})
-    
+
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
                 return
             send_json({"type": "click", "button": button.name, "pressed": pressed})
-    
+
         def on_scroll(x, y, dx, dy):
             if not app_config.active_device:
                 return
             send_json({"type": "scroll", "dx": dx, "dy": dy})
-    
+
         def on_press(key):
             if not app_config.active_device:
                 return
@@ -175,7 +175,7 @@ class MouseSyncApp:
                 send_json({"type": "key_press", "key": key.char})
             except AttributeError:
                 send_json({"type": "key_press", "key": str(key)})
-    
+
         def on_release(key):
             if not app_config.active_device:
                 return
@@ -183,10 +183,10 @@ class MouseSyncApp:
                 send_json({"type": "key_release", "key": key.char})
             except AttributeError:
                 send_json({"type": "key_release", "key": str(key)})
-    
+
         # Start mouse listener always
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
-    
+
         # Keyboard listener handler thread
         def keyboard_listener_watcher():
             while app_config.is_running:
@@ -197,15 +197,15 @@ class MouseSyncApp:
                             on_press=on_press, on_release=on_release, suppress=True
                         )
                         self.keyboard_listener.start()
-    
+
                     elif not app_config.active_device and self.keyboard_listener is not None:
                         print("[Keyboard] Stopping suppressing listener")
                         self.keyboard_listener.stop()
                         self.keyboard_listener = None
                 time.sleep(0.2)
-    
+
         threading.Thread(target=keyboard_listener_watcher, daemon=True).start()
-    
+
     def clipboard_monitor(self, client_socket):
         while app_config.is_running:
             try:
@@ -231,7 +231,6 @@ class MouseSyncApp:
     def handle_client(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
-        threading.Thread(target=self.clipboard_monitor,args=(client_socket,), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
