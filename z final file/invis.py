@@ -145,6 +145,8 @@ class MouseSyncApp:
             try:
                 client_socket.sendall((json.dumps(data) + "\n").encode())
             except Exception as e:
+                app_config.is_running = False
+                app_config.save()
                 print(f"[Sender] Send failed: {e}")
 
         def on_move(x, y):
@@ -239,7 +241,7 @@ class MouseSyncApp:
                     except Exception as e:
                         print(f"[Client] Receive error: {e}")
                         app_config.is_running = False
-                        self.cleanup()
+                        app_config.save()
                         break
                     if not data:
                         break
@@ -269,7 +271,6 @@ class MouseSyncApp:
                                 self.keyboard_controller.release(key)
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
-            threading.Thread(target=self.clipboard_monitor, daemon=True).start()
             threading.Thread(target=receive_thread, daemon=True).start()
         except Exception as e:
             print(f"[Client] Connection failed: {e}")
