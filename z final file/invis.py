@@ -5,7 +5,7 @@ import threading
 import json
 import time
 import platform
-from pynput import mouse
+from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
 from config import app_config
