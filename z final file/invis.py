@@ -184,30 +184,32 @@ class MouseSyncApp:
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
         keyboard.Listener(on_press= on_press, on_release= on_release , suppress=False).start()
-    def clipboard_monitor(self,client_socket):
+    def clipboard_monitor(self, client_socket):
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
                 if current_clipboard != self.last_clipboard:
-                    print("[Clipboard] Detected change in clipboard content")
+                    print("[Clipboard] Local change detected")
                     self.last_clipboard = current_clipboard
                     app_config.clipboard = current_clipboard
                     app_config.save()
-                    data = {"type": "clipboard", "content": current_clipboard}
+                    data = {"type": "clipboard", "content": current_clipboard[:10000]}  # Optional: truncate large data
                     client_socket.sendall((json.dumps(data) + "\n").encode())
-
+    
                 app_config.load()
                 if app_config.clipboard != self.last_clipboard:
-                    print("[Clipboard] Remote change detected, updating local clipboard")
+                    print("[Clipboard] Remote update detected")
                     self.last_clipboard = app_config.clipboard
                     pyperclip.copy(self.last_clipboard)
+    
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
+    
     def handle_client(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
-        threading.Thread(target=self.clipboard_monitor,args=(client_socket), daemon=True).start()
+        threading.Thread(target=self.clipboard_monitor,args=(client_socket,), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
