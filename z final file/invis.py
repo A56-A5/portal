@@ -130,7 +130,7 @@ class MouseSyncApp:
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
-            self.gui_app.after(5, lambda: setattr(self.mouse_controller, 'position', new_position))
+            self.gui_app.after(0.0001, lambda: setattr(self.mouse_controller, 'position', new_position))
         else:
             if to_active:
                 self.create_overlay()
@@ -183,7 +183,7 @@ class MouseSyncApp:
                 send_json({"type": "key_release", "key": str(key)})
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
-        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=True).start()
+        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=False).start()
     def clipboard_monitor(self,client_socket):
         while app_config.is_running:
             try:
