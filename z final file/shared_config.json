@@ -2,6 +2,6 @@
     "stop_flag": false,
     "is_running": true,
     "active_device": false,
-    "audio_enabled": false,
+    "audio_enabled": true,
     "audio_direction": "client_to_server"
 }

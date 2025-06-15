@@ -5,6 +5,7 @@ import threading
 import json
 import time
 import platform
+import pyperclip
 from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
@@ -22,6 +23,7 @@ class MouseSyncApp:
         self.screen_width = None
         self.screen_height = None
         self.gui_app = None
+        self.last_clipboard = pyperclip.paste()
         self.os_type = platform.system().lower()
 
         app_config.load()
@@ -180,10 +182,21 @@ class MouseSyncApp:
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
         keyboard.Listener(on_press= on_press, on_release= on_release , suppress=True).start()
-
+    def clipboard_monitor(self):
+        while app_config.is_running:
+            try:
+                current_clipboard = pyperclip.paste()
+                if current_clipboard != self.last_clipboard:
+                    self.last_clipboard = current_clipboard
+                    app_config.clipboard = current_clipboard
+                    app_config.save()
+            except Exception as e:
+                print(f"[Clipboard] Error: {e}")
+            time.sleep(0.5)
     def handle_client(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
+        threading.Thread(target=self.clipboard_monitor, daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

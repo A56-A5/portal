@@ -1,4 +1,2 @@
 # Ignore all config JSON files
 config.json
-local_config.json
-shared_config.json
