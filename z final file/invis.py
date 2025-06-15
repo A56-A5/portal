@@ -181,7 +181,7 @@ class MouseSyncApp:
                 send_json({"type": "key_release", "key": str(key)})
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
-        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=False).start()
+        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=True).start()
     def clipboard_monitor(self):
         while app_config.is_running:
             try:
@@ -234,7 +234,11 @@ class MouseSyncApp:
             def receive_thread():
                 buffer = ""
                 while app_config.is_running:
-                    data = self.client_socket.recv(1024).decode()
+                    try:
+                        data = self.client_socket.recv(1024).decode()
+                    except Exception as e:
+                        print(f"[Client] Receive error: {e}")
+                        break
                     if not data:
                         break
                     buffer += data
@@ -263,6 +267,7 @@ class MouseSyncApp:
                                 self.keyboard_controller.release(key)
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
+            threading.Thread(target=self.clipboard_monitor, daemon=True).start()
             threading.Thread(target=receive_thread, daemon=True).start()
         except Exception as e:
             print(f"[Client] Connection failed: {e}")
