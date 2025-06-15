@@ -130,7 +130,7 @@ class MouseSyncApp:
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
-            self.gui_app.after(10, lambda: setattr(self.mouse_controller, 'position', new_position))
+            self.gui_app.after(5, lambda: setattr(self.mouse_controller, 'position', new_position))
         else:
             if to_active:
                 self.create_overlay()
@@ -181,15 +181,22 @@ class MouseSyncApp:
                 send_json({"type": "key_release", "key": str(key)})
 
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
-        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=True).start()
+        keyboard.Listener(on_press= on_press, on_release= on_release , suppress=False).start()
     def clipboard_monitor(self):
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
                 if current_clipboard != self.last_clipboard:
+                    print("[Clipboard] Detected change in clipboard content")
                     self.last_clipboard = current_clipboard
                     app_config.clipboard = current_clipboard
                     app_config.save()
+
+                app_config.load()
+                if app_config.clipboard != self.last_clipboard:
+                    print("[Clipboard] Remote change detected, updating local clipboard")
+                    self.last_clipboard = app_config.clipboard
+                    pyperclip.copy(self.last_clipboard)
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
