@@ -130,7 +130,7 @@ class MouseSyncApp:
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
-            self.gui_app.after(0.0001, lambda: setattr(self.mouse_controller, 'position', new_position))
+            self.gui_app.after(1, lambda: setattr(self.mouse_controller, 'position', new_position))
         else:
             if to_active:
                 self.create_overlay()
