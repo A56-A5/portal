@@ -5,7 +5,8 @@ import threading
 import json
 import time
 import platform
-from pynput import mouse,keyboard
+from pynput import mouse
+from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
 from config import app_config
 
@@ -14,7 +15,7 @@ class MouseSyncApp:
         self.edge_transition_cooldown = False
         self.port = 50007
         self.mouse_controller = Controller()
-        self.keyboard_controller = keyboard.Controller()
+        self.keyboard_controller = KeyboardController()
         self.server_socket = None
         self.client_socket = None
         self.overlay = None
