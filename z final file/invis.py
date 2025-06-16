@@ -215,21 +215,17 @@ class MouseSyncApp:
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
-
-                # If this device is the active one, it owns the clipboard.
-                if app_config.active_device:
-                    if current_clipboard != self.last_clipboard:
-                        print("[Clipboard] Local change detected (active device)")
-                        self.last_clipboard = current_clipboard
-                        app_config.clipboard = current_clipboard
-                        app_config.save()
-                else:
-                    # This device is the passive one, just copy remote if updated
-                    app_config.load()
-                    if app_config.clipboard != self.last_clipboard:
-                        print("[Clipboard] Remote clipboard update detected (passive)")
-                        self.last_clipboard = app_config.clipboard
-                        pyperclip.copy(self.last_clipboard)
+                if current_clipboard != self.last_clipboard:
+                    print("[Clipboard] Local change detected (active device)")
+                    self.last_clipboard = current_clipboard
+                    app_config.clipboard = current_clipboard
+                    app_config.save()
+                
+                app_config.load()
+                if app_config.clipboard != self.last_clipboard:
+                    print("[Clipboard] Remote clipboard update detected (passive)")
+                    self.last_clipboard = app_config.clipboard
+                    pyperclip.copy(self.last_clipboard)
 
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
