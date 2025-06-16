@@ -266,7 +266,7 @@ class MouseSyncApp:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(("0.0.0.0", self.primary_port))
         self.server_socket.listen(1)
-        print(f"[Server] Listening on port {self.primary_port}")
+        print(f"[Server] Listening on port {self.primary_port} & {self.secondary_port}")
 
         def accept_client():
             client, addr = self.server_socket.accept()
@@ -375,8 +375,10 @@ class MouseSyncApp:
                                 if key:
                                     self.keyboard_controller.release(key)
                             
-                            elif evt["type"] == "clipboard":
-                                pyperclip.copy(evt["content"])
+                            elif evt["type"] == "state":
+                                if evt["key"] == "active_device":
+                                    app_config.active_device = evt["value"]
+                                    app_config.save()
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
