@@ -334,8 +334,12 @@ class MouseSyncApp:
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
 
-            self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
-            print("[Client] Connected successfully.")
+            try:
+                self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
+                print("[Client] Secondary connected successfully.")
+            except Exception as e:
+                print(f"[Client] Secondary connection failed: {e}")
+                return
             def receive_secondary():
                 def parse_key(key_str):
                     # If it starts with Key., it's a special key
