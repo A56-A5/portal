@@ -211,7 +211,7 @@ class MouseSyncApp:
     
         threading.Thread(target=keyboard_listener_watcher, daemon=True).start()
     
-    def clipboard_monitor(self, client_socket):
+    def clipboard_monitor(self):
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
@@ -223,8 +223,6 @@ class MouseSyncApp:
                         self.last_clipboard = current_clipboard
                         app_config.clipboard = current_clipboard
                         app_config.save()
-                        data = {"type": "clipboard", "content": current_clipboard[:10000]}
-                        client_socket.sendall((json.dumps(data) + "\n").encode())
                 else:
                     # This device is the passive one, just copy remote if updated
                     app_config.load()
