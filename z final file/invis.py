@@ -288,7 +288,7 @@ class MouseSyncApp:
         threading.Thread(target=accept_secondary, daemon=True).start()
 
     def start_client(self):
-        print(f"[Client] Connecting to {app_config.server_ip}:{self.port}")
+        print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
@@ -297,7 +297,7 @@ class MouseSyncApp:
         self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
 
         try:
-            self.client_socket.connect((app_config.server_ip, self.port))
+            self.client_socket.connect((app_config.server_ip, self.primary_port))
             if self.client_socket.recv(1024) != b'CONNECTED\n':
                 raise Exception("Handshake failed")
             print("[Client] Connected successfully.")
@@ -333,34 +333,37 @@ class MouseSyncApp:
                                 self.mouse_controller.scroll(evt['dx'], evt['dy'])
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
-                def receive_secondary():
-                    buffer = ""
-                    while app_config.is_running:
+
+            self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
+            print("[Client] Connected successfully.")
+            def receive_secondary():
+                buffer = ""
+                while app_config.is_running:
+                    try:
+                        data = self.secondary_client_socket.recv(1024).decode()
+                    except Exception as e:
+                        print(f"[Client] Secondary receive error: {e}")
+                        app_config.is_running = False
+                        app_config.save()
+                        break
+                    if not data:
+                        break
+                    buffer += data
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
                         try:
-                            data = self.secondary_client_socket.recv(1024).decode()
+                            evt = json.loads(line)
+                            if evt["type"] == "key_press":
+                                self.keyboard_controller.press(evt["key"])
+                            elif evt["type"] == "key_release":
+                                self.keyboard_controller.release(evt["key"])
+                            elif evt["type"] == "clipboard":
+                                pyperclip.copy(evt["content"])
                         except Exception as e:
-                            print(f"[Client] Secondary receive error: {e}")
-                            app_config.is_running = False
-                            app_config.save()
-                            break
-                        if not data:
-                            break
-                        buffer += data
-                        while "\n" in buffer:
-                            line, buffer = buffer.split("\n", 1)
-                            try:
-                                evt = json.loads(line)
-                                if evt["type"] == "key_press":
-                                    self.keyboard_controller.press(evt["key"])
-                                elif evt["type"] == "key_release":
-                                    self.keyboard_controller.release(evt["key"])
-                                elif evt["type"] == "clipboard":
-                                    pyperclip.copy(evt["content"])
-                            except Exception as e:
-                                print(f"[Client] Secondary parse error: {e}")
+                            print(f"[Client] Secondary parse error: {e}")
 
             threading.Thread(target=receive_primary, daemon=True).start()
-            threading.Thread(target=self.receive_secondary, args=(self.client_socket,), daemon=True).start()
+            threading.Thread(target=receive_secondary, daemon=True).start()
         except Exception as e:
             print(f"[Client] Connection failed: {e}")
 
