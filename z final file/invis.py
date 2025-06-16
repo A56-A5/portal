@@ -136,7 +136,7 @@ class MouseSyncApp:
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         data_state = {"type": "active_device", "value": to_active}
-        self.secondary_client_socket.sendall((json.dumps(data_state) + "\n").encode())
+        self.secondary_server_socket.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position
