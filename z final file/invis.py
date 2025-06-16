@@ -104,22 +104,22 @@ class MouseSyncApp:
             x, y = self.mouse_controller.position
             if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
-                    self.transition(True, (margin, y,client_socket))
+                    self.transition(True, (margin, y),client_socket)
                 elif app_config.server_direction == "Left" and x <= margin:
-                    self.transition(True, (self.screen_width - margin, y,client_socket))
+                    self.transition(True, (self.screen_width - margin, y),client_socket)
                 elif app_config.server_direction == "Top" and y <= margin:
-                    self.transition(True, (x, self.screen_height - margin,client_socket))
+                    self.transition(True, (x, self.screen_height - margin),client_socket)
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
-                    self.transition(True, (x, margin,client_socket))
+                    self.transition(True, (x, margin),client_socket)
             elif app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x <= margin:
-                    self.transition(False, (self.screen_width - margin, y,client_socket))
+                    self.transition(False, (self.screen_width - margin, y),client_socket)
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
-                    self.transition(False, (margin, y,client_socket))
+                    self.transition(False, (margin, y),client_socket)
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
-                    self.transition(False, (x, margin,client_socket))
+                    self.transition(False, (x, margin),client_socket)
                 elif app_config.server_direction == "Bottom" and y <= margin:
-                    self.transition(False, (x, self.screen_height - margin,client_socket))
+                    self.transition(False, (x, self.screen_height - margin),client_socket)
 
             # Cooldown Reset
             if margin < x < self.screen_width - margin and margin < y < self.screen_height - margin:
@@ -127,13 +127,8 @@ class MouseSyncApp:
 
             time.sleep(0.01)
 
-    def transition(self, to_active, new_position,client_socket):
-        if to_active:
-            data = {"type": "overlay", "action": "create"}
-            client_socket.sendall(json.dumps(data) + "\n").encode()
-        else:
-            data = {"type": "overlay", "action": "destroy"}
-            client_socket.sendall(json.dumps(data) + "\n").encode()
+    def transition(self, to_active, new_position, client_socket):
+        
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
@@ -145,7 +140,10 @@ class MouseSyncApp:
                 self.create_overlay()
             else:
                 self.destroy_overlay()
+            data_state = {"type": "state", "key": "active_device", "value": to_active}
+            client_socket.sendall((json.dumps(data_state) + "\n").encode())
             self.mouse_controller.position = new_position
+        
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
 
@@ -217,29 +215,32 @@ class MouseSyncApp:
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
-                if current_clipboard != self.last_clipboard:
-                    print("[Clipboard] Local change detected")
-                    self.last_clipboard = current_clipboard
-                    time.sleep(0.1)
-                    app_config.clipboard = current_clipboard
-                    app_config.save()
-                    data = {"type": "clipboard", "content": current_clipboard[:10000]}  # Optional: truncate large data
-                    client_socket.sendall((json.dumps(data) + "\n").encode())
 
-                app_config.load()
-                if app_config.clipboard != self.last_clipboard:
-                    print("[Clipboard] Remote update detected")
-                    self.last_clipboard = app_config.clipboard
-                    pyperclip.copy(self.last_clipboard)
+                # If this device is the active one, it owns the clipboard.
+                if app_config.active_device:
+                    if current_clipboard != self.last_clipboard:
+                        print("[Clipboard] Local change detected (active device)")
+                        self.last_clipboard = current_clipboard
+                        app_config.clipboard = current_clipboard
+                        app_config.save()
+                        data = {"type": "clipboard", "content": current_clipboard[:10000]}
+                        client_socket.sendall((json.dumps(data) + "\n").encode())
+                else:
+                    # This device is the passive one, just copy remote if updated
+                    app_config.load()
+                    if app_config.clipboard != self.last_clipboard:
+                        print("[Clipboard] Remote clipboard update detected (passive)")
+                        self.last_clipboard = app_config.clipboard
+                        pyperclip.copy(self.last_clipboard)
 
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
+
     def handle_client(self, client_socket):
-        threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
+        threading.Thread(target=self.monitor_mouse_edges,args=(client_socket,), daemon=True).start()
         threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
-        threading.Thread(target=self.clipboard_monitor,args=(client_socket,), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -313,11 +314,11 @@ class MouseSyncApp:
                                     app_config.clipboard = content
                                     app_config.save()
 
-                            elif evt["type"] == "overlay":
-                                if evt["action"] == "create":
-                                    self.create_overlay()
-                                elif evt["action"] == "destroy":
-                                    self.destroy_overlay()
+                            elif evt["type"] == "state":
+                                if evt["key"] == "active_device":
+                                    app_config.active_device = evt["value"]
+                                    app_config.save()
+                            
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
             threading.Thread(target=receive_thread, daemon=True).start()
@@ -330,13 +331,14 @@ class MouseSyncApp:
             self.start_server()
         else:
             self.start_client()
+        
 
         def monitor_stop():
             while app_config.is_running and not app_config.stop_flag:
                 time.sleep(0.5)
             self.cleanup()
             self.gui_app.quit()
-
+        threading.Thread(target=self.clipboard_monitor,daemon=True).start()
         threading.Thread(target=monitor_stop, daemon=True).start()
 
         if self.os_type == "windows":
