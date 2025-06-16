@@ -293,7 +293,6 @@ class MouseSyncApp:
 
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
 
         try:
             self.client_socket.connect((app_config.server_ip, self.primary_port))
