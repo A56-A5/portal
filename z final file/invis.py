@@ -132,12 +132,13 @@ class MouseSyncApp:
             time.sleep(0.01)
 
     def transition(self, to_active, new_position):
+        app_config.load()
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         data_state = {"type": "active_device", "value": to_active}
         self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())  
         if to_active:
-            data_state = {"type" : "clipboard", "content": app_config.clipboard}
+            data_state = {"type" : "clipboard", "content": app_config.clipboard }
             self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
@@ -399,10 +400,15 @@ class MouseSyncApp:
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
                                 app_config.save()
-                                if not app_config.active_device:
-                                    app_config.load()
-                                    data = {"type": "clipboard", "content": app_config.clipboard}
-                                    self.secondary_client_socket.sendall((json.dumps(data) + "\n").encode())
+                            elif evt["type"] == "clipboard":
+                                app_config.clipboard = evt["content"]
+                                app_config.save()
+                                try:
+                                    pyperclip.copy(evt["content"])
+                                    print("[Client] Clipboard updated from server")
+                                except Exception as e:
+                                    print(f"[Client] Clipboard copy failed: {e}")
+                            
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
