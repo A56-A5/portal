@@ -14,7 +14,8 @@ from config import app_config
 class MouseSyncApp:
     def __init__(self):
         self.edge_transition_cooldown = False
-        self.port = 50007
+        self.primary_port = 50007
+        self.secondry_port = 50008
         self.mouse_controller = Controller()
         self.keyboard_controller = KeyboardController()
         self.keyboard_listener = None
@@ -131,6 +132,8 @@ class MouseSyncApp:
         
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
+        data_state = {"type": "state", "key": "active_device", "value": to_active}
+        client_socket.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position
@@ -140,14 +143,12 @@ class MouseSyncApp:
                 self.create_overlay()
             else:
                 self.destroy_overlay()
-            data_state = {"type": "state", "key": "active_device", "value": to_active}
-            client_socket.sendall((json.dumps(data_state) + "\n").encode())
             self.mouse_controller.position = new_position
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
 
-    def input_sender(self, client_socket):
+    def input_sender_mouse(self, client_socket):
         def send_json(data):
             try:
                 client_socket.sendall((json.dumps(data) + "\n").encode())
@@ -172,7 +173,18 @@ class MouseSyncApp:
             if not app_config.active_device:
                 return
             send_json({"type": "scroll", "dx": dx, "dy": dy})
-    
+
+        mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
+
+    def input_sender_keyboard(self, client_socket):
+        def send_json(data):
+            try:
+                client_socket.sendall((json.dumps(data) + "\n").encode())
+            except Exception as e:
+                app_config.is_running = False
+                app_config.save()
+                print(f"[Sender] Send failed: {e}")
+
         def on_press(key):
             if not app_config.active_device:
                 return
@@ -188,9 +200,6 @@ class MouseSyncApp:
                 send_json({"type": "key_release", "key": key.char})
             except AttributeError:
                 send_json({"type": "key_release", "key": str(key)})
-    
-        # Start mouse listener always
-        mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
     
         # Keyboard listener handler thread
         def keyboard_listener_watcher():
@@ -231,38 +240,69 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
+    def clipboard_sender(self):
+        while app_config.is_running and app_config.active_device:
+            try:
+                    data = {"type": "clipboard", "content": app_config.clipboard}
+                    if self.client_socket:
+                        self.client_socket.sendall((json.dumps(data) + "\n").encode())
+            except Exception as e:
+                print(f"[Clipboard] Error: {e}")
+            time.sleep(0.5)
 
-    def handle_client(self, client_socket):
+
+    def handle_primary(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges,args=(client_socket,), daemon=True).start()
-        threading.Thread(target=self.input_sender, args=(client_socket,), daemon=True).start()
+        threading.Thread(target=self.input_sender_mouse, args=(client_socket,), daemon=True).start()
+
+    def handle_secondary(self, sec_socket):        
+        threading.Thread(target=self.input_sender_keyboard, args=(sec_socket,), daemon=True).start()
+        threading.Thread(target=self.clipboard_sender,args=(sec_socket,), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(("0.0.0.0", self.port))
+        self.server_socket.bind(("0.0.0.0", self.primary_port))
         self.server_socket.listen(1)
-        print(f"[Server] Listening on port {self.port}")
+        print(f"[Server] Listening on port {self.primary_port}")
 
         def accept_client():
             client, addr = self.server_socket.accept()
             client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             print(f"[Server] Client connected: {addr}")
             client.sendall(b'CONNECTED\n')
-            self.handle_client(client)
+            self.handle_primary(client)
+
+        def accept_secondary():
+            sec_socket, sec_addr = self.secondary_server_socket.accept()
+            sec_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            print(f"[Server] Secondary connection from: {sec_addr}")
+            self.handle_secondary(sec_socket)
+
+        self.secondary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
+        self.secondary_server_socket.listen(1)
 
         threading.Thread(target=accept_client, daemon=True).start()
+        threading.Thread(target=accept_secondary, daemon=True).start()
 
     def start_client(self):
         print(f"[Client] Connecting to {app_config.server_ip}:{self.port}")
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+        self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
+
         try:
             self.client_socket.connect((app_config.server_ip, self.port))
             if self.client_socket.recv(1024) != b'CONNECTED\n':
                 raise Exception("Handshake failed")
             print("[Client] Connected successfully.")
 
-            def receive_thread():
+            def receive_primary():
                 buffer = ""
                 while app_config.is_running:
                     try:
@@ -291,31 +331,36 @@ class MouseSyncApp:
                                     self.mouse_controller.release(btn)
                             elif evt["type"] == "scroll":
                                 self.mouse_controller.scroll(evt['dx'], evt['dy'])
-                            elif evt["type"] == "key_press":
-                                key = getattr(Key, evt["key"].replace("Key.", "")) if "Key." in evt["key"] else evt["key"]
-                                self.keyboard_controller.press(key)
-
-                            elif evt["type"] == "key_release":
-                                key = getattr(Key, evt["key"].replace("Key.", "")) if "Key." in evt["key"] else evt["key"]
-                                self.keyboard_controller.release(key)
-                            
-                            elif evt["type"] == "clipboard":
-                                content = evt["content"]
-                                if content != self.last_clipboard:
-                                    print("[Clipboard] Remote clipboard update detected")
-                                    self.last_clipboard = content
-                                    pyperclip.copy(content)
-                                    app_config.clipboard = content
-                                    app_config.save()
-
-                            elif evt["type"] == "state":
-                                if evt["key"] == "active_device":
-                                    app_config.active_device = evt["value"]
-                                    app_config.save()
-                            
                         except Exception as e:
                             print(f"[Client] Parse error: {e}")
-            threading.Thread(target=receive_thread, daemon=True).start()
+                def receive_secondary():
+                    buffer = ""
+                    while app_config.is_running:
+                        try:
+                            data = self.secondary_client_socket.recv(1024).decode()
+                        except Exception as e:
+                            print(f"[Client] Secondary receive error: {e}")
+                            app_config.is_running = False
+                            app_config.save()
+                            break
+                        if not data:
+                            break
+                        buffer += data
+                        while "\n" in buffer:
+                            line, buffer = buffer.split("\n", 1)
+                            try:
+                                evt = json.loads(line)
+                                if evt["type"] == "key_press":
+                                    self.keyboard_controller.press(evt["key"])
+                                elif evt["type"] == "key_release":
+                                    self.keyboard_controller.release(evt["key"])
+                                elif evt["type"] == "clipboard":
+                                    pyperclip.copy(evt["content"])
+                            except Exception as e:
+                                print(f"[Client] Secondary parse error: {e}")
+                                
+            threading.Thread(target=receive_primary, daemon=True).start()
+            threading.Thread(target=self.receive_secondary, args=(self.client_socket,), daemon=True).start()
         except Exception as e:
             print(f"[Client] Connection failed: {e}")
 
