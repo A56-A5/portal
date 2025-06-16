@@ -240,12 +240,11 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
-    def clipboard_sender(self):
+    def clipboard_sender(self,client_socket):
         while app_config.is_running and app_config.active_device:
             try:
                     data = {"type": "clipboard", "content": app_config.clipboard}
-                    if self.client_socket:
-                        self.client_socket.sendall((json.dumps(data) + "\n").encode())
+                    client_socket.sendall((json.dumps(data) + "\n").encode())
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
