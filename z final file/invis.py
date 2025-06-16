@@ -271,7 +271,7 @@ class MouseSyncApp:
         def accept_client():
             client, addr = self.server_socket.accept()
             client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            print(f"[Server] Client connected: {addr}")
+            print(f"[Server] Primary connection from: {addr}")
             client.sendall(b'CONNECTED\n')
             self.handle_primary(client)
 
@@ -301,7 +301,6 @@ class MouseSyncApp:
             self.client_socket.connect((app_config.server_ip, self.primary_port))
             if self.client_socket.recv(1024) != b'CONNECTED\n':
                 raise Exception("Handshake failed")
-            print("[Client] Connected successfully.")
 
             def receive_primary():
                 buffer = ""
