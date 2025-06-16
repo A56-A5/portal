@@ -400,15 +400,16 @@ class MouseSyncApp:
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
                                 app_config.save()
+
                             elif evt["type"] == "clipboard":
-                                app_config.clipboard = evt["content"]
-                                app_config.save()
-                                try:
-                                    pyperclip.copy(evt["content"])
-                                    print("[Client] Clipboard updated from server")
-                                except Exception as e:
-                                    print(f"[Client] Clipboard copy failed: {e}")
-                            
+                                if not app_config.active_device:
+                                    app_config.clipboard = evt["content"]
+                                    app_config.save()
+                                    try:
+                                        pyperclip.copy(evt["content"])
+                                        print("[Client] Clipboard updated from server")
+                                    except Exception as e:
+                                        print(f"[Client] Clipboard copy failed: {e}")
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
