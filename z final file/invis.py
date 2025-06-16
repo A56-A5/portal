@@ -15,7 +15,7 @@ class MouseSyncApp:
     def __init__(self):
         self.edge_transition_cooldown = False
         self.primary_port = 50007
-        self.secondry_port = 50008
+        self.secondary_port = 50008
         self.mouse_controller = Controller()
         self.keyboard_controller = KeyboardController()
         self.keyboard_listener = None
@@ -358,7 +358,7 @@ class MouseSyncApp:
                                     pyperclip.copy(evt["content"])
                             except Exception as e:
                                 print(f"[Client] Secondary parse error: {e}")
-                                
+
             threading.Thread(target=receive_primary, daemon=True).start()
             threading.Thread(target=self.receive_secondary, args=(self.client_socket,), daemon=True).start()
         except Exception as e:
