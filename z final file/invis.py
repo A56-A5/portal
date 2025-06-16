@@ -300,6 +300,7 @@ class MouseSyncApp:
                                 if evt["type"] == "clipboard":
                                     app_config.clipboard = evt["content"]
                                     app_config.save()
+                                    pyperclip.copy(app_config.clipboard)
                             except json.JSONDecodeError as e:
                                 print(f"[Clipboard] JSON decode error: {e}")
                     except Exception as e:
