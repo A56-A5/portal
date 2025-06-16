@@ -132,11 +132,13 @@ class MouseSyncApp:
             time.sleep(0.01)
 
     def transition(self, to_active, new_position):
-        
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         data_state = {"type": "active_device", "value": to_active}
-        self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())
+        self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())  
+        if to_active:
+            data_state = {"type" : "clipboard", "content": app_config.clipboard}
+            self.secondary_client_socket.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position
@@ -243,11 +245,11 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
-    def clipboard_sender(self,client_socket):
-        while app_config.is_running and app_config.active_device:
+    def clipboard_sender(self,_socket):
+        while app_config.is_running:
             try:
                     data = {"type": "clipboard", "content": app_config.clipboard}
-                    client_socket.sendall((json.dumps(data) + "\n").encode())
+                    _socket.sendall((json.dumps(data) + "\n").encode())
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
@@ -262,6 +264,23 @@ class MouseSyncApp:
         threading.Thread(target=self.clipboard_sender,args=(sec_socket,), daemon=True).start()
 
     def start_server(self):
+        def read_clipboard():
+            while app_config.is_running:
+                try:
+                    data = self.secondary_server_socket.recv(1024).decode()
+                    if not data:
+                        break
+                    else:
+                        try:
+                            evt = json.loads(data)
+                            if evt["type"] == "clipboard":
+                                app_config.clipboard = evt["content"]
+                                app_config.save()
+                        except json.JSONDecodeError as e:
+                            print(f"[Clipboard] JSON decode error: {e}")
+                except Exception as e:
+                    print(f"[Clipboard] Error reading clipboard data: {e}")
+
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(("0.0.0.0", self.primary_port))
@@ -281,12 +300,13 @@ class MouseSyncApp:
             print(f"[Server] Secondary connection from: {sec_addr}")
             self.secondary_server = sec_socket
             self.handle_secondary(sec_socket)
+            read_clipboard()
 
         self.secondary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
         self.secondary_server_socket.listen(1)
-
+        
         threading.Thread(target=accept_client, daemon=True).start()
         threading.Thread(target=accept_secondary, daemon=True).start()
 
@@ -380,6 +400,9 @@ class MouseSyncApp:
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
                                 app_config.save()
+                                if not app_config.active_device:
+                                    data = {"type": "clipboard", "content": app_config.clipboard}
+                                    self.secondary_client_socket.sendall((json.dumps(data) + "\n").encode())
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
