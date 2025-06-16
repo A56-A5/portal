@@ -108,22 +108,22 @@ class MouseSyncApp:
             x, y = self.mouse_controller.position
             if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
-                    self.transition(True, (margin, y),client_socket)
+                    self.transition(True, (margin, y))
                 elif app_config.server_direction == "Left" and x <= margin:
-                    self.transition(True, (self.screen_width - margin, y),client_socket)
+                    self.transition(True, (self.screen_width - margin, y))
                 elif app_config.server_direction == "Top" and y <= margin:
-                    self.transition(True, (x, self.screen_height - margin),client_socket)
+                    self.transition(True, (x, self.screen_height - margin))
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
-                    self.transition(True, (x, margin),client_socket)
+                    self.transition(True, (x, margin))
             elif app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x <= margin:
-                    self.transition(False, (self.screen_width - margin, y),client_socket)
+                    self.transition(False, (self.screen_width - margin, y))
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
-                    self.transition(False, (margin, y),client_socket)
+                    self.transition(False, (margin, y))
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
-                    self.transition(False, (x, margin),client_socket)
+                    self.transition(False, (x, margin))
                 elif app_config.server_direction == "Bottom" and y <= margin:
-                    self.transition(False, (x, self.screen_height - margin),client_socket)
+                    self.transition(False, (x, self.screen_height - margin))
 
             # Cooldown Reset
             if margin < x < self.screen_width - margin and margin < y < self.screen_height - margin:
@@ -131,12 +131,12 @@ class MouseSyncApp:
 
             time.sleep(0.01)
 
-    def transition(self, to_active, new_position, client_socket):
+    def transition(self, to_active, new_position, ):
         
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         data_state = {"type": "active_device", "value": to_active}
-        client_socket.sendall((json.dumps(data_state) + "\n").encode())
+        self.secondary_client_socket.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position
@@ -370,7 +370,7 @@ class MouseSyncApp:
                                 key = parse_key(evt["key"])
                                 if key:
                                     self.keyboard_controller.press(key)
-                                    
+
                             elif evt["type"] == "key_release":
                                 key = parse_key(evt["key"])
                                 if key:
