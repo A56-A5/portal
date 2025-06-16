@@ -243,14 +243,12 @@ class MouseSyncApp:
             try:
                 current_clipboard = pyperclip.paste()
                 if current_clipboard != self.last_clipboard:
-                    print("[Clipboard] Local change detected (active device)")
                     self.last_clipboard = current_clipboard
                     app_config.clipboard = current_clipboard
                     app_config.save()
                 
                 app_config.load()
                 if app_config.clipboard != self.last_clipboard:
-                    print("[Clipboard] Remote clipboard update detected (passive)")
                     self.last_clipboard = app_config.clipboard
                     pyperclip.copy(self.last_clipboard)
 
@@ -258,7 +256,7 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
-    def clipboard_sender(self,_socket):
+    def clipboard_sender(_socket):
         while app_config.is_running:
             try:
                 data = {"type": "clipboard", "content": app_config.clipboard}
@@ -411,6 +409,11 @@ class MouseSyncApp:
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
                                 app_config.save()
+                                if not app_config.active_device:
+                                    # Start clipboard sender only once
+                                    if not hasattr(self, "_clipboard_sender_started") or not self._clipboard_sender_started:
+                                        self._clipboard_sender_started = True
+                                        threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()
 
                             elif evt["type"] == "clipboard":
                                 app_config.clipboard = evt["content"]
