@@ -55,6 +55,9 @@ class MouseSyncApp:
             if self.client_socket:
                 self.client_socket.shutdown(socket.SHUT_RDWR)
                 self.client_socket.close()
+            if self.secondary_client_socket:
+                self.secondary_client_socket.shutdown(socket.SHUT_RDWR)
+                self.secondary_client_socket.close()
         except Exception as e:
             print(f"[Client] Error closing socket: {e}")
         try:
@@ -335,6 +338,15 @@ class MouseSyncApp:
             self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
             print("[Client] Connected successfully.")
             def receive_secondary():
+                def parse_key(key_str):
+                    # If it starts with Key., it's a special key
+                    if key_str.startswith("Key."):
+                        try:
+                            return getattr(Key, key_str.split(".", 1)[1])
+                        except AttributeError:
+                            print(f"[Parse] Unknown special key: {key_str}")
+                            return None
+                    return key_str
                 buffer = ""
                 while app_config.is_running:
                     try:
@@ -352,9 +364,14 @@ class MouseSyncApp:
                         try:
                             evt = json.loads(line)
                             if evt["type"] == "key_press":
-                                self.keyboard_controller.press(evt["key"])
+                                key = parse_key(evt["key"])
+                                if key:
+                                    self.keyboard_controller.press(key)
                             elif evt["type"] == "key_release":
-                                self.keyboard_controller.release(evt["key"])
+                                key = parse_key(evt["key"])
+                                if key:
+                                    self.keyboard_controller.release(key)
+                            
                             elif evt["type"] == "clipboard":
                                 pyperclip.copy(evt["content"])
                         except Exception as e:
