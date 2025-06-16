@@ -135,7 +135,7 @@ class MouseSyncApp:
         
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
-        data_state = {"type": "state", "key": "active_device", "value": to_active}
+        data_state = {"type": "active_device", "value": to_active}
         client_socket.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
@@ -370,15 +370,15 @@ class MouseSyncApp:
                                 key = parse_key(evt["key"])
                                 if key:
                                     self.keyboard_controller.press(key)
+                                    
                             elif evt["type"] == "key_release":
                                 key = parse_key(evt["key"])
                                 if key:
                                     self.keyboard_controller.release(key)
                             
-                            elif evt["type"] == "state":
-                                if evt["key"] == "active_device":
-                                    app_config.active_device = evt["value"]
-                                    app_config.save()
+                            elif evt["type"] == "active_device":
+                                app_config.active_device = evt["value"]
+                                app_config.save()
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
