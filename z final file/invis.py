@@ -256,7 +256,7 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
-    def clipboard_sender(_socket):
+    def clipboard_sender(self,_socket):
         while app_config.is_running:
             try:
                 data = {"type": "clipboard", "content": app_config.clipboard}
