@@ -147,12 +147,21 @@ class MouseSyncApp:
                 self.destroy_overlay()
             self.mouse_controller.position = new_position
         
+        try:
+            active_msg = {"type": "active_device", "value": to_active}
+            self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
+        except Exception as e:
+            print(f"[Transition] Failed to send active_device state: {e}")
+
+        # If becoming active, also send clipboard
         if to_active:
-            data_state = {"type": "active_device", "value": to_active ,"type" : "clipboard", "content": app_config.clipboard }
-            self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())
-        else:
-            data_state = {"type": "active_device", "value": to_active}
-            self.secondary_client_socket.sendall((json.dumps(data_state) + "\n").encode())
+            try:
+                clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
+                self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
+                print("[Clipboard] Sent clipboard on transition to active")
+            except Exception as e:
+                print(f"[Clipboard] Send failed during transition: {e}")
+
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
@@ -401,9 +410,13 @@ class MouseSyncApp:
                             
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
-                                if evt["value"]:
-                                    app_config.clipboard = evt["content"]
                                 app_config.save()
+
+                            elif evt["type"] == "clipboard":
+                                app_config.clipboard = evt["content"]
+                                pyperclip.copy(app_config.clipboard)
+                                app_config.save()
+                                print("[Clipboard] Updated clipboard content")
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
