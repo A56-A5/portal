@@ -31,6 +31,7 @@ class MouseSyncApp:
 
         app_config.load()
         app_config.active_device = False
+        app_config.save()
 
         if self.os_type == "windows":
             import tkinter as tk
@@ -135,11 +136,6 @@ class MouseSyncApp:
         app_config.load()
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
-        data_state = {"type": "active_device", "value": to_active}
-        self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())  
-        if to_active:
-            data_state = {"type" : "clipboard", "content": app_config.clipboard }
-            self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())
         if self.os_type == "windows":
             self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position
@@ -150,6 +146,13 @@ class MouseSyncApp:
             else:
                 self.destroy_overlay()
             self.mouse_controller.position = new_position
+        
+        if to_active:
+            data_state = {"type": "active_device", "value": to_active ,"type" : "clipboard", "content": app_config.clipboard }
+            self.secondary_server.sendall((json.dumps(data_state) + "\n").encode())
+        else:
+            data_state = {"type": "active_device", "value": to_active}
+            self.secondary_client_socket.sendall((json.dumps(data_state) + "\n").encode())
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
@@ -249,11 +252,11 @@ class MouseSyncApp:
     def clipboard_sender(self,_socket):
         while app_config.is_running:
             try:
-                    data = {"type": "clipboard", "content": app_config.clipboard}
-                    _socket.sendall((json.dumps(data) + "\n").encode())
+                data = {"type": "clipboard", "content": app_config.clipboard}
+                _socket.sendall((json.dumps(data) + "\n").encode())
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
-            time.sleep(0.5)
+            time.sleep(1.5)
 
 
     def handle_primary(self, client_socket):
@@ -262,7 +265,6 @@ class MouseSyncApp:
 
     def handle_secondary(self, sec_socket):        
         threading.Thread(target=self.input_sender_keyboard, args=(sec_socket,), daemon=True).start()
-        threading.Thread(target=self.clipboard_sender,args=(sec_socket,), daemon=True).start()
 
     def start_server(self):
         self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -399,17 +401,9 @@ class MouseSyncApp:
                             
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
-                                app_config.save()
-
-                            elif evt["type"] == "clipboard":
-                                if not app_config.active_device:
+                                if evt["value"]:
                                     app_config.clipboard = evt["content"]
-                                    app_config.save()
-                                    try:
-                                        pyperclip.copy(evt["content"])
-                                        print("[Client] Clipboard updated from server")
-                                    except Exception as e:
-                                        print(f"[Client] Clipboard copy failed: {e}")
+                                app_config.save()
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
