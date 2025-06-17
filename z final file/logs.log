@@ -1,0 +1,9 @@
+INFO - [Server] Listening on port 50007 & 50008
+INFO - [System] Device Activated at (772, 1078)INFO - Stopping portal...
+INFO - Portal stopped.
+FO - [System] Device Deactivated at (973, 2)
+INFO - [Keyboard] Stopping suppressing listener
+INFO - [System] Device Activated at (941, 1078)
+INFO - [Keyboard] Starting suppresing listener
+INFO - [System] Device Deactivated at (1073, 2)
+INFO - [Keyboard] Stopping suppressing listener

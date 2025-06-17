@@ -6,6 +6,7 @@ import json
 import time
 import platform
 import pyperclip
+import logging 
 from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
@@ -28,6 +29,8 @@ class MouseSyncApp:
         self.gui_app = None
         self.last_clipboard = pyperclip.paste()
         self.os_type = platform.system().lower()
+
+        logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a",format ="%(levelname)s - %(message)s")
 
         app_config.load()
         app_config.active_device = False
@@ -52,6 +55,7 @@ class MouseSyncApp:
 
     def cleanup(self):
         print("[System] Cleaning up sockets and resources...")
+        logging.info("[System] Closing all sockets")
         try:
             if self.client_socket:
                 self.client_socket.shutdown(socket.SHUT_RDWR)
@@ -164,6 +168,7 @@ class MouseSyncApp:
 
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
+        logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
 
     def input_sender_mouse(self, client_socket):
@@ -225,6 +230,7 @@ class MouseSyncApp:
                 with self.keyboard_listener_lock:
                     if app_config.active_device and self.keyboard_listener is None:
                         print("[Keyboard] Starting suppressing listener")
+                        logging.info("[Keyboard] Starting suppresing listener")
                         self.keyboard_listener = keyboard.Listener(
                             on_press=on_press, on_release=on_release, suppress=True
                         )
@@ -232,6 +238,7 @@ class MouseSyncApp:
     
                     elif not app_config.active_device and self.keyboard_listener is not None:
                         print("[Keyboard] Stopping suppressing listener")
+                        logging.info("[Keyboard] Stopping suppressing listener")
                         self.keyboard_listener.stop()
                         self.keyboard_listener = None
                 time.sleep(0.5)
@@ -277,6 +284,7 @@ class MouseSyncApp:
         self.server_socket.bind(("0.0.0.0", self.primary_port))
         self.server_socket.listen(1)
         print(f"[Server] Listening on port {self.primary_port} & {self.secondary_port}")
+        logging.info(f"[Server] Listening on port {self.primary_port} & {self.secondary_port}")
 
         def accept_client():
             client, addr = self.server_socket.accept()

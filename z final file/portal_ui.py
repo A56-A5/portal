@@ -5,6 +5,7 @@ from config import app_config
 import threading
 import subprocess
 import time
+import logging 
 import platform
 import sys
 
@@ -25,13 +26,18 @@ class PortalUI:
         self.tab_control.add(self.logs_tab, text='Logs')
         self.tab_control.pack(expand=1, fill='both')
 
+        logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="w",format ="%(levelname)s - %(message)s")
         
         self.create_logs_tab()
         self.create_portal_tab()
+        self.start_log_updater()
 
     def create_logs_tab(self):
         self.logs_text = tk.Text(self.logs_tab, state='disabled')
         self.logs_text.pack(expand=True, fill='both')
+
+        clear_button = ttk.Button(self.logs_tab, text="Clear Logs", command=self.clear_logs)
+        clear_button.pack(pady=5)
 
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
@@ -92,6 +98,39 @@ class PortalUI:
         self.toggle_mode()
         self.toggle_audio()
 
+    def clear_logs(self):
+        try:
+            with open("logs.log", "w") as log_file:
+                log_file.truncate(0)  # Clear the file contents
+            self.logs_text.config(state='normal')
+            self.logs_text.delete('1.0', tk.END)
+            self.logs_text.config(state='disabled')
+            self.log("Logs cleared.")
+        except Exception as e:
+            self.log(f"Failed to clear logs: {e}")
+
+    def start_log_updater(self):
+        def update_logs():
+            last_content = ""
+            while True:
+                try:
+                    with open("logs.log", "r") as log_file:
+                        content = log_file.read()
+                    if content != last_content:
+                        self.logs_text.config(state='normal')
+                        self.logs_text.delete('1.0', tk.END)
+                        self.logs_text.insert(tk.END, content)
+                        self.logs_text.config(state='disabled')
+                        self.logs_text.see('end')
+                        last_content = content
+                except Exception as e:
+                    pass
+                time.sleep(1)  # Check for updates every second
+
+        log_thread = threading.Thread(target=update_logs, daemon=True)
+        log_thread.start()
+
+
     def clear_placeholder(self, event):
         if self.client_ip_entry.get() == "Enter Server IP":
             self.client_ip_entry.delete(0, 'end')
@@ -133,7 +172,8 @@ class PortalUI:
     def toggle_portal(self, mode):
         if mode == "start" and not self.running:
             if getattr(self, 'portal_thread', None) and self.portal_thread.is_alive():
-                self.log("Portal is already running.")
+                print("Portal is already running")
+                logging.info("Portal is already running.")
                 return
 
             app_config.stop_flag = False
@@ -141,7 +181,7 @@ class PortalUI:
             app_config.is_running = True
             self.status_label.config(text="Portal is running", foreground="green")
             self.start_stop_button.config(text="Stop")
-            self.log("Portal started.")
+            logging.info("Portal started")
 
             app_config.server_direction = self.server_direction.get()
             if self.client_ip_entry.get() != "Enter Server IP":
@@ -155,15 +195,15 @@ class PortalUI:
             def launch_invis():
                 try:
                     self.invis_process = subprocess.Popen([sys.executable, "invis.py"])
-                    self.log("invis.py launched.")
                 except Exception as e:
                     self.log(f"Failed to start invis.py: {e}")
+                    logging.info("")
 
             self.portal_thread = threading.Thread(target=launch_invis, daemon=True)
             self.portal_thread.start()
 
         elif self.running and mode != "reload":
-            self.log("Stopping portal...")
+            logging.info("Stopping portal...")
             app_config.stop_flag = True
             self.running = False
             app_config.is_running = False
@@ -175,10 +215,12 @@ class PortalUI:
             except Exception as e:
                 print(f"Failed to terminate invis.py: {e}")
             self.log("Portal stopped.")
+            logging.info("Portal stopped.")
             self.portal_thread = None
 
         elif self.running and mode == "reload":
             self.log("Reloading portal...")
+            logging.info("Reloading portal...")
             self.toggle_portal("stop")
             time.sleep(0.5)
             self.toggle_portal("start")
