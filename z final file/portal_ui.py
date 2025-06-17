@@ -111,18 +111,15 @@ class PortalUI:
 
     def start_log_updater(self):
         def update_logs():
-            last_content = ""
             while True:
                 try:
                     with open("logs.log", "r") as log_file:
                         content = log_file.read()
-                    if content != last_content:
                         self.logs_text.config(state='normal')
                         self.logs_text.delete('1.0', tk.END)
                         self.logs_text.insert(tk.END, content)
                         self.logs_text.config(state='disabled')
                         self.logs_text.see('end')
-                        last_content = content
                 except Exception as e:
                     pass
                 time.sleep(1)  # Check for updates every second
