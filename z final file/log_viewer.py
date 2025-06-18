@@ -35,7 +35,7 @@ def clear_logs(text_widget):
 
 def main():
     root = tk.Tk()
-    root.title("Log Viewer")
+    root.title("Portal Logs")
     root.geometry("600x500")
 
     text_area = tk.Text(root, state='disabled', wrap='none')

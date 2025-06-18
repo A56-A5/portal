@@ -1,4 +1,3 @@
-# portal_ui.py
 import tkinter as tk
 from tkinter import ttk
 from config import app_config
@@ -8,14 +7,16 @@ import time
 import logging 
 import platform
 import sys
+import socket 
 
 class PortalUI:
     def __init__(self, root):
         self.root = root
         self.os_type = platform.system().lower()
         self.root.title("Portal")
-        self.root.geometry("350x500")
+        self.root.geometry("350x550")
         self.mode = tk.StringVar(value=app_config.mode)
+        self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)
         self.running = False
         self.invis_process = None
 
@@ -26,8 +27,8 @@ class PortalUI:
         self.tab_control.add(self.logs_tab, text='View Logs')
         self.tab_control.pack(expand=1, fill='both')
 
-        logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="w",format ="%(levelname)s - %(message)s")
-        
+        logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="w", format="%(levelname)s - %(message)s")
+
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
 
@@ -40,13 +41,23 @@ class PortalUI:
             except Exception as e:
                 logging.info(f"Failed to open log viewer: {e}")
 
-
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
         mode_frame.pack(pady=10, padx=10, fill='x')
 
-        server_rb = ttk.Radiobutton(mode_frame, text="Server", variable=self.mode, value="server", command=self.toggle_mode)
-        server_rb.pack(anchor='w', padx=10, pady=2)
+        server_row = ttk.Frame(mode_frame)
+        server_row.pack(anchor='w', padx=10, pady=2, fill='x')
+
+        bold_font = ('TkDefaultFont', 10, 'bold')
+        style = ttk.Style()
+        style.configure("Bold.TRadiobutton", font=bold_font)
+
+        server_rb = ttk.Radiobutton(server_row, text="Server", variable=self.mode, value="server", command=self.toggle_mode, style="Bold.TRadiobutton")
+        server_rb.pack(side='left')
+
+        device_ip = socket.gethostbyname(socket.gethostname())
+        ip_label = ttk.Label(server_row, text=f"-  ({device_ip})", font=bold_font)
+        ip_label.pack(side='left', padx=10)
 
         self.server_direction = tk.StringVar(value="Top")
         self.server_location_label = tk.Label(mode_frame, text="Choose where the client device is located:", fg='black')
@@ -57,33 +68,32 @@ class PortalUI:
         self.server_right_rb = ttk.Radiobutton(mode_frame, text="Right", variable=self.server_direction, value="Right")
         self.server_bottom_rb = ttk.Radiobutton(mode_frame, text="Bottom", variable=self.server_direction, value="Bottom")
 
-        self.server_top_rb.pack(anchor='w', padx=30)
-        self.server_left_rb.pack(anchor='w', padx=30)
-        self.server_right_rb.pack(anchor='w', padx=30)
-        self.server_bottom_rb.pack(anchor='w', padx=30)
+        for rb in [self.server_top_rb, self.server_left_rb, self.server_right_rb, self.server_bottom_rb]:
+            rb.pack(anchor='w', padx=30)
 
-        client_rb = ttk.Radiobutton(mode_frame, text="Client", variable=self.mode, value="client", command=self.toggle_mode)
+        client_rb = ttk.Radiobutton(mode_frame, text="Client", variable=self.mode, value="client", command=self.toggle_mode, style="Bold.TRadiobutton")
         client_rb.pack(anchor='w', padx=10, pady=10)
 
         self.client_ip_entry = ttk.Entry(mode_frame, width=35, foreground='grey')
         self.client_ip_entry.pack(anchor='w', padx=30)
-        self.client_ip_entry.insert(0, "Enter Server IP")
+        if app_config.server_ip == "":
+            self.client_ip_entry.insert(0, "Enter Server IP")
+        else:
+            self.client_ip_entry.insert(0, app_config.server_ip)
+            
         self.client_ip_entry.bind("<FocusIn>", self.clear_placeholder)
         self.client_ip_entry.bind("<FocusOut>", self.restore_placeholder)
 
-        audio_frame = ttk.LabelFrame(self.portal_tab, text="Audio")
-        audio_frame.pack(pady=10, padx=10, fill='x')
+        # Audio radios (no section label)
+        self.audio_direction = tk.StringVar(value=app_config.audio_direction)
 
-        self.audio_enabled = tk.BooleanVar(value=True)
-        self.audio_checkbox = ttk.Checkbutton(audio_frame, text="Enable audio sharing", variable=self.audio_enabled, command=self.toggle_audio)
-        self.audio_checkbox.pack(anchor='w', padx=10, pady=(0, 5))
+        self.audio_disabled_rb = ttk.Checkbutton(self.portal_tab, text="Enable audio sharing", variable=self.audio_enabled, command=self.toggle_audio, style="Bold.TRadiobutton")
+        self.audio_disabled_rb.pack(anchor='w', padx=10, pady=(0, 5))
+        self.audio_client_to_server_rb = ttk.Radiobutton(self.portal_tab, text="Client to Server", variable=self.audio_direction, value="client_to_server")
+        self.audio_server_to_client_rb = ttk.Radiobutton(self.portal_tab, text="Server to Client", variable=self.audio_direction, value="server_to_client")
 
-        self.audio_direction = tk.StringVar(value="client_to_server")
-        self.audio_client_to_server_rb = ttk.Radiobutton(audio_frame, text="Client to Server", variable=self.audio_direction, value="client_to_server")
-        self.audio_server_to_client_rb = ttk.Radiobutton(audio_frame, text="Server to Client", variable=self.audio_direction, value="server_to_client")
-
-        self.audio_client_to_server_rb.pack(anchor='w', padx=20, pady=2)
-        self.audio_server_to_client_rb.pack(anchor='w', padx=20, pady=2)
+        for rb in [self.audio_disabled_rb, self.audio_client_to_server_rb, self.audio_server_to_client_rb]:
+            rb.pack(anchor='w', padx=20, pady=2 )
 
         control_frame = ttk.Frame(self.portal_tab)
         control_frame.pack(pady=20)
@@ -107,29 +117,42 @@ class PortalUI:
 
     def restore_placeholder(self, event):
         if not self.client_ip_entry.get():
-            self.client_ip_entry.insert(0, "Enter Server IP")
+            if app_config.server_ip == "":
+                self.client_ip_entry.insert(0, "Enter Server IP")
+            else:
+                self.client_ip_entry.insert(0, app_config.server_ip)
             self.client_ip_entry.config(foreground='grey')
 
     def toggle_mode(self):
+        last_mode = app_config.mode
         current_mode = self.mode.get()
         is_server = current_mode == "server"
         state = 'normal' if is_server else 'disabled'
 
+        if is_server:
+            self.client_ip_entry.config(state='disabled')
+            self.client_ip_entry.delete(0, 'end')
+            self.client_ip_entry.insert(0, "Enter Server IP")
+            self.client_ip_entry.config(foreground='grey')
+        else:
+            self.client_ip_entry.config(state='normal')
+            self.client_ip_entry.delete(0, 'end')
+            if app_config.server_ip:
+                self.client_ip_entry.insert(0, app_config.server_ip)
+                self.client_ip_entry.config(foreground='black')
+            else:
+                self.client_ip_entry.insert(0, "Enter Server IP")
+                self.client_ip_entry.config(foreground='grey')
+
         for rb in [self.server_top_rb, self.server_left_rb, self.server_right_rb, self.server_bottom_rb]:
             rb.config(state=state)
 
-        if is_server:
-            self.client_ip_entry.delete(0, 'end')
-            self.client_ip_entry.insert(0, "Enter Server IP")
-            self.client_ip_entry.config(state='disabled', foreground='grey')
-        else:
-            self.client_ip_entry.config(state='normal', foreground='black')
-
         self.server_location_label.config(fg='black' if is_server else 'grey')
 
-        app_config.mode = current_mode  # Also update mode
+        app_config.mode = current_mode
         app_config.save()
-        logging.info(f"[System] Mode set to {current_mode}")
+        if last_mode != current_mode:
+            logging.info(f"[System] Mode set to {current_mode}")
         
     def toggle_audio(self):
         state = 'normal' if self.audio_enabled.get() else 'disabled'
@@ -165,8 +188,7 @@ class PortalUI:
                 try:
                     self.invis_process = subprocess.Popen([sys.executable, "invis.py"])
                 except Exception as e:
-                    self.log(f"Failed to start invis.py: {e}")
-                    logging.info("")
+                    logging.info(f"Failed to launch invis.py: {e}")
 
             self.portal_thread = threading.Thread(target=launch_invis, daemon=True)
             self.portal_thread.start()
@@ -179,7 +201,8 @@ class PortalUI:
             self.status_label.config(text="Portal is not running", foreground="red")
             self.start_stop_button.config(text="Start")
             try:
-                self.invis_process.terminate()
+                if self.invis_process:
+                    self.invis_process.terminate()
                 self.invis_process = None
             except Exception as e:
                 print(f"Failed to terminate invis.py: {e}")
@@ -199,4 +222,3 @@ if __name__ == "__main__":
     root = tk.Tk()
     app = PortalUI(root)
     root.mainloop()
-
