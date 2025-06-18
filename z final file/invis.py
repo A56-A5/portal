@@ -65,11 +65,13 @@ class MouseSyncApp:
                 self.secondary_client_socket.close()
         except Exception as e:
             print(f"[Client] Error closing socket: {e}")
+            logging.info("[Client] Error closing socket: {e}")
         try:
             if self.server_socket:
                 self.server_socket.close()
         except Exception as e:
             print(f"[Server] Error closing socket: {e}")
+            logging.info(f"[Server] Error closing socket: {e}")
         if self.overlay:
             self.destroy_overlay()
 
@@ -156,6 +158,7 @@ class MouseSyncApp:
             self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
         except Exception as e:
             print(f"[Transition] Failed to send active_device state: {e}")
+            logging.info(f"[Transition] Failed to send active_device state: {e}")
 
         # If becoming active, also send clipboard
         if to_active:
@@ -178,7 +181,8 @@ class MouseSyncApp:
             except Exception as e:
                 app_config.is_running = False
                 app_config.save()
-                print(f"[Sender] Send failed: {e}")
+                print(f"[Server] Send failed: {e}")
+                logging.info("[Server] Send failed: {e}")
     
         def on_move(x, y):
             if not app_config.active_device and app_config.is_running:
@@ -206,7 +210,8 @@ class MouseSyncApp:
             except Exception as e:
                 app_config.is_running = False
                 app_config.save()
-                print(f"[Sender] Send failed: {e}")
+                print(f"[Server] Send failed: {e}")
+                logging.info("[Server] Send failed: {e}")
 
         def on_press(key):
             if not app_config.active_device:
@@ -230,7 +235,6 @@ class MouseSyncApp:
                 with self.keyboard_listener_lock:
                     if app_config.active_device and self.keyboard_listener is None:
                         print("[Keyboard] Starting suppressing listener")
-                        logging.info("[Keyboard] Starting suppresing listener")
                         self.keyboard_listener = keyboard.Listener(
                             on_press=on_press, on_release=on_release, suppress=True
                         )
@@ -238,7 +242,6 @@ class MouseSyncApp:
     
                     elif not app_config.active_device and self.keyboard_listener is not None:
                         print("[Keyboard] Stopping suppressing listener")
-                        logging.info("[Keyboard] Stopping suppressing listener")
                         self.keyboard_listener.stop()
                         self.keyboard_listener = None
                 time.sleep(0.5)
@@ -261,6 +264,7 @@ class MouseSyncApp:
 
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
+                logging.info(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
     def clipboard_sender(self,_socket):
@@ -269,6 +273,7 @@ class MouseSyncApp:
             _socket.sendall((json.dumps(data) + "\n").encode())
         except Exception as e:
             print(f"[Clipboard] Error: {e}")
+            logging.info(f"[Clipboard] Error: {e}")
 
 
     def handle_primary(self, client_socket):

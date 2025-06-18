@@ -23,21 +23,23 @@ class PortalUI:
         self.portal_tab = ttk.Frame(self.tab_control)
         self.logs_tab = ttk.Frame(self.tab_control)
         self.tab_control.add(self.portal_tab, text='Portal')
-        self.tab_control.add(self.logs_tab, text='Logs')
+        self.tab_control.add(self.logs_tab, text='View Logs')
         self.tab_control.pack(expand=1, fill='both')
 
         logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="w",format ="%(levelname)s - %(message)s")
         
-        self.create_logs_tab()
+        self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
-        self.start_log_updater()
 
-    def create_logs_tab(self):
-        self.logs_text = tk.Text(self.logs_tab, state='disabled')
-        self.logs_text.pack(expand=True, fill='both')
+    def on_tab_changed(self, event):
+        selected_tab = event.widget.tab(event.widget.index("current"))["text"]
+        if selected_tab == "View Logs":
+            try:
+                subprocess.Popen([sys.executable, "log_viewer.py"])
+                self.tab_control.select(self.portal_tab)
+            except Exception as e:
+                logging.info(f"Failed to open log viewer: {e}")
 
-        clear_button = ttk.Button(self.logs_tab, text="Clear Logs", command=self.clear_logs)
-        clear_button.pack(pady=5)
 
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
@@ -98,36 +100,6 @@ class PortalUI:
         self.toggle_mode()
         self.toggle_audio()
 
-    def clear_logs(self):
-        try:
-            with open("logs.log", "w") as log_file:
-                log_file.truncate(0)  # Clear the file contents
-            self.logs_text.config(state='normal')
-            self.logs_text.delete('1.0', tk.END)
-            self.logs_text.config(state='disabled')
-            self.log("Logs cleared.")
-        except Exception as e:
-            self.log(f"Failed to clear logs: {e}")
-
-    def start_log_updater(self):
-        def update_logs():
-            while True:
-                try:
-                    with open("logs.log", "r") as log_file:
-                        content = log_file.read()
-                        self.logs_text.config(state='normal')
-                        self.logs_text.delete('1.0', tk.END)
-                        self.logs_text.insert(tk.END, content)
-                        self.logs_text.config(state='disabled')
-                        self.logs_text.see('end')
-                except Exception as e:
-                    pass
-                time.sleep(1)  # Check for updates every second
-
-        log_thread = threading.Thread(target=update_logs, daemon=True)
-        log_thread.start()
-
-
     def clear_placeholder(self, event):
         if self.client_ip_entry.get() == "Enter Server IP":
             self.client_ip_entry.delete(0, 'end')
@@ -157,8 +129,8 @@ class PortalUI:
 
         app_config.mode = current_mode  # Also update mode
         app_config.save()
-        self.log(f"Mode set to {current_mode}, OS recorded as {'client' if current_mode == 'client' else 'server'}: {self.os_type}")
-
+        logging.info(f"[System] Mode set to {current_mode}")
+        
     def toggle_audio(self):
         state = 'normal' if self.audio_enabled.get() else 'disabled'
         self.audio_client_to_server_rb.config(state=state)
@@ -211,25 +183,17 @@ class PortalUI:
                 self.invis_process = None
             except Exception as e:
                 print(f"Failed to terminate invis.py: {e}")
-            self.log("Portal stopped.")
             logging.info("Portal stopped.")
             self.portal_thread = None
 
         elif self.running and mode == "reload":
-            self.log("Reloading portal...")
             logging.info("Reloading portal...")
             self.toggle_portal("stop")
             time.sleep(0.5)
             self.toggle_portal("start")
 
         else:
-            self.log(f"Unknown command: {mode}")
-
-    def log(self, message):
-        self.logs_text.config(state='normal')
-        self.logs_text.insert('end', message + '\n')
-        self.logs_text.config(state='disabled')
-        self.logs_text.see('end')
+            logging.info(f"Unknown command: {mode}")
 
 if __name__ == "__main__":
     root = tk.Tk()
