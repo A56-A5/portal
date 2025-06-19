@@ -19,6 +19,7 @@ class PortalUI:
         self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)
         self.running = False
         self.invis_process = None
+        self.audio_process = None
 
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
@@ -184,14 +185,18 @@ class PortalUI:
             app_config.audio_direction = self.audio_direction.get()
             app_config.save()  
 
-            def launch_invis():
-                try:
-                    self.invis_process = subprocess.Popen([sys.executable, "invis.py"])
-                except Exception as e:
-                    logging.info(f"Failed to launch invis.py: {e}")
+            
+            try:
+                self.invis_process = subprocess.Popen([sys.executable, "invis.py"])
+            except Exception as e:
+                logging.info(f"Failed to launch invis.py: {e}")
 
-            self.portal_thread = threading.Thread(target=launch_invis, daemon=True)
-            self.portal_thread.start()
+            if app_config.audio_enabled: 
+                try:
+                    self.audio_process = subprocess.Popen([sys.executable,"audio.py"])
+                except Exception as e:
+                    logging.info(f"Failed to launch audio.py")
+            
 
         elif self.running and mode != "reload":
             logging.info("Stopping portal...")
@@ -206,8 +211,13 @@ class PortalUI:
                 self.invis_process = None
             except Exception as e:
                 print(f"Failed to terminate invis.py: {e}")
+            try:
+                if self.audio_process:
+                    self.audio_process.terminate()
+                self.audio_process = None
+            except Exception as e:
+                print(f"Failed to terminate audio.py: {e}")
             logging.info("Portal stopped.")
-            self.portal_thread = None
 
         elif self.running and mode == "reload":
             logging.info("Reloading portal...")
