@@ -3,14 +3,18 @@ import os
 import platform
 import socket
 import subprocess
-import sys
+import time 
 import pyaudio
+import threading
 from config import app_config
 
 PORT = 50009
 CHUNK_SIZE = 2048
 RATE = 44100
 CHANNELS = 1
+s = None
+def cleanup():
+    s.shutdown(socket.SHUT_RDWR)
 
 def run_audio_receiver():
 
@@ -21,7 +25,8 @@ def run_audio_receiver():
                     output=True,
                     frames_per_buffer=CHUNK_SIZE)
 
-    s = socket.socket()
+    s= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('0.0.0.0', PORT))
     s.listen(1)
     print("Audio waiting ")
@@ -134,6 +139,11 @@ def main():
             run_audio_sender_linux()
     elif app_config.audio_mode == "Receive_Audio":
         run_audio_receiver()
+    def monitor_stop():
+            while app_config.is_running and not app_config.stop_flag:
+                time.sleep(0.5)
+            cleanup()
+    threading.Thread(target=monitor_stop, daemon=True).start()
 
 if __name__ == "__main__":
     main()
