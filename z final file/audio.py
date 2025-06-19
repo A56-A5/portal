@@ -78,7 +78,14 @@ def run_audio_sender_windows():
                     frames_per_buffer=CHUNK_SIZE)
 
     s = socket.socket()
-    s.connect((app_config.audio_ip, PORT))
+    c=5
+    while c!=0:
+        try:
+            s.connect((app_config.audio_ip, PORT))
+            break
+        except:
+            print(f"try {c}")
+            c-=1
     print("Audio Connected to server.")
 
     try:
@@ -144,11 +151,12 @@ def main():
             run_audio_sender_linux()
     elif app_config.audio_mode == "Receive_Audio":
         run_audio_receiver()
+
     def monitor_stop():
             while app_config.is_running and not app_config.stop_flag:
                 time.sleep(0.5)
             cleanup()
-    threading.Thread(target=monitor_stop, daemon=False).start()
+    threading.Thread(target=monitor_stop, daemon=True).start()
 
 if __name__ == "__main__":
     main()
