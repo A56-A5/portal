@@ -57,7 +57,7 @@ def run_audio_receiver():
 
 def run_audio_sender_windows():
 
-    VIRTUAL_CABLE_DEVICE = "Headset Microphone (Realtek(R)"
+    VIRTUAL_CABLE_DEVICE = "CABLE Output"
     p = pyaudio.PyAudio()
 
     device_index = None
