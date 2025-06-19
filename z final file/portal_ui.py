@@ -56,7 +56,17 @@ class PortalUI:
         server_rb = ttk.Radiobutton(server_row, text="Server", variable=self.mode, value="server", command=self.toggle_mode, style="Bold.TRadiobutton")
         server_rb.pack(side='left')
 
-        device_ip = socket.gethostbyname(socket.gethostname())
+        def get_local_ip():
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            try:
+                s.connect(("8.8.8.8", 80))
+                ip = s.getsockname()[0]
+            except Exception:
+                ip = "127.0.0.1"
+            finally:
+                s.close()
+            return ip
+        device_ip = get_local_ip()
         ip_label = ttk.Label(server_row, text=f"-  ({device_ip})", font=bold_font)
         ip_label.pack(side='left', padx=10)
 
@@ -86,15 +96,18 @@ class PortalUI:
         self.client_ip_entry.bind("<FocusOut>", self.restore_placeholder)
 
         # Audio radios (no section label)
-        self.audio_direction = tk.StringVar(value=app_config.audio_direction)
+        self.audio_mode = tk.StringVar(value=app_config.audio_mode)
+        self.audio_mode.trace_add("write", self.on_audio_mode_change)
 
-        self.audio_disabled_rb = ttk.Checkbutton(self.portal_tab, text="Enable audio sharing", variable=self.audio_enabled, command=self.toggle_audio, style="Bold.TRadiobutton")
+        self.audio_disabled_rb = ttk.Checkbutton(self.portal_tab, text="Enable Audio ", variable=self.audio_enabled, command=self.toggle_audio, style="Bold.TRadiobutton")
         self.audio_disabled_rb.pack(anchor='w', padx=10, pady=(0, 5))
-        self.audio_client_to_server_rb = ttk.Radiobutton(self.portal_tab, text="Client to Server", variable=self.audio_direction, value="client_to_server")
-        self.audio_server_to_client_rb = ttk.Radiobutton(self.portal_tab, text="Server to Client", variable=self.audio_direction, value="server_to_client")
+        self.audio_share_rb = ttk.Radiobutton(self.portal_tab, text="Share Audio", variable=self.audio_mode, value="Share_Audio")
+        self.audio_receive_rb = ttk.Radiobutton(self.portal_tab, text="Receive Audio", variable=self.audio_mode, value="Receive_Audio")
 
-        for rb in [self.audio_disabled_rb, self.audio_client_to_server_rb, self.audio_server_to_client_rb]:
+        for rb in [self.audio_disabled_rb, self.audio_share_rb, self.audio_receive_rb]:
             rb.pack(anchor='w', padx=20, pady=2 )
+        self.audio_share_rb.pack(padx=40)
+        self.audio_receive_rb.pack(padx=40)
 
         control_frame = ttk.Frame(self.portal_tab)
         control_frame.pack(pady=20)
@@ -154,13 +167,34 @@ class PortalUI:
         app_config.save()
         if last_mode != current_mode:
             logging.info(f"[System] Mode set to {current_mode}")
-        
+
+    def on_audio_mode_change(self, *args):
+        if self.audio_mode.get() == "Share_Audio" and self.audio_enabled.get():
+            self.prompt_audio_ip()
+
+    def prompt_audio_ip(self):
+        def save_ip():
+            entered_ip = ip_entry.get().strip()
+            if entered_ip:
+                app_config.audio_ip = entered_ip
+                app_config.save()
+                popup.destroy()
+
+        popup = tk.Toplevel(self.root)
+        popup.title("IP")
+        popup.geometry("300x120")
+        tk.Label(popup, text="Enter IP of Audio Receiver:").pack(pady=10)
+        ip_entry = tk.Entry(popup, width=30)
+        ip_entry.insert(0, app_config.audio_ip if app_config.audio_ip else "")
+        ip_entry.pack(pady=5)
+        tk.Button(popup, text="Save", command=save_ip).pack(pady=5)
+
     def toggle_audio(self):
         state = 'normal' if self.audio_enabled.get() else 'disabled'
-        self.audio_client_to_server_rb.config(state=state)
-        self.audio_server_to_client_rb.config(state=state)
+        self.audio_share_rb.config(state=state)
+        self.audio_receive_rb.config(state=state)
         app_config.audio_enabled = self.audio_enabled.get()
-        app_config.audio_direction = self.audio_direction.get()
+        app_config.audio_mode = self.audio_mode.get()
 
     def toggle_portal(self, mode):
         if mode == "start" and not self.running:
@@ -182,14 +216,14 @@ class PortalUI:
 
             app_config.mode = self.mode.get()
             app_config.audio_enabled = self.audio_enabled.get()
-            app_config.audio_direction = self.audio_direction.get()
+            app_config.audio_mode = self.audio_mode.get()
             app_config.save()  
 
             
             try:
-                self.invis_process = subprocess.Popen([sys.executable, "invis.py"])
+                self.invis_process = subprocess.Popen([sys.executable, "share.py"])
             except Exception as e:
-                logging.info(f"Failed to launch invis.py: {e}")
+                logging.info(f"Failed to launch share.py: {e}")
 
             if app_config.audio_enabled: 
                 try:

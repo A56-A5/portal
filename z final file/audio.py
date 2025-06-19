@@ -8,11 +8,11 @@ import pyaudio
 from config import app_config
 
 PORT = 50009
-CHUNK_SIZE = 4096
+CHUNK_SIZE = 2048
 RATE = 44100
 CHANNELS = 1
 
-def run_server():
+def run_audio_receiver():
 
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
@@ -24,10 +24,10 @@ def run_server():
     s = socket.socket()
     s.bind(('0.0.0.0', PORT))
     s.listen(1)
-    print("Server waiting for connection...")
+    print("Audio waiting ")
 
     conn, addr = s.accept()
-    print("Connected by", addr)
+    print("Audio Connected by", addr)
 
     try:
         while True:
@@ -45,7 +45,7 @@ def run_server():
         s.close()
 
 
-def run_client_windows():
+def run_audio_sender_windows():
 
     VIRTUAL_CABLE_DEVICE = "CABLE Output"
     p = pyaudio.PyAudio()
@@ -68,8 +68,8 @@ def run_client_windows():
                     frames_per_buffer=CHUNK_SIZE)
 
     s = socket.socket()
-    s.connect((app_config.server_ip, PORT))
-    print("Connected to server.")
+    s.connect((app_config.audio_ip, PORT))
+    print("Audio Connected to server.")
 
     try:
         while True:
@@ -78,7 +78,7 @@ def run_client_windows():
                 break
             s.sendall(data)
     except KeyboardInterrupt:
-        print("Client stopped.")
+        print("Audio stopped.")
     finally:
         stream.stop_stream()
         stream.close()
@@ -86,7 +86,7 @@ def run_client_windows():
         s.close()
 
 
-def run_client_linux():
+def run_audio_sender_linux():
     def get_default_monitor():
         result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
         default_sink = result.stdout.strip()
@@ -104,8 +104,8 @@ def run_client_linux():
     mute_output()
 
     s = socket.socket()
-    s.connect((app_config.server_ip, PORT))
-    print("Connected to server.")
+    s.connect((app_config.audio_ip, PORT))
+    print("Audio Connected to server.")
 
     parec_cmd = ["parec", "--format=s16le", "--rate=44100", "--channels=1", "-d", monitor_source]
     proc = subprocess.Popen(parec_cmd, stdout=subprocess.PIPE)
@@ -117,7 +117,7 @@ def run_client_linux():
                 break
             s.sendall(data)
     except KeyboardInterrupt:
-        print("Client stopped.")
+        print("Audio stopped.")
     finally:
         proc.terminate()
         unmute_output()
@@ -127,22 +127,13 @@ def run_client_linux():
 def main():
     os_type = platform.system().lower()
     
-    if app_config.audio_direction == "server_to_client":
-        if app_config.mode == "server":
-            run_server()
-        elif app_config.mode == "client":
-            if "windows" in os_type:
-                run_client_windows()
-            else:
-                run_client_linux()
-    else:
-        if app_config.mode == "client":
-            run_server()
-        elif app_config.mode == "server":
-            if "windows" in os_type:
-                run_client_windows()
-            else:
-                run_client_linux()
+    if app_config.audio_mode == "Share_Audio":
+        if "windows" in os_type:
+            run_audio_sender_windows()
+        elif "linux" in os_type:
+            run_audio_sender_linux()
+    elif app_config.audio_mode == "Receive_Audio":
+        run_audio_receiver()
 
 if __name__ == "__main__":
     main()

@@ -1,4 +1,4 @@
-# invis.py
+# share.py
 import sys
 import socket
 import threading
@@ -234,14 +234,12 @@ class MouseSyncApp:
             while app_config.is_running:
                 with self.keyboard_listener_lock:
                     if app_config.active_device and self.keyboard_listener is None:
-                        print("[Keyboard] Starting suppressing listener")
                         self.keyboard_listener = keyboard.Listener(
                             on_press=on_press, on_release=on_release, suppress=True
                         )
                         self.keyboard_listener.start()
     
                     elif not app_config.active_device and self.keyboard_listener is not None:
-                        print("[Keyboard] Stopping suppressing listener")
                         self.keyboard_listener.stop()
                         self.keyboard_listener = None
                 time.sleep(0.5)
@@ -288,8 +286,8 @@ class MouseSyncApp:
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind(("0.0.0.0", self.primary_port))
         self.server_socket.listen(1)
-        print(f"[Server] Listening on port {self.primary_port} & {self.secondary_port}")
-        logging.info(f"[Server] Listening on port {self.primary_port} & {self.secondary_port}")
+        print("[Server] Waiting for Client to connect")
+        logging.info("[Server] Waiting for Client to connect")
 
         def accept_client():
             client, addr = self.server_socket.accept()

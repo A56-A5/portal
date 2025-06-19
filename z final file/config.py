@@ -14,12 +14,13 @@ class AppConfig:
             "is_running": False,
             "active_device": False,
             "audio_enabled": True,
-            "audio_direction": "client_to_server",
+            "audio_mode": "Share_Audio",
 
             # Local config (specific to current instance)
             "mode": "server",  # or "client"
             "server_direction": "Right",  # screen direcion related to client
             "server_ip": "" ,
+            "audio_ip":"",
 
             #clipboard
             "clipboard" : "" 
