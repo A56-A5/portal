@@ -227,7 +227,10 @@ class PortalUI:
 
             if app_config.audio_enabled: 
                 try:
-                    self.audio_process = subprocess.Popen([sys.executable,"audio.py"])
+                    if self.os_type == "linux":
+                        self.audio_process = subprocess.Popen(["Python3","audio.py"])
+                    elif self.os_type == "windows":
+                        self.audio_process = subprocess.Popen([sys.executable,"audio.py"])
                 except Exception as e:
                     logging.info(f"Failed to launch audio.py")
             

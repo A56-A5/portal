@@ -14,7 +14,11 @@ RATE = 44100
 CHANNELS = 1
 s = None
 def cleanup():
-    s.shutdown(socket.SHUT_RDWR)
+    global s
+    try:
+        s.shutdown(socket.SHUT_RDWR)
+    except:
+        print("yesh")
 
 def run_audio_receiver():
 
