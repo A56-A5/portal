@@ -29,13 +29,14 @@ def run_audio_receiver():
                     output=True,
                     frames_per_buffer=CHUNK_SIZE)
 
-    s= socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('0.0.0.0', PORT))
     s.listen(1)
     print("Audio waiting ")
 
     conn, addr = s.accept()
+    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     print("Audio Connected by", addr)
 
     try:
@@ -56,7 +57,7 @@ def run_audio_receiver():
 
 def run_audio_sender_windows():
 
-    VIRTUAL_CABLE_DEVICE = "CABLE Output"
+    VIRTUAL_CABLE_DEVICE = "Headset Microphone (Realtek(R)"
     p = pyaudio.PyAudio()
 
     device_index = None
@@ -147,7 +148,7 @@ def main():
             while app_config.is_running and not app_config.stop_flag:
                 time.sleep(0.5)
             cleanup()
-    threading.Thread(target=monitor_stop, daemon=True).start()
+    threading.Thread(target=monitor_stop, daemon=False).start()
 
 if __name__ == "__main__":
     main()
