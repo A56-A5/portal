@@ -161,7 +161,6 @@ class MouseSyncApp:
             print(f"[Transition] Failed to send active_device state: {e}")
             logging.info(f"[Transition] Failed to send active_device state: {e}")
 
-        # If becoming active, also send clipboard
         if to_active:
             try:
                 clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}

@@ -870,3 +870,53 @@ INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 INFO - Stopping portal...
 INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Audio] Connected
+INFO - [System] Device Activated at (2, 350)
+INFO - [System] Device Deactivated at (1918, 1012)
+INFO - [System] Device Activated at (2, 370)
+INFO - [System] Device Deactivated at (1918, 510)
+INFO - [System] Device Activated at (2, 535)
+INFO - [System] Device Activated at (2, 663)
+INFO - [System] Device Deactivated at (1918, 209)
+INFO - [System] Device Activated at (2, 373)
+INFO - [System] Device Deactivated at (1918, 510)
+INFO - [System] Device Activated at (2, 434)
+INFO - [System] Device Activated at (2, 595)
+INFO - [System] Device Deactivated at (1918, 615)
+INFO - [System] Device Activated at (2, 892)
+INFO - [System] Device Deactivated at (1918, 678)
+INFO - [System] Device Activated at (2, 228)
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
+INFO - [Client] Error closing socket: {e}
+INFO - [Server] Send failed: {e}
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Audio] Connected
+INFO - [System] Device Activated at (2, 524)
+INFO - [System] Device Deactivated at (1918, 596)
+INFO - [System] Device Activated at (2, 448)
+INFO - [System] Device Deactivated at (1918, 519)
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Audio] Connection Attempt: 10
+INFO - [Audio] Connection Attempt: 9
+INFO - [Audio] Streaming from Virtual Cable...
+INFO - [System] Device Activated at (2, 533)
+INFO - [System] Device Deactivated at (1918, 541)
+INFO - [System] Device Activated at (2, 565)
+INFO - [System] Device Deactivated at (1918, 737)
+INFO - Stopping portal...
+INFO - Portal stopped.
