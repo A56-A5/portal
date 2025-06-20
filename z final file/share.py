@@ -339,7 +339,6 @@ class MouseSyncApp:
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         try:
-            while self.retry !=0:
             self.client_socket.connect((app_config.server_ip, self.primary_port))
             if self.client_socket.recv(1024) != b'CONNECTED\n':
                 raise Exception("Handshake failed")
