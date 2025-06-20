@@ -784,3 +784,32 @@ INFO - [Audio] Connection Attempt: 1
 INFO - [Audio] Failed to connect: socket.connect() takes exactly one argument (2 given)
 INFO - Stopping portal...
 INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Audio] Connection Attempt: 10
+INFO - [Audio] Connection Attempt: 9
+INFO - [Audio] Connection Attempt: 8
+INFO - [Audio] Connection Attempt: 7
+INFO - [Audio] Connection Attempt: 6
+INFO - [Audio] Connection Attempt: 5
+INFO - [Audio] Connection Attempt: 4
+INFO - [Audio] Connection Attempt: 3
+INFO - [Audio] Connection Attempt: 2
+INFO - [Audio] Connection Attempt: 1
+INFO - [Audio] Failed to connect: socket.connect() takes exactly one argument (2 given)
+INFO - Reloading portal...
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Audio] Connection Attempt: 10
+INFO - [Audio] Connection Attempt: 9
+INFO - [Audio] Connection Attempt: 8
+INFO - [Audio] Connection Attempt: 7
+INFO - [Audio] Connection Attempt: 6
+INFO - [Audio] Connection Attempt: 5
+INFO - [Audio] Connection Attempt: 4
+INFO - [Audio] Connection Attempt: 3
+INFO - [Audio] Connection Attempt: 2
+INFO - [Audio] Connection Attempt: 1
+INFO - [Audio] Failed to connect: socket.connect() takes exactly one argument (2 given)

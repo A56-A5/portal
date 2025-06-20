@@ -66,7 +66,7 @@ def run_audio_sender_windows():
     c = tries
     while c!=0:
         try:
-            s.connect(app_config.audio_ip, PORT)
+            s.connect((app_config.audio_ip, PORT))
             break
         except Exception as e:
             logging.info(f"[Audio] Connection Attempt: {c}")
@@ -116,7 +116,7 @@ def run_audio_sender_linux():
     c = tries
     while c!=0:
         try:
-            s.connect(app_config.audio_ip, PORT)
+            s.connect((app_config.audio_ip, PORT))
             break
         except Exception as e:
             logging.info(f"[Audio] Connection Attempt: {c}")
