@@ -331,7 +331,7 @@ class MouseSyncApp:
         threading.Thread(target=accept_secondary, daemon=True).start()\
 
     def start_client(self):
-        print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
+
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
@@ -340,7 +340,8 @@ class MouseSyncApp:
         try:
             import win32api 
         except:
-            print("nah")
+            print("")
+        print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
         c1,c2 = self.retry,self.retry
         while c1!=0:
             try:
@@ -359,6 +360,7 @@ class MouseSyncApp:
                     app_config.is_running = False
                     app_config.save()
                     return
+        print("[Client] Primary Connected")
 
         def receive_primary():
             buffer = ""
@@ -395,6 +397,7 @@ class MouseSyncApp:
                     except Exception as e:
                         print(f"[Client] Parse error: {e}")
 
+        print(f"[Client] Connecting to {app_config.server_ip}:{self.secondary_port}")
         while c2!=0:
             try:
                 self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
@@ -412,6 +415,7 @@ class MouseSyncApp:
                     app_config.is_running = False
                     app_config.save()
                     return 
+        print("[Client] Secondary Connected")
                 
         def receive_secondary():
             def parse_key(key_str):

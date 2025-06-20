@@ -1,3 +1,11 @@
 INFO - Portal started
 INFO - Stopping portal...
 INFO - Portal stopped.
+INFO - Portal started
+to send active_device state: 'MouseSyncApp' object has no attribute 'secondary_server'
+INFO - [System] Device Activated at (2, 303)
+INFO - [Transition] Failed to send active_device state: 'MouseSyncApp' object has no attribute 'secondary_server'
+INFO - [System] Device Deactivated at (1918, 347)
+INFO - [Server] Waiting for Client to connect
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
