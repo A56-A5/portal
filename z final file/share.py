@@ -310,7 +310,7 @@ class MouseSyncApp:
                                 if evt["type"] == "clipboard":
                                     app_config.clipboard = evt["content"]
                                     app_config.save()
-                                    pyperclip.copy(app_config.clipboard)
+                                    pyperclip.copy(evt["content"])
                             except json.JSONDecodeError as e:
                                 print(f"[Clipboard] JSON decode error: {e}")
                     except Exception as e:
@@ -343,7 +343,7 @@ class MouseSyncApp:
             print("")
         print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
         c1,c2 = 5,5
-        while c1!=0:
+        while c1>0:
             try:
                 self.client_socket.connect((app_config.server_ip, self.primary_port))
                 if self.client_socket.recv(1024) != b'CONNECTED\n':
@@ -460,7 +460,7 @@ class MouseSyncApp:
                         elif evt["type"] == "clipboard":
                             if self.last_clipboard != evt["content"]:
                                 app_config.clipboard = evt["content"]
-                                pyperclip.copy(app_config.clipboard)
+                                pyperclip.copy(evt["content"])
                                 app_config.save()
                                 print("[Clipboard] Updated clipboard content")
                                 self.last_clipboard = evt["content"]

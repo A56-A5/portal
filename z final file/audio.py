@@ -5,7 +5,6 @@ import socket
 import subprocess
 import time 
 import pyaudio 
-import sounddevice as sd
 import numpy as np
 import threading
 from config import app_config
@@ -61,6 +60,7 @@ def run_audio_receiver():
         s.close()
 
 def run_audio_sender_windows():
+    import sounddevice as sd
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     c = tries
