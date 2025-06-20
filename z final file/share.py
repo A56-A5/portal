@@ -342,7 +342,7 @@ class MouseSyncApp:
         except:
             print("")
         print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
-        c1,c2 = self.retry,self.retry
+        c1,c2 = 5,5
         while c1!=0:
             try:
                 self.client_socket.connect((app_config.server_ip, self.primary_port))
