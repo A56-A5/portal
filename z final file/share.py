@@ -17,6 +17,7 @@ class MouseSyncApp:
         self.edge_transition_cooldown = False
         self.primary_port = 50007
         self.secondary_port = 50008
+        self.retry = 5
         self.mouse_controller = Controller()
         self.keyboard_controller = KeyboardController()
         self.keyboard_listener = None
@@ -338,6 +339,7 @@ class MouseSyncApp:
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
         try:
+            while self.retry !=0:
             self.client_socket.connect((app_config.server_ip, self.primary_port))
             if self.client_socket.recv(1024) != b'CONNECTED\n':
                 raise Exception("Handshake failed")
@@ -382,7 +384,6 @@ class MouseSyncApp:
                 return
             def receive_secondary():
                 def parse_key(key_str):
-                    # If it starts with Key., it's a special key
                     if key_str.startswith("Key."):
                         try:
                             return getattr(Key, key_str.split(".", 1)[1])
@@ -426,10 +427,13 @@ class MouseSyncApp:
                                         threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()
 
                             elif evt["type"] == "clipboard":
-                                app_config.clipboard = evt["content"]
-                                pyperclip.copy(app_config.clipboard)
-                                app_config.save()
-                                print("[Clipboard] Updated clipboard content")
+                                if self.last_clipboard != evt["content"]:
+                                    app_config.clipboard = evt["content"]
+                                    pyperclip.copy(app_config.clipboard)
+                                    app_config.save()
+                                    print("[Clipboard] Updated clipboard content")
+                                    self.last_clipboard = evt["content"]
+
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
