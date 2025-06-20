@@ -337,50 +337,66 @@ class MouseSyncApp:
 
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        c1,c2 = self.retry,self.retry
+        while c1!=0:
+            try:
+                self.client_socket.connect((app_config.server_ip, self.primary_port))
+                if self.client_socket.recv(1024) != b'CONNECTED\n':
+                    raise Exception("Handshake failed")
+            except Exception as e:
+                c1 -= 1
+                print(f"Retrying connection Attemp: {c1}")
+                time.sleep(1)
+                if c1 == 0:
+                    print(f"[Client] Connection failed: {e}")
+                    self.toggle_portal("stop")
+                    return
 
-        try:
-            self.client_socket.connect((app_config.server_ip, self.primary_port))
-            if self.client_socket.recv(1024) != b'CONNECTED\n':
-                raise Exception("Handshake failed")
-
-            def receive_primary():
-                buffer = ""
-                while app_config.is_running:
+        def receive_primary():
+            buffer = ""
+            while app_config.is_running:
+                try:
+                    data = self.client_socket.recv(1024).decode()
+                except Exception as e:
+                    print(f"[Client] Receive error: {e}")
+                    app_config.is_running = False
+                    app_config.save()
+                    break
+                if not data:
+                    break
+                buffer += data
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
                     try:
-                        data = self.client_socket.recv(1024).decode()
+                        evt = json.loads(line)
+                        if evt["type"] == "move":
+                            x = int(evt["x"] * self.screen_width)
+                            y = int(evt["y"] * self.screen_height)
+                            self.mouse_controller.position = (x, y)
+                        elif evt["type"] == "click":
+                            btn = getattr(Button, evt['button'])
+                            if evt['pressed']:
+                                self.mouse_controller.press(btn)
+                            else:
+                                self.mouse_controller.release(btn)
+                        elif evt["type"] == "scroll":
+                            self.mouse_controller.scroll(evt['dx'], evt['dy'])
                     except Exception as e:
-                        print(f"[Client] Receive error: {e}")
-                        app_config.is_running = False
-                        app_config.save()
-                        break
-                    if not data:
-                        break
-                    buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        try:
-                            evt = json.loads(line)
-                            if evt["type"] == "move":
-                                x = int(evt["x"] * self.screen_width)
-                                y = int(evt["y"] * self.screen_height)
-                                self.mouse_controller.position = (x, y)
-                            elif evt["type"] == "click":
-                                btn = getattr(Button, evt['button'])
-                                if evt['pressed']:
-                                    self.mouse_controller.press(btn)
-                                else:
-                                    self.mouse_controller.release(btn)
-                            elif evt["type"] == "scroll":
-                                self.mouse_controller.scroll(evt['dx'], evt['dy'])
-                        except Exception as e:
-                            print(f"[Client] Parse error: {e}")
+                        print(f"[Client] Parse error: {e}")
 
+        while c2!=0:
             try:
                 self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
                 print("[Client] Secondary connected successfully.")
+                break
             except Exception as e:
-                print(f"[Client] Secondary connection failed: {e}")
-                return
+                c2 -= 1
+                print(f"Retrying connection Attemp: {c2}")
+                time.sleep(1)
+                if c2 == 0:
+                    print(f"[Client] Connection failed: {e}")
+                    return 
+                
             def receive_secondary():
                 def parse_key(key_str):
                     if key_str.startswith("Key."):
@@ -410,12 +426,10 @@ class MouseSyncApp:
                                 key = parse_key(evt["key"])
                                 if key:
                                     self.keyboard_controller.press(key)
-
                             elif evt["type"] == "key_release":
                                 key = parse_key(evt["key"])
                                 if key:
                                     self.keyboard_controller.release(key)
-                            
                             elif evt["type"] == "active_device":
                                 app_config.active_device = evt["value"]
                                 app_config.save()
@@ -424,7 +438,6 @@ class MouseSyncApp:
                                     if not hasattr(self, "_clipboard_sender_started") or not self._clipboard_sender_started:
                                         self._clipboard_sender_started = True
                                         threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()
-
                             elif evt["type"] == "clipboard":
                                 if self.last_clipboard != evt["content"]:
                                     app_config.clipboard = evt["content"]
@@ -432,14 +445,11 @@ class MouseSyncApp:
                                     app_config.save()
                                     print("[Clipboard] Updated clipboard content")
                                     self.last_clipboard = evt["content"]
-
                         except Exception as e:
                             print(f"[Client] Secondary parse error: {e}")
 
-            threading.Thread(target=receive_primary, daemon=True).start()
-            threading.Thread(target=receive_secondary, daemon=True).start()
-        except Exception as e:
-            print(f"[Client] Connection failed: {e}")
+                threading.Thread(target=receive_primary, daemon=True).start()
+                threading.Thread(target=receive_secondary, daemon=True).start()
 
     def run(self):
         app_config.is_running = True
