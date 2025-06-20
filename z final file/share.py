@@ -337,6 +337,8 @@ class MouseSyncApp:
 
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        if self.os_type == "windows":
+            import win32api 
         c1,c2 = self.retry,self.retry
         while c1!=0:
             try:
@@ -349,7 +351,7 @@ class MouseSyncApp:
                 time.sleep(1)
                 if c1 == 0:
                     print(f"[Client] Connection failed: {e}")
-                    self.toggle_portal("stop")
+                    c1 = self.retry
                     return
 
         def receive_primary():
@@ -372,7 +374,10 @@ class MouseSyncApp:
                         if evt["type"] == "move":
                             x = int(evt["x"] * self.screen_width)
                             y = int(evt["y"] * self.screen_height)
-                            self.mouse_controller.position = (x, y)
+                            if self.os_type == "linux":
+                                self.mouse_controller.position = (x, y)
+                            elif self.os_type == "windows":
+                                win32api.SetCursorPos((x, y))
                         elif evt["type"] == "click":
                             btn = getattr(Button, evt['button'])
                             if evt['pressed']:
@@ -395,6 +400,7 @@ class MouseSyncApp:
                 time.sleep(1)
                 if c2 == 0:
                     print(f"[Client] Connection failed: {e}")
+                    c1 = self.retry
                     return 
                 
             def receive_secondary():
@@ -434,7 +440,6 @@ class MouseSyncApp:
                                 app_config.active_device = evt["value"]
                                 app_config.save()
                                 if not app_config.active_device:
-                                    # Start clipboard sender only once
                                     if not hasattr(self, "_clipboard_sender_started") or not self._clipboard_sender_started:
                                         self._clipboard_sender_started = True
                                         threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()

@@ -14,6 +14,7 @@ class PortalUI:
         self.root = root
         self.os_type = platform.system().lower()
         self.root.title("Portal")
+        root.iconbitmap("portal.ico")
         self.root.geometry("350x550")
         self.mode = tk.StringVar(value=app_config.mode)
         self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)

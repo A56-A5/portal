@@ -4,7 +4,9 @@ import platform
 import socket
 import subprocess
 import time 
-import pyaudio
+import pyaudio 
+import sounddevice as sd
+import numpy as np
 import threading
 from config import app_config
 
@@ -54,54 +56,25 @@ def run_audio_receiver():
         conn.close()
         s.close()
 
-
 def run_audio_sender_windows():
-
-    VIRTUAL_CABLE_DEVICE = "CABLE Output"
-    p = pyaudio.PyAudio()
-
-    device_index = None
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        if VIRTUAL_CABLE_DEVICE in info.get('name', ''):
-            device_index = i
-            break
-
-    if device_index is None:
-        raise RuntimeError(f"Device '{VIRTUAL_CABLE_DEVICE}' not found.")
-
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    input_device_index=device_index,
-                    frames_per_buffer=CHUNK_SIZE)
-
     s = socket.socket()
-    c=5
-    while c!=0:
-        try:
-            s.connect((app_config.audio_ip, PORT))
-            break
-        except:
-            print(f"try {c}")
-            c-=1
-    print("Audio Connected to server.")
+    s.connect(app_config.audio_ip, PORT)
 
-    try:
-        while True:
-            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-            if not data:
-                break
-            s.sendall(data)
-    except KeyboardInterrupt:
-        print("Audio stopped.")
-    finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        s.close()
+    def callback(indata, frames, time, status):
+        if status:
+            print(status)
+        s.sendall(indata.tobytes())
 
+    with sd.InputStream(samplerate=RATE,
+                        channels=CHANNELS,
+                        dtype='int16',
+                        callback=callback,
+                        blocksize=CHUNK_SIZE,
+                        device=None,  # Auto-select WASAPI loopback if available
+                        latency='low',
+                        extra_settings=sd.WasapiSettings(loopback=True)):
+        print("Streaming audio...")
+        input() 
 
 def run_audio_sender_linux():
     def get_default_monitor():
