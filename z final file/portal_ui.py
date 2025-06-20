@@ -14,7 +14,7 @@ class PortalUI:
         self.root = root
         self.os_type = platform.system().lower()
         self.root.title("Portal")
-        root.iconbitmap("portal.ico")
+        #root.iconbitmap("portal.ico")
         self.root.geometry("350x550")
         self.mode = tk.StringVar(value=app_config.mode)
         self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)
@@ -33,6 +33,8 @@ class PortalUI:
 
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
+
+        threading.Thread(target=self.check_status, daemon=True).start()
 
     def on_tab_changed(self, event):
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]
@@ -262,6 +264,14 @@ class PortalUI:
 
         else:
             logging.info(f"Unknown command: {mode}")
+
+    def check_status(self):
+        while app_config.is_running:
+            time.sleep(0.5)
+        
+        self.status_label.config(text="Portal is not running", foreground="red")
+        self.start_stop_button.config(text="Start")
+        
 
 if __name__ == "__main__":
     root = tk.Tk()
