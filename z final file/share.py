@@ -337,21 +337,27 @@ class MouseSyncApp:
 
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        if self.os_type == "windows":
+        try:
             import win32api 
+        except:
+            print("nah")
         c1,c2 = self.retry,self.retry
         while c1!=0:
             try:
                 self.client_socket.connect((app_config.server_ip, self.primary_port))
                 if self.client_socket.recv(1024) != b'CONNECTED\n':
                     raise Exception("Handshake failed")
+                break
             except Exception as e:
-                c1 -= 1
-                print(f"Retrying connection Attemp: {c1}")
+                print(f"Retrying connection Attempt: {c1}")
+                logging.info(f"Retrying connection Attempt: {c1}")
                 time.sleep(1)
+                c1 -= 1
                 if c1 == 0:
                     print(f"[Client] Connection failed: {e}")
-                    c1 = self.retry
+                    logging.info(f"[Client] Connection failed: {e}")
+                    app_config.is_running = False
+                    app_config.save()
                     return
 
         def receive_primary():
@@ -392,69 +398,73 @@ class MouseSyncApp:
         while c2!=0:
             try:
                 self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
-                print("[Client] Secondary connected successfully.")
+                logging.info("[Client] Connected successfully.")
+                print("[Client] Connected successfully.")
                 break
             except Exception as e:
                 c2 -= 1
+                logging.info(f"Retrying connection Attemp: {c2}")
                 print(f"Retrying connection Attemp: {c2}")
                 time.sleep(1)
                 if c2 == 0:
                     print(f"[Client] Connection failed: {e}")
-                    c1 = self.retry
+                    logging.info(f"[Client] Connection failed: {e}")
+                    app_config.is_running = False
+                    app_config.save()
                     return 
                 
-            def receive_secondary():
-                def parse_key(key_str):
-                    if key_str.startswith("Key."):
-                        try:
-                            return getattr(Key, key_str.split(".", 1)[1])
-                        except AttributeError:
-                            print(f"[Parse] Unknown special key: {key_str}")
-                            return None
-                    return key_str
-                buffer = ""
-                while app_config.is_running:
+        def receive_secondary():
+            def parse_key(key_str):
+                if key_str.startswith("Key."):
                     try:
-                        data = self.secondary_client_socket.recv(1024).decode()
-                    except Exception as e:
-                        print(f"[Client] Secondary receive error: {e}")
-                        app_config.is_running = False
-                        app_config.save()
-                        break
-                    if not data:
-                        break
-                    buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        try:
-                            evt = json.loads(line)
-                            if evt["type"] == "key_press":
-                                key = parse_key(evt["key"])
-                                if key:
-                                    self.keyboard_controller.press(key)
-                            elif evt["type"] == "key_release":
-                                key = parse_key(evt["key"])
-                                if key:
-                                    self.keyboard_controller.release(key)
-                            elif evt["type"] == "active_device":
-                                app_config.active_device = evt["value"]
+                        return getattr(Key, key_str.split(".", 1)[1])
+                    except AttributeError:
+                        print(f"[Parse] Unknown special key: {key_str}")
+                        return None
+                return key_str
+            buffer = ""
+            while app_config.is_running:
+                try:
+                    data = self.secondary_client_socket.recv(1024).decode()
+                except Exception as e:
+                    print(f"[Client] Secondary receive error: {e}")
+                    app_config.is_running = False
+                    app_config.save()
+                    break
+                if not data:
+                    break
+                buffer += data
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    try:
+                        evt = json.loads(line)
+                        if evt["type"] == "key_press":
+                            key = parse_key(evt["key"])
+                            if key:
+                                self.keyboard_controller.press(key)
+                        elif evt["type"] == "key_release":
+                            key = parse_key(evt["key"])
+                            if key:
+                                self.keyboard_controller.release(key)
+                        elif evt["type"] == "active_device":
+                            app_config.active_device = evt["value"]
+                            app_config.save()
+                            if not app_config.active_device:
+                                if not hasattr(self, "_clipboard_sender_started") or not self._clipboard_sender_started:
+                                    self._clipboard_sender_started = True
+                                    threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()
+                        elif evt["type"] == "clipboard":
+                            if self.last_clipboard != evt["content"]:
+                                app_config.clipboard = evt["content"]
+                                pyperclip.copy(app_config.clipboard)
                                 app_config.save()
-                                if not app_config.active_device:
-                                    if not hasattr(self, "_clipboard_sender_started") or not self._clipboard_sender_started:
-                                        self._clipboard_sender_started = True
-                                        threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()
-                            elif evt["type"] == "clipboard":
-                                if self.last_clipboard != evt["content"]:
-                                    app_config.clipboard = evt["content"]
-                                    pyperclip.copy(app_config.clipboard)
-                                    app_config.save()
-                                    print("[Clipboard] Updated clipboard content")
-                                    self.last_clipboard = evt["content"]
-                        except Exception as e:
-                            print(f"[Client] Secondary parse error: {e}")
+                                print("[Clipboard] Updated clipboard content")
+                                self.last_clipboard = evt["content"]
+                    except Exception as e:
+                        print(f"[Client] Secondary parse error: {e}")
 
-                threading.Thread(target=receive_primary, daemon=True).start()
-                threading.Thread(target=receive_secondary, daemon=True).start()
+        threading.Thread(target=receive_primary, daemon=True).start()
+        threading.Thread(target=receive_secondary, daemon=True).start()
 
     def run(self):
         app_config.is_running = True

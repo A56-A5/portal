@@ -1,5 +1,5 @@
 # audio.py
-import os
+import logging
 import platform
 import socket
 import subprocess
@@ -15,12 +15,15 @@ CHUNK_SIZE = 2048
 RATE = 44100
 CHANNELS = 1
 s = None
+tries = 10 
+
 def cleanup():
     global s
     try:
         s.shutdown(socket.SHUT_RDWR)
     except:
         print("yesh")
+        logging.info(f"[Audio] Stopped")
 
 def run_audio_receiver():
 
@@ -35,11 +38,12 @@ def run_audio_receiver():
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('0.0.0.0', PORT))
     s.listen(1)
-    print("Audio waiting ")
+    print("Audio waiting")
 
     conn, addr = s.accept()
     conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     print("Audio Connected by", addr)
+    logging.info("[Audio] Connected")
 
     try:
         while True:
@@ -57,8 +61,23 @@ def run_audio_receiver():
         s.close()
 
 def run_audio_sender_windows():
-    s = socket.socket()
-    s.connect(app_config.audio_ip, PORT)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    c = tries
+    while c!=0:
+        try:
+            s.connect(app_config.audio_ip, PORT)
+            break
+        except Exception as e:
+            logging.info(f"[Audio] Connection Attempt: {c}")
+            print(f"[Audio] Connection Attempt: {c}")
+            time.sleep(1)
+            c-=1
+            if c == 0:
+                logging.info(f"[Audio] Failed to connect: {e}")
+                print(f"[Audio] Failed to connect: {e}")
+                return 
+
 
     def callback(indata, frames, time, status):
         if status:
@@ -70,10 +89,11 @@ def run_audio_sender_windows():
                         dtype='int16',
                         callback=callback,
                         blocksize=CHUNK_SIZE,
-                        device=None,  # Auto-select WASAPI loopback if available
+                        device=None,  
                         latency='low',
                         extra_settings=sd.WasapiSettings(loopback=True)):
         print("Streaming audio...")
+        logging.info("[Audio] Streaming audio...")
         input() 
 
 def run_audio_sender_linux():
@@ -93,9 +113,22 @@ def run_audio_sender_linux():
     monitor_source = get_default_monitor()
     mute_output()
 
-    s = socket.socket()
-    s.connect((app_config.audio_ip, PORT))
+    c = tries
+    while c!=0:
+        try:
+            s.connect(app_config.audio_ip, PORT)
+            break
+        except Exception as e:
+            logging.info(f"[Audio] Connection Attempt: {c}")
+            print(f"[Audio] Connection Attempt: {c}")
+            time.sleep(1)
+            c-=1
+            if c == 0:
+                logging.info(f"[Audio] Failed to connect: {e}")
+                print(f"[Audio] Failed to connect: {e}")
+                return 
     print("Audio Connected to server.")
+    logging.info("[Audio] Streaming audio...")
 
     parec_cmd = ["parec", "--format=s16le", "--rate=44100", "--channels=1", "-d", monitor_source]
     proc = subprocess.Popen(parec_cmd, stdout=subprocess.PIPE)
@@ -108,6 +141,7 @@ def run_audio_sender_linux():
             s.sendall(data)
     except KeyboardInterrupt:
         print("Audio stopped.")
+        logging.info("[Audio] Streaming stopped.")
     finally:
         proc.terminate()
         unmute_output()
@@ -132,4 +166,5 @@ def main():
     threading.Thread(target=monitor_stop, daemon=True).start()
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a",format ="%(levelname)s - %(message)s")
     main()
