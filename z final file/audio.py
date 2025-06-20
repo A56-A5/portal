@@ -14,6 +14,7 @@ RATE = 44100
 CHANNELS = 1
 s = None
 tries = 10 
+VIRTUAL_CABLE_DEVICE = "CABLE Output" 
 
 def cleanup():
     global s
@@ -59,12 +60,29 @@ def run_audio_receiver():
         s.close()
 
 def run_audio_sender_windows():
-    import sounddevice as sd
-    import numpy as np
+    # Find the virtual audio cable device index
+    device_index = None
+    p = pyaudio.PyAudio()
+    for i in range(p.get_device_count()):
+        device_info = p.get_device_info_by_index(i)
+        if VIRTUAL_CABLE_DEVICE in device_info.get('name'):
+            device_index = i
+            break
+
+    if device_index is None:
+        raise RuntimeError(f"[Audio] Could not find device: {VIRTUAL_CABLE_DEVICE}")
+
+    device_info = p.get_device_info_by_index(device_index)
+    if device_info['maxInputChannels'] < 1:
+        raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
+    
+    
+    
+    # Connect to receiver
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     c = tries
-    while c!=0:
+    while c != 0:
         try:
             s.connect((app_config.audio_ip, PORT))
             break
@@ -72,29 +90,36 @@ def run_audio_sender_windows():
             logging.info(f"[Audio] Connection Attempt: {c}")
             print(f"[Audio] Connection Attempt: {c}")
             time.sleep(1)
-            c-=1
+            c -= 1
             if c == 0:
                 logging.info(f"[Audio] Failed to connect: {e}")
                 print(f"[Audio] Failed to connect: {e}")
-                return 
+                return
 
+    # Open PyAudio stream
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    input_device_index=device_index,
+                    frames_per_buffer=CHUNK_SIZE)
 
-    def callback(indata, frames, time, status):
-        if status:
-            print(status)
-        s.sendall(indata.tobytes())
+    print("[Audio] Streaming from Virtual Cable...")
+    logging.info("[Audio] Streaming from Virtual Cable...")
 
-    with sd.InputStream(samplerate=RATE,
-                        channels=CHANNELS,
-                        dtype='int16',
-                        callback=callback,
-                        blocksize=CHUNK_SIZE,
-                        device=None,  
-                        latency='low',
-                        extra_settings=sd.WasapiSettings(loopback=True)):
-        print("Streaming audio...")
-        logging.info("[Audio] Streaming audio...")
-        input() 
+    try:
+        while True:
+            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+            if not data:
+                break
+            s.sendall(data)
+    except KeyboardInterrupt:
+        print("[Audio] Audio streaming interrupted.")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        s.close()
 
 def run_audio_sender_linux():
     def get_default_monitor():
@@ -112,7 +137,8 @@ def run_audio_sender_linux():
 
     monitor_source = get_default_monitor()
     mute_output()
-
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
     c = tries
     while c!=0:
         try:
