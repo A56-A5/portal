@@ -9,7 +9,7 @@ import threading
 from config import app_config
 
 PORT = 50009
-CHUNK_SIZE = 8
+CHUNK_SIZE = 2048
 RATE = 44100
 CHANNELS = 1
 s = None

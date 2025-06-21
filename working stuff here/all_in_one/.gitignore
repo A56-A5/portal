@@ -1,0 +1,5 @@
+# Ignore all config JSON files
+config.json
+logs.log
+testing.py
+./__pycache__/
