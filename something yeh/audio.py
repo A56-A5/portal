@@ -6,8 +6,34 @@ import pyaudio
 import time
 from config import app_config
 
-# === RECEIVER (works cross-platform) ===
+sock = None
+process = None
+stream = None
+p = None
+
+
+# === CLEANUP FUNCTION ===
+def cleanup():
+    global sock, process, stream, p
+    print("🧹 Cleaning up...")
+    try:
+        if stream:
+            stream.stop_stream()
+            stream.close()
+        if p:
+            p.terminate()
+        if sock:
+            sock.close()
+        if process:
+            process.terminate()
+    except Exception as e:
+        print(f"⚠️ Cleanup error: {e}")
+
+
+# === RECEIVER ===
 def receive_audio():
+    global sock, stream, p
+
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=app_config.channels,
@@ -26,10 +52,7 @@ def receive_audio():
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
     finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        sock.close()
+        cleanup()
 
 
 # === SENDER LINUX ===
@@ -47,6 +70,7 @@ def unmute_output():
     subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '0'])
 
 def send_audio_linux():
+    global sock, process
     monitor = get_monitor_source()
     mute_output()
 
@@ -61,10 +85,21 @@ def send_audio_linux():
         '-'
     ]
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+    for attempt in range(5):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"🔌 Socket created (attempt {attempt+1}/5)")
+            break
+        except Exception as e:
+            print(f"⚠️ Socket creation failed: {e}")
+            time.sleep(1)
+    else:
+        print("❌ Failed to create socket after 5 attempts.")
+        return
 
+    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
     print(f"📤 Sending audio from {monitor} (muted locally)")
+
     try:
         while True:
             data = process.stdout.read(app_config.chunk)
@@ -75,12 +110,12 @@ def send_audio_linux():
         print("❌ Sender stopped.")
     finally:
         unmute_output()
-        sock.close()
-        process.terminate()
+        cleanup()
 
 
 # === SENDER WINDOWS ===
 def send_audio_windows():
+    global sock, process
     ffmpeg_cmd = [
         'ffmpeg',
         '-f', 'dshow',
@@ -92,10 +127,21 @@ def send_audio_windows():
         '-'
     ]
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+    for attempt in range(5):
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            print(f"🔌 Socket created (attempt {attempt+1}/5)")
+            break
+        except Exception as e:
+            print(f"⚠️ Socket creation failed: {e}")
+            time.sleep(1)
+    else:
+        print("❌ Failed to create socket after 5 attempts.")
+        return
 
+    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
     print("📤 Sending audio from VB-Cable...")
+
     try:
         while True:
             data = process.stdout.read(app_config.chunk)
@@ -105,23 +151,27 @@ def send_audio_windows():
     except KeyboardInterrupt:
         print("❌ Sender stopped.")
     finally:
-        sock.close()
-        process.terminate()
+        cleanup()
 
 
 # === ENTRY POINT ===
 def main():
-    if app_config.audio_mode == "Receive_Audio":
-        receive_audio()
-    elif app_config.audio_mode == "Send_Audio":
-        if app_config.os_type == "linux":
-            send_audio_linux()
-        elif app_config.os_type == "windows":
-            send_audio_windows()
+    try:
+        if app_config.audio_mode == "Receive_Audio":
+            receive_audio()
+        elif app_config.audio_mode == "Send_Audio":
+            if app_config.os_type == "linux":
+                send_audio_linux()
+            elif app_config.os_type == "windows":
+                send_audio_windows()
+            else:
+                print(f"❌ Unsupported OS: {app_config.os_type}")
         else:
-            print(f"❌ Unsupported OS: {app_config.os_type}")
-    else:
-        print("❌ Invalid audio_mode in config.")
+            print("❌ Invalid audio_mode in config.")
+    except Exception as e:
+        print(f"🔥 Critical error: {e}")
+    finally:
+        cleanup()
 
 if __name__ == "__main__":
     main()

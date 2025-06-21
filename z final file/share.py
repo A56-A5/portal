@@ -348,18 +348,17 @@ class MouseSyncApp:
             print("")
         print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
         c1,c2 = 5,5
-        while c1>0:
+        for i in range(c1,0,-1):
             try:
                 self.client_socket.connect((app_config.server_ip, self.primary_port))
                 if self.client_socket.recv(1024) != b'CONNECTED\n':
                     raise Exception("Handshake failed")
                 break
             except Exception as e:
-                print(f"Retrying connection Attempt: {c1}")
-                logging.info(f"Retrying connection Attempt: {c1}")
+                print(f"Retrying connection Attempt: {i}")
+                logging.info(f"Retrying connection Attempt: {i}")
                 time.sleep(1)
-                c1 -= 1
-                if c1 == 0:
+                if i == 0:
                     print(f"[Client] Connection failed: {e}")
                     logging.info(f"[Client] Connection failed: {e}")
                     app_config.is_running = False
@@ -403,18 +402,17 @@ class MouseSyncApp:
                         print(f"[Client] Parse error: {e}")
 
         print(f"[Client] Connecting to {app_config.server_ip}:{self.secondary_port}")
-        while c2!=0:
+        for i in range(c2,0,-1):
             try:
                 self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
                 logging.info("[Client] Connected successfully.")
                 print("[Client] Connected successfully.")
                 break
             except Exception as e:
-                c2 -= 1
-                logging.info(f"Retrying connection Attemp: {c2}")
-                print(f"Retrying connection Attemp: {c2}")
+                logging.info(f"Retrying connection Attemp: {i}")
+                print(f"Retrying connection Attemp: {i}")
                 time.sleep(1)
-                if c2 == 0:
+                if i == 0:
                     print(f"[Client] Connection failed: {e}")
                     logging.info(f"[Client] Connection failed: {e}")
                     app_config.is_running = False
