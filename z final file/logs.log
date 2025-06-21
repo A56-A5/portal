@@ -1,122 +1,13 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
-INFO - [Audio] Attempt 1: [WinError 10061] No connection could be made because the target machine actively refused it
-INFO - [Audio] Streaming audio from Virtual Cable...
+INFO - \U0001f3a7 [Audio] UDP Receiver started on port 50009
+INFO - [System] Mode set to client
 INFO - Stopping portal...
 INFO - Portal stopped.
 INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - \U0001f3a7 [Audio] Receiver waiting for connection...
-INFO - \u2705 [Audio] Connected by ('192.168.1.75', 49300)
-INFO - [System] Device Activated at (1838, 1078)
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [System] Closing all sockets
-INFO - [Client] Error closing socket: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Audio] Receiver stopped
-INFO - Reloading portal...
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - \U0001f3a7 [Audio] Receiver waiting for connection...
-INFO - \u2705 [Audio] Connected by ('192.168.1.75', 42146)
-INFO - [System] Device Activated at (717, 1078)
-INFO - [System] Device Deactivated at (839, 2)
-INFO - Reloading portal...
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - \U0001f3a7 [Audio] Receiver waiting for connection...
-INFO - Reloading portal...
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - \U0001f3a7 [Audio] Receiver waiting for connection...
-INFO - \u2705 [Audio] Connected by ('192.168.1.75', 56500)
-INFO - [System] Device Activated at (1196, 1078)
-INFO - [System] Device Deactivated at (1185, 2)
-INFO - [System] Device Activated at (677, 1078)
-INFO - [System] Device Deactivated at (745, 2)
-INFO - [System] Device Activated at (742, 1078)
-INFO - [System] Device Deactivated at (811, 2)
-INFO - [System] Device Activated at (814, 1078)
-INFO - [System] Device Deactivated at (772, 2)
-INFO - [System] Device Activated at (766, 1078)
-INFO - [System] Device Deactivated at (781, 2)
-INFO - [System] Device Activated at (748, 1078)
-INFO - [System] Device Deactivated at (828, 2)
-INFO - [System] Device Activated at (825, 1078)
-INFO - [System] Device Deactivated at (873, 2)
-INFO - [System] Device Activated at (845, 1078)
-INFO - [System] Device Deactivated at (831, 2)
-INFO - [System] Device Deactivated at (942, 2)
-INFO - [System] Device Activated at (995, 1078)
-INFO - [System] Device Deactivated at (947, 2)
-INFO - [System] Device Activated at (919, 1078)
-INFO - [System] Device Deactivated at (930, 2)
-INFO - [System] Device Activated at (700, 1078)
-INFO - [System] Device Deactivated at (580, 2)
+INFO - [Audio] Failed to mute system volume: [WinError 2] The system cannot find the file specified
+INFO - [Audio] Streaming audio with FFmpeg via UDP (Windows)...
+INFO - [Audio] Sender stopped
+INFO - [Client] Connected successfully.
 INFO - Stopping portal...
 INFO - Portal stopped.
