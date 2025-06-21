@@ -7,7 +7,7 @@ import time
 from config import app_config
 
 PORT = 50009
-CHUNK_SIZE = 2048
+CHUNK_SIZE = 1024
 RATE = 44100
 CHANNELS = 1
 
