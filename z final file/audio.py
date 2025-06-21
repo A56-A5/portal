@@ -16,7 +16,7 @@ def receive_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
-                    rate=app_config.rate,
+                    rate=RATE,
                     output=True,
                     frames_per_buffer=CHUNK_SIZE)
 
