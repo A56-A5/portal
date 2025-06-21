@@ -6,22 +6,27 @@ import pyaudio
 import time
 from config import app_config
 
+PORT = 50009
+CHUNK_SIZE = 2048
+RATE = 44100
+CHANNELS = 1
+
 # === RECEIVER (works cross-platform) ===
 def receive_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
-                    channels=app_config.channels,
+                    channels=CHANNELS,
                     rate=app_config.rate,
                     output=True,
-                    frames_per_buffer=app_config.chunk)
+                    frames_per_buffer=CHUNK_SIZE)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('', app_config.port))
+    sock.bind(('', PORT))
 
     print("🔊 Receiving audio...")
     try:
         while True:
-            data, _ = sock.recvfrom(app_config.chunk)
+            data, _ = sock.recvfrom(CHUNK_SIZE)
             stream.write(data)
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
@@ -54,8 +59,8 @@ def send_audio_linux():
         'ffmpeg',
         '-f', 'pulse',
         '-i', monitor,
-        '-ac', str(app_config.channels),
-        '-ar', str(app_config.rate),
+        '-ac', str(CHANNELS),
+        '-ar', str(RATE),
         '-f', 's16le',
         '-loglevel', 'quiet',
         '-'
@@ -67,10 +72,10 @@ def send_audio_linux():
     print(f"📤 Sending audio from {monitor} (muted locally)")
     try:
         while True:
-            data = process.stdout.read(app_config.chunk)
+            data = process.stdout.read(CHUNK_SIZE)
             if not data:
                 break
-            sock.sendto(data, (app_config.receiver_ip, app_config.port))
+            sock.sendto(data, (app_config.audio_ip, PORT))
     except KeyboardInterrupt:
         print("❌ Sender stopped.")
     finally:
@@ -85,8 +90,8 @@ def send_audio_windows():
         'ffmpeg',
         '-f', 'dshow',
         '-i', 'audio=CABLE Output (VB-Audio Virtual Cable)',
-        '-ac', str(app_config.channels),
-        '-ar', str(app_config.rate),
+        '-ac', str(CHANNELS),
+        '-ar', str(RATE),
         '-f', 's16le',
         '-loglevel', 'quiet',
         '-'
@@ -98,10 +103,10 @@ def send_audio_windows():
     print("📤 Sending audio from VB-Cable...")
     try:
         while True:
-            data = process.stdout.read(app_config.chunk)
+            data = process.stdout.read(CHUNK_SIZE)
             if not data:
                 break
-            sock.sendto(data, (app_config.receiver_ip, app_config.port))
+            sock.sendto(data, (app_config.audio_ip, PORT))
     except KeyboardInterrupt:
         print("❌ Sender stopped.")
     finally:
@@ -111,15 +116,16 @@ def send_audio_windows():
 
 # === ENTRY POINT ===
 def main():
+    os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
         receive_audio()
     elif app_config.audio_mode == "Send_Audio":
-        if app_config.os_type == "linux":
+        if os_type == "linux":
             send_audio_linux()
-        elif app_config.os_type == "windows":
+        elif os_type == "windows":
             send_audio_windows()
         else:
-            print(f"❌ Unsupported OS: {app_config.os_type}")
+            print(f"❌ Unsupported OS: {os_type}")
     else:
         print("❌ Invalid audio_mode in config.")
 
