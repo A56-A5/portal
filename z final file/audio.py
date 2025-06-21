@@ -9,7 +9,7 @@ import threading
 from config import app_config
 
 PORT = 50009
-CHUNK_SIZE = 8
+CHUNK_SIZE = 128
 RATE = 44100
 CHANNELS = 1
 s = None
@@ -20,11 +20,43 @@ def cleanup():
     global s
     try:
         s.shutdown(socket.SHUT_RDWR)
+        s.close()
     except:
         print("yesh")
-        logging.info(f"[Audio] Stopped")
+    logging.info(f"[Audio] Stopped")
 
 def run_audio_receiver():
+    import pyaudio
+    import av
+
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16, channels=1, rate=44100, output=True, frames_per_buffer=CHUNK_SIZE)
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(("0.0.0.0", PORT))
+    print("Audio waiting (UDP)...")
+
+    decoder = av.CodecContext.create("opus", "r")
+    packet_buffer = b""
+
+    try:
+        while True:
+            data, _ = s.recvfrom(CHUNK_SIZE * 4)
+            if not data:
+                break
+            packet_buffer += data
+            try:
+                pkt = av.packet.Packet(packet_buffer)
+                for frame in decoder.decode(pkt):
+                    stream.write(frame.planes[0].to_bytes())
+                packet_buffer = b""
+            except av.AVError:
+                continue
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        s.close()
 
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
@@ -33,34 +65,57 @@ def run_audio_receiver():
                     output=True,
                     frames_per_buffer=CHUNK_SIZE)
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     s.bind(('0.0.0.0', PORT))
-    s.listen(1)
-    print("Audio waiting")
-
-    conn, addr = s.accept()
-    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    print("Audio Connected by", addr)
-    logging.info("[Audio] Connected")
+    print("Audio waiting (UDP)...")
 
     try:
         while True:
-            data = conn.recv(CHUNK_SIZE * 2)
+            data, addr = s.recvfrom(CHUNK_SIZE * 2)  
             if not data:
                 break
             stream.write(data)
     except KeyboardInterrupt:
-        print("Server interrupted.")
+        print("Audio Receiver interrupted.")
     finally:
         stream.stop_stream()
         stream.close()
         p.terminate()
-        conn.close()
         s.close()
 
+
 def run_audio_sender_windows():
-    # Find the virtual audio cable device index
+    global s
+    ffmpeg_cmd = [
+        "ffmpeg", "-f", "dshow", "-i", f"audio={VIRTUAL_CABLE_DEVICE}",
+        "-acodec", "libopus", "-f", "ogg", "-"
+    ]
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for c in range(tries, 0, -1):
+        try:
+            s.connect((app_config.audio_ip, PORT))
+            break
+        except Exception as e:
+            print(f"[Audio] Connection Attempt: {c}")
+            time.sleep(1)
+            if c == 1:
+                print(f"[Audio] Failed to connect: {e}")
+                return
+
+    proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+    try:
+        while True:
+            data = proc.stdout.read(CHUNK_SIZE)
+            if not data:
+                break
+            s.send(data)
+    finally:
+        proc.terminate()
+        s.close()
+
+    global s 
     device_index = None
     p = pyaudio.PyAudio()
     for i in range(p.get_device_count()):
@@ -79,8 +134,7 @@ def run_audio_sender_windows():
     
     
     # Connect to receiver
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     c = tries
     while c != 0:
         try:
@@ -112,7 +166,7 @@ def run_audio_sender_windows():
             data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
             if not data:
                 break
-            s.sendall(data)
+            s.send(data)
     except KeyboardInterrupt:
         print("[Audio] Audio streaming interrupted.")
     finally:
@@ -122,6 +176,41 @@ def run_audio_sender_windows():
         s.close()
 
 def run_audio_sender_linux():
+    global s
+    def get_monitor():
+        out = subprocess.run(["pactl", "get-default-sink"], capture_output=True, text=True)
+        return f"{out.stdout.strip()}.monitor"
+
+    monitor = get_monitor()
+    ffmpeg_cmd = [
+        "ffmpeg", "-f", "pulse", "-i", monitor,
+        "-acodec", "libopus", "-f", "ogg", "-"
+    ]
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    for c in range(tries, 0, -1):
+        try:
+            s.connect((app_config.audio_ip, PORT))
+            break
+        except Exception as e:
+            print(f"[Audio] Connection Attempt: {c}")
+            time.sleep(1)
+            if c == 1:
+                print(f"[Audio] Failed to connect: {e}")
+                return
+
+    proc = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+    try:
+        while True:
+            data = proc.stdout.read(CHUNK_SIZE)
+            if not data:
+                break
+            s.send(data)
+    finally:
+        proc.terminate()
+        s.close()
+
+    global s
     def get_default_monitor():
         result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
         default_sink = result.stdout.strip()
@@ -137,8 +226,7 @@ def run_audio_sender_linux():
 
     monitor_source = get_default_monitor()
     mute_output()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     c = tries
     while c!=0:
         try:
@@ -164,18 +252,23 @@ def run_audio_sender_linux():
             data = proc.stdout.read(CHUNK_SIZE)
             if not data:
                 break
-            s.sendall(data)
+            s.send(data)
     except KeyboardInterrupt:
         print("Audio stopped.")
         logging.info("[Audio] Streaming stopped.")
     finally:
         proc.terminate()
-        unmute_output()
+        unmute_output() 
         s.close()
-
 
 def main():
     os_type = platform.system().lower()
+
+    def monitor_stop():
+            while app_config.is_running and not app_config.stop_flag:
+                time.sleep(0.5)
+            cleanup()
+    threading.Thread(target=monitor_stop, daemon=True).start()
     
     if app_config.audio_mode == "Share_Audio":
         if "windows" in os_type:
@@ -184,12 +277,6 @@ def main():
             run_audio_sender_linux()
     elif app_config.audio_mode == "Receive_Audio":
         run_audio_receiver()
-
-    def monitor_stop():
-            while app_config.is_running and not app_config.stop_flag:
-                time.sleep(0.5)
-            cleanup()
-    threading.Thread(target=monitor_stop, daemon=True).start()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a",format ="%(levelname)s - %(message)s")

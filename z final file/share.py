@@ -269,7 +269,6 @@ class MouseSyncApp:
 
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
-                logging.info(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
     def clipboard_sender(self,_socket):
@@ -296,7 +295,7 @@ class MouseSyncApp:
         print("[Server] Waiting for Client to connect")
         logging.info("[Server] Waiting for Client to connect")
 
-        def accept_client():
+        def accept_primary():
             client, addr = self.server_socket.accept()
             client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             print(f"[Server] Primary connection from: {addr}")
@@ -333,7 +332,7 @@ class MouseSyncApp:
         self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
         self.secondary_server_socket.listen(1)
         
-        threading.Thread(target=accept_client, daemon=True).start()
+        threading.Thread(target=accept_primary, daemon=True).start()
         threading.Thread(target=accept_secondary, daemon=True).start()\
 
     def start_client(self):

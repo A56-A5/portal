@@ -30,8 +30,8 @@ class PortalUI:
         self.tab_control.pack(expand=1, fill='both')
 
         with open("logs.log","w") as f:
-            f.read()
-            
+            print("")
+
         logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="%(levelname)s - %(message)s")
 
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
