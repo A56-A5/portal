@@ -1,3 +1,4 @@
 INFO - Portal started
-INFO - [Client] Connected successfully.
-INFO - [System] Closing all sockets
+INFO - [Server] Waiting for Client to connect
+INFO - Stopping portal...
+INFO - Portal stopped.

@@ -26,6 +26,7 @@ def cleanup():
     logging.info(f"[Audio] Stopped")
 
 def run_audio_receiver():
+    global s 
     import pyaudio
     import av
 
@@ -115,7 +116,6 @@ def run_audio_sender_windows():
         proc.terminate()
         s.close()
 
-    global s 
     device_index = None
     p = pyaudio.PyAudio()
     for i in range(p.get_device_count()):
