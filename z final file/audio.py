@@ -3,39 +3,37 @@ import platform
 import socket
 import subprocess
 import time
-import pyaudio
 import threading
 from config import app_config
 
 PORT = 50009
-CHUNK_SIZE = 1024
+CHUNK_SIZE = 1024  # matches ffmpeg output block
 RATE = 44100
 CHANNELS = 1
 VIRTUAL_CABLE_DEVICE = "CABLE Output"
 
-# Globals for shutdown
-audio_socket = None
 is_streaming = True
+udp_socket = None
 
 def log_info(msg):
     print(msg)
     logging.info(msg)
 
 def cleanup():
-    global audio_socket, is_streaming
+    global udp_socket, is_streaming
     is_streaming = False
-    if audio_socket:
+    if udp_socket:
         try:
-            audio_socket.shutdown(socket.SHUT_RDWR)
-            audio_socket.close()
-            log_info("[Audio] Socket closed.")
+            udp_socket.close()
+            log_info("[Audio] UDP socket closed.")
         except Exception as e:
             log_info(f"[Audio] Cleanup error: {e}")
-        audio_socket = None
+        udp_socket = None
 
 def run_audio_receiver():
-    global audio_socket, is_streaming
+    global udp_socket, is_streaming
 
+    import pyaudio
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -43,120 +41,84 @@ def run_audio_receiver():
                     output=True,
                     frames_per_buffer=CHUNK_SIZE)
 
-    audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    audio_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    audio_socket.bind(('0.0.0.0', PORT))
-    audio_socket.listen(1)
-    log_info("🎧 [Audio] Receiver waiting for connection...")
-
-    conn, addr = audio_socket.accept()
-    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    log_info(f"✅ [Audio] Connected by {addr}")
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    udp_socket.bind(('0.0.0.0', PORT))
+    log_info(f"🎧 [Audio] UDP Receiver started on port {PORT}")
 
     try:
         while is_streaming:
-            data = conn.recv(CHUNK_SIZE * 2)
-            if not data:
-                break
-            stream.write(data)
+            data, _ = udp_socket.recvfrom(CHUNK_SIZE * 2)
+            if data:
+                stream.write(data)
     except Exception as e:
         log_info(f"[Audio] Receiver error: {e}")
     finally:
         stream.stop_stream()
         stream.close()
         p.terminate()
-        conn.close()
-        audio_socket.close()
+        udp_socket.close()
         log_info("[Audio] Receiver stopped")
 
-def run_audio_sender_windows():
-    global audio_socket, is_streaming
-
-    p = pyaudio.PyAudio()
-    device_index = None
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        if VIRTUAL_CABLE_DEVICE in info.get('name'):
-            device_index = i
-            break
-    if device_index is None:
-        raise RuntimeError(f"[Audio] Could not find device: {VIRTUAL_CABLE_DEVICE}")
-
-    audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    audio_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-    for attempt in range(10):
-        try:
-            audio_socket.connect((app_config.audio_ip, PORT))
-            break
-        except Exception as e:
-            log_info(f"[Audio] Attempt {attempt + 1}: {e}")
-            time.sleep(1)
-    else:
-        log_info("[Audio] Connection failed.")
-        return
-
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    input_device_index=device_index,
-                    frames_per_buffer=CHUNK_SIZE)
-
-    log_info("[Audio] Streaming audio from Virtual Cable...")
-    try:
-        while is_streaming:
-            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-            audio_socket.sendall(data)
-    except Exception as e:
-        log_info(f"[Audio] Sender error: {e}")
-    finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        audio_socket.close()
-        log_info("[Audio] Sender stopped")
-
 def run_audio_sender_linux():
-    global audio_socket, is_streaming
+    global udp_socket, is_streaming
 
-    def get_monitor():
-        try:
-            sink = subprocess.check_output(["pactl", "get-default-sink"], text=True).strip()
-            return f"{sink}.monitor"
-        except Exception as e:
-            raise RuntimeError(f"Failed to get monitor source: {e}")
+    try:
+        subprocess.run(["amixer", "-D", "pulse", "sset", "Master", "mute"], check=True)
+        log_info("[Audio] Muted speaker output.")
+    except Exception as e:
+        log_info(f"[Audio] Failed to mute audio: {e}")
 
-    monitor_source = get_monitor()
-    audio_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    audio_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    for attempt in range(10):
-        try:
-            audio_socket.connect((app_config.audio_ip, PORT))
-            break
-        except Exception as e:
-            log_info(f"[Audio] Attempt {attempt + 1}: {e}")
-            time.sleep(1)
-    else:
-        log_info("[Audio] Connection failed.")
-        return
+    cmd = [
+        "ffmpeg", "-f", "pulse", "-i", "default",
+        "-ac", str(CHANNELS), "-ar", str(RATE), "-f", "s16le", "-"
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
-    cmd = ["parec", "--format=s16le", "--rate=44100", "--channels=1", "-d", monitor_source]
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-
-    log_info("[Audio] Streaming audio from PulseAudio...")
+    log_info("[Audio] Streaming audio with FFmpeg via UDP...")
     try:
         while is_streaming:
-            data = proc.stdout.read(CHUNK_SIZE)
+            data = proc.stdout.read(CHUNK_SIZE * 2)
             if not data:
                 break
-            audio_socket.sendall(data)
+            udp_socket.sendto(data, (app_config.audio_ip, PORT))
     except Exception as e:
         log_info(f"[Audio] Sender error: {e}")
     finally:
         proc.terminate()
-        audio_socket.close()
+        udp_socket.close()
+        log_info("[Audio] Sender stopped")
+
+def run_audio_sender_windows():
+    global udp_socket, is_streaming
+
+    try:
+        subprocess.run(["nircmd.exe", "mutesysvolume", "1"], check=True)
+        log_info("[Audio] Muted system volume.")
+    except Exception as e:
+        log_info(f"[Audio] Failed to mute system volume: {e}")
+
+    udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+    cmd = [
+        "ffmpeg", "-f", "dshow", "-i", f"audio={VIRTUAL_CABLE_DEVICE}",
+        "-ac", str(CHANNELS), "-ar", str(RATE), "-f", "s16le", "-"
+    ]
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    log_info("[Audio] Streaming audio with FFmpeg via UDP (Windows)...")
+    try:
+        while is_streaming:
+            data = proc.stdout.read(CHUNK_SIZE * 2)
+            if not data:
+                break
+            udp_socket.sendto(data, (app_config.audio_ip, PORT))
+    except Exception as e:
+        log_info(f"[Audio] Sender error: {e}")
+    finally:
+        proc.terminate()
+        udp_socket.close()
         log_info("[Audio] Sender stopped")
 
 def main():
@@ -167,6 +129,8 @@ def main():
             time.sleep(0.5)
         cleanup()
 
+    threading.Thread(target=stop_monitor, daemon=True).start()
+
     if app_config.audio_mode == "Share_Audio":
         if "windows" in os_type:
             run_audio_sender_windows()
@@ -174,8 +138,6 @@ def main():
             run_audio_sender_linux()
     elif app_config.audio_mode == "Receive_Audio":
         run_audio_receiver()
-
-    threading.Thread(target=stop_monitor, daemon=True).start()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="%(levelname)s - %(message)s")
