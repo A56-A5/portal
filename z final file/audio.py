@@ -210,7 +210,6 @@ def run_audio_sender_linux():
         proc.terminate()
         s.close()
 
-    global s
     def get_default_monitor():
         result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
         default_sink = result.stdout.strip()
