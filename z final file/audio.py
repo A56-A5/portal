@@ -119,7 +119,7 @@ def main():
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
         receive_audio()
-    elif app_config.audio_mode == "Send_Audio":
+    elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
         elif os_type == "windows":
