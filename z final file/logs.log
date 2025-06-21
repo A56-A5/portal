@@ -1,22 +1,13 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
-INFO - [System] Device Activated at (1255, 1078)
-INFO - [System] Device Deactivated at (1005, 2)
-INFO - [System] Device Activated at (1048, 1078)
-INFO - [System] Device Deactivated at (862, 2)
-INFO - [System] Device Activated at (1255, 1078)
-INFO - [System] Device Deactivated at (1249, 2)
-INFO - [System] Device Activated at (749, 1078)
-INFO - [System] Device Deactivated at (730, 2)
-INFO - [System] Device Activated at (902, 1078)
-INFO - [System] Device Deactivated at (797, 2)
-INFO - [System] Device Activated at (483, 1078)
-INFO - [System] Device Deactivated at (474, 2)
-INFO - [System] Device Activated at (819, 1078)
-INFO - [System] Device Deactivated at (818, 2)
-INFO - [System] Device Activated at (816, 1078)
-INFO - [System] Device Deactivated at (817, 2)
-INFO - [System] Device Activated at (813, 1078)
-INFO - [System] Device Deactivated at (807, 2)
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - Reloading portal...
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
 INFO - Stopping portal...
 INFO - Portal stopped.
