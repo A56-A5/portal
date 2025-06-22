@@ -175,7 +175,7 @@ class MouseSyncApp:
         if to_active:
             try:
                 if pyperclip.paste() != self.last_send:
-                    self.last_send = app_config.clipboard
+                    self.last_send = pyperclip.paste()
                     clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
                     self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
                     print("[Clipboard] Sent clipboard to client")
@@ -279,7 +279,7 @@ class MouseSyncApp:
 
     def clipboard_sender(self,_socket):
         try:
-            data = {"type": "clipboard", "content": app_config.clipboard}
+            data = {"type": "clipboard", "content": pyperclip.paste()}
             _socket.sendall((json.dumps(data) + "\n").encode())
         except Exception as e:
             print(f"[Clipboard] Error: {e}")

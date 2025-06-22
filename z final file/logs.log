@@ -1,14 +1,2 @@
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 535)
-INFO - [System] Device Deactivated at (1918, 567)
-INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (2, 568)
-INFO - [System] Device Deactivated at (1918, 584)
-INFO - [System] Device Activated at (2, 580)
-INFO - [System] Device Deactivated at (1918, 583)
-INFO - [System] Device Activated at (2, 580)
-INFO - [System] Device Deactivated at (1918, 595)
 INFO - Stopping portal...
 INFO - Portal stopped.
