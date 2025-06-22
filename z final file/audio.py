@@ -107,7 +107,7 @@ def send_audio_linux():
         unmute_output()
         s.close()
 
-def send_audio_windows():
+def run_audio_sender_windows():
     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
     from ctypes import cast, POINTER
     from comtypes import CLSCTX_ALL

@@ -1,14 +1,8 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 [Audio] - Streaming from Virtual Cable...
-INFO - [Transition] Failed to send active_device state: 'MouseSyncApp' object has no attribute 'secondary_server'
-INFO - [System] Device Activated at (2, 510)
 INFO - [Server] Connected Successfully
-INFO - [System] Device Deactivated at (1918, 522)
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-[Audio] - Streaming from Virtual Cable...
+INFO - [System] Device Activated at (2, 585)
+INFO - [System] Device Deactivated at (1918, 545)
 INFO - Stopping portal...
 INFO - Portal stopped.
