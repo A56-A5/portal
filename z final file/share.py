@@ -30,6 +30,7 @@ class MouseSyncApp:
         self.screen_height = None
         self.gui_app = None
         self.last_clipboard = pyperclip.paste()
+        self.last_clipboard1 = self.last_clipboard
         self.os_type = platform.system().lower()
 
         logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a",format ="%(levelname)s - %(message)s")
@@ -151,7 +152,7 @@ class MouseSyncApp:
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
-            self.gui_app.after(0, self.create_overlay if to_active else self.destroy_overlay)
+            self.gui_app.after(1, self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position
             self.gui_app.after_idle(lambda: self.mouse_controller.position)  
         else:
@@ -173,7 +174,7 @@ class MouseSyncApp:
 
         if to_active:
             try:
-                if self.clipboard != app_config.clipboard:
+                if self.last_clipboard != app_config.clipboard:
                     clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
                     self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
                     print("[Clipboard] Sent clipboard on transition to active")
@@ -261,15 +262,15 @@ class MouseSyncApp:
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
-                if current_clipboard != self.last_clipboard:
-                    self.last_clipboard = current_clipboard
+                if current_clipboard != self.last_clipboard1:
+                    self.last_clipboard1 = current_clipboard
                     app_config.clipboard = current_clipboard
                     app_config.save()
                 
                 app_config.load()
-                if app_config.clipboard != self.last_clipboard:
-                    self.last_clipboard = app_config.clipboard
-                    pyperclip.copy(self.last_clipboard)
+                if app_config.clipboard != self.last_clipboard1:
+                    self.last_clipboard1 = app_config.clipboard
+                    pyperclip.copy(self.last_clipboard1)
 
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
@@ -318,8 +319,8 @@ class MouseSyncApp:
                                 evt = json.loads(data)
                                 if evt["type"] == "clipboard":
                                     app_config.clipboard = evt["content"]
-                                    if app_config.clipboard != self.clipboard:
-                                        self.clipboard = app_config.clipboard
+                                    if app_config.clipboard != self.last_clipboard:
+                                        self.last_clipboard = app_config.clipboard
                                         pyperclip.copy(evt["content"])
                                         app_config.save()
                                         logging.info("[Clipboard] Updated.")
@@ -490,7 +491,6 @@ class MouseSyncApp:
             self.start_server()
         else:
             self.start_client()
-        
 
         def monitor_stop():
             while app_config.is_running and not app_config.stop_flag:
