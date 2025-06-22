@@ -9,7 +9,7 @@ from config import app_config
 
 PORT = 50009
 CHUNK_SIZE = 1024
-RATE = 44100
+RATE = 48000 
 CHANNELS = 1
 VIRTUAL_CABLE_DEVICE = "CABLE Output"
 
@@ -32,6 +32,8 @@ def cleanup(sock=None, process=None, unmute=False):
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
+    if platform.system().lower() == "linux":
+        RATE = 44100 
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -39,26 +41,26 @@ def receive_audio():
                     output=True,
                     frames_per_buffer=CHUNK_SIZE)
 
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.bind(('0.0.0.0', PORT))
-    print(f"🎧 UDP Audio Receiver listening on port {PORT}")
-    logging.info("[Audio] Listening...")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.bind(('', PORT))
 
+    print("🔊 Receiving audio...")
+    logging.info("[Audio] Listening...")
     try:
         while True:
-            data, _ = s.recvfrom(CHUNK_SIZE)
-            if not data:
-                continue
+            data, _ = sock.recvfrom(CHUNK_SIZE)
             stream.write(data)
     except KeyboardInterrupt:
-        print("Server interrupted.")
+        print("❌ Receiver stopped.")
     finally:
         stream.stop_stream()
         stream.close()
         p.terminate()
-        s.close()
+        sock.close()
 
 def send_audio_linux():
+    RATE = 44100 
     def get_default_monitor():
         result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
         default_sink = result.stdout.strip()
@@ -75,6 +77,7 @@ def send_audio_linux():
     monitor_source = get_default_monitor()
     mute_output()
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     for _ in range(5,0,-1):
         try:
@@ -108,6 +111,7 @@ def send_audio_linux():
         s.close()
 
 def send_audio_windows():
+
     device_index = None
     p = pyaudio.PyAudio()
     for i in range(p.get_device_count()):
@@ -122,22 +126,6 @@ def send_audio_windows():
     device_info = p.get_device_info_by_index(device_index)
     if device_info['maxInputChannels'] < 1:
         raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
-    
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    for c in range(5,0,-1):
-        try:
-            s.connect((app_config.audio_ip, PORT))
-            break
-        except Exception as e:
-            logging.info(f"[Audio] Connection Attempt: {c}")
-            print(f"[Audio] Connection Attempt: {c}")
-            time.sleep(1)
-            if c == 0:
-                logging.info(f"[Audio] Failed to connect: {e}")
-                print(f"[Audio] Failed to connect: {e}")
-                return
-
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
                     rate=RATE,
@@ -145,22 +133,18 @@ def send_audio_windows():
                     input_device_index=device_index,
                     frames_per_buffer=CHUNK_SIZE)
 
-    print("[Audio] Streaming from Virtual Cable...")
-    logging.info("[Audio] Streaming from Virtual Cable...")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
+    print("📤 Sending audio from VB-Cable...")
     try:
         while True:
-            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
-            if not data:
-                break
-            s.sendall(data)
+            data = stream.read(CHUNK_SIZE)
+            sock.sendto(data, (app_config.audio_ip, PORT))
     except KeyboardInterrupt:
-        print("[Audio] Audio streaming interrupted.")
+        print("❌ Sender stopped.")
     finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        s.close()
+        sock.close()
 
 def main():
     def monitor_stop():

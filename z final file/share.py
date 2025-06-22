@@ -357,7 +357,7 @@ class MouseSyncApp:
             print("")
         print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
         c1,c2 = 5,5
-        for i in range(c1,0,-1):
+        for i in range(c1,-1,-1):
             try:
                 self.client_socket.connect((app_config.server_ip, self.primary_port))
                 if self.client_socket.recv(1024) != b'CONNECTED\n':
@@ -412,7 +412,7 @@ class MouseSyncApp:
                         print(f"[Client] Parse error: {e}")
 
         print(f"[Client] Connecting to {app_config.server_ip}:{self.secondary_port}")
-        for i in range(c2,0,-1):
+        for i in range(c2,-1,-1):
             try:
                 self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
                 logging.info("[Client] Connected successfully.")
