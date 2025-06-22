@@ -29,20 +29,6 @@ def cleanup(sock=None, process=None, unmute=False):
             except Exception as e:
                 logging.error(f"⚠️ Error closing socket: {e}")
     finally:
-        if unmute:
-            if platform.system().lower() == 'linux':
-                subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '0'])
-            elif platform.system().lower() == 'windows':
-                try:
-                    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-                    from ctypes import cast, POINTER
-                    from comtypes import CLSCTX_ALL
-                    devices = AudioUtilities.GetSpeakers()
-                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-                    volume = cast(interface, POINTER(IAudioEndpointVolume))
-                    volume.SetMute(0, None)
-                except Exception:
-                    pass
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
@@ -88,8 +74,7 @@ def send_audio_linux():
 
     monitor_source = get_default_monitor()
     mute_output()
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
     for _ in range(5,0,-1):
         try:
@@ -157,8 +142,8 @@ def send_audio_windows():
     for _ in range(5):
         try:
             sock.connect((app_config.audio_ip, PORT))
-            mute_output_windows()
             connected = True
+            mute_output_windows()
             break
         except Exception:
             time.sleep(3)
