@@ -33,18 +33,20 @@ def cleanup(sock=None, process=None, unmute=False):
 def run_audio_receiver():
     p = pyaudio.PyAudio()
 
-    # Try to find a device with 'pulse' in its name or host API
+    # Try to find a PulseAudio output device
     pulse_index = None
     for i in range(p.get_device_count()):
         info = p.get_device_info_by_index(i)
-        if "pulse" in info['name'] or "pulse" in info.get('hostApi', ''):
+        host_api_index = info['hostApi']
+        host_api_name = p.get_host_api_info_by_index(host_api_index)['name'].lower()
+        if "pulse" in info['name'].lower() or "pulse" in host_api_name:
             pulse_index = i
-            print(f"[Audio] Using PulseAudio device: {info['name']}")
+            print(f"[Audio] Using PulseAudio device: {info['name']} ({host_api_name})")
             break
 
     if pulse_index is None:
         print("[Audio] No PulseAudio output device found. Using default.")
-        pulse_index = None  # fallback to default
+        pulse_index = None  # fallback to default device
 
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
