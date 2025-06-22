@@ -43,27 +43,27 @@ def cleanup(stream=None, p=None, sock=None, process=None):
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
-    p = pyaudio.PyAudio()
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    output=True,
-                    frames_per_buffer=CHUNK_SIZE)
+    ffplay_cmd = [
+        'ffplay',
+        '-f', 's16le',
+        '-ac', str(CHANNELS),
+        '-ar', str(RATE),
+        '-loglevel', 'info',
+        f'udp://0.0.0.0:{PORT}'
+    ]
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(("0.0.0.0", PORT))
+    print("🔊 Receiving audio via ffplay...")
+    logging.info("Receiving audio via ffplay...")
 
-    print("🔊 Receiving audio...")
-    logging.info("Receiving audio...")
     try:
-        while True:
-            data, _ = sock.recvfrom(CHUNK_SIZE * 2)
-            stream.write(data)
+        process = subprocess.Popen(ffplay_cmd)
+        process.wait()
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
         logging.info("Receiver stopped.")
     finally:
-        cleanup(stream=stream, p=p, sock=sock)
+        cleanup(process=process)
+
 
 def send_audio_linux():
 
@@ -112,7 +112,7 @@ def send_audio_linux():
     logging.info("Sending audio from monitor (muted locally)")
     try:
         while True:
-            data = process.stdout.read(CHUNK_SIZE)
+            data = process.stdout.read(CHUNK_SIZE * 2)
             if not data:
                 break
             sock.sendto(data, (app_config.audio_ip, PORT))
@@ -150,16 +150,22 @@ def send_audio_windows():
     ffmpeg_cmd = [
         'ffmpeg',
         '-f', 'dshow',
-        '-i', 'audio=Stereo Mix (Realtek High Definition Audio)',
+        '-i', 'audio=CABLE Output (VB-Audio Virtual Cable)',
         '-ac', str(CHANNELS),
         '-ar', str(RATE),
         '-f', 's16le',
-        '-loglevel', 'quiet',
+        '-hide_banner',
+        '-loglevel', 'error',
         '-'
     ]
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+
+    if process and process.stdout:
+        print("✅ ffmpeg process started.")
+    else:
+        print("❌ Failed to start ffmpeg.")
 
     for i in range(5,0,-1):
         try:
@@ -177,7 +183,7 @@ def send_audio_windows():
 
     try:
         while True:
-            data = process.stdout.read(CHUNK_SIZE)
+            data = process.stdout.read(CHUNK_SIZE * 2)
             if not data:
                 continue
             sock.sendto(data, (app_config.audio_ip, PORT))
