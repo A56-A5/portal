@@ -24,6 +24,7 @@ class MouseSyncApp:
         self.keyboard_listener_lock = threading.Lock()
         self.server_socket = None
         self.client_socket = None
+        self.secondary_client_socket = None
         self.overlay = None
         self.screen_width = None
         self.screen_height = None
@@ -75,6 +76,8 @@ class MouseSyncApp:
             logging.info(f"[Server] Error closing socket: {e}")
         if self.overlay:
             self.destroy_overlay()
+        app_config.is_running = False
+        app_config.save()
 
     def create_overlay(self):
         if not app_config.active_device:
@@ -312,10 +315,11 @@ class MouseSyncApp:
                         else:
                             try:
                                 evt = json.loads(data)
-                                if evt["type"] == "clipboard":
+                                if evt["type"] == "clipboard" and evt["Content"] != app_config.clipboard:
                                     app_config.clipboard = evt["content"]
-                                    app_config.save()
                                     pyperclip.copy(evt["content"])
+                                    app_config.save()
+                                    logging.info("[Clipboard] Updated.")
                             except json.JSONDecodeError as e:
                                 print(f"[Clipboard] JSON decode error: {e}")
                     except Exception as e:
@@ -332,8 +336,9 @@ class MouseSyncApp:
         self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
         self.secondary_server_socket.listen(1)
         
+        logging.info("[Server] Connected Successfully")
         threading.Thread(target=accept_primary, daemon=True).start()
-        threading.Thread(target=accept_secondary, daemon=True).start()\
+        threading.Thread(target=accept_secondary, daemon=True).start()
 
     def start_client(self):
 

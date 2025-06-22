@@ -269,7 +269,7 @@ class PortalUI:
             logging.info(f"Unknown command: {mode}")
 
     def check_status(self):
-        while app_config.is_running:
+        while app_config.is_running and not app_config.stop_flag:
             time.sleep(0.5)
         
         self.status_label.config(text="Portal is not running", foreground="red")
