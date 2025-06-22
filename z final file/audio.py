@@ -65,17 +65,17 @@ def send_audio_linux():
             if '.monitor' in line:
                 return line.split('\t')[1]More actions
         raise RuntimeError("❌ No monitor source found.")
-    
+
     def mute_output():
         subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '1'])
-    
+
     def unmute_output():
         subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '0'])
-    
+
     def send_audio_linux():
         monitor = get_monitor_source()
         mute_output()
-    
+
         ffmpeg_cmd = [
             'ffmpeg',
             '-f', 'pulse',
@@ -86,10 +86,9 @@ def send_audio_linux():
             '-loglevel', 'quiet',
             '-'
         ]
-    
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
-    
+
         print(f"📤 Sending audio from {monitor} (muted locally)")
         try:
             while True:
