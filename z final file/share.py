@@ -68,7 +68,7 @@ class MouseSyncApp:
                 self.secondary_client_socket.close()
         except Exception as e:
             print(f"[Client] Error closing socket: {e}")
-            logging.info("[Client] Error closing socket: {e}")
+            logging.info(f"[Client] Error closing socket: {e}")
         try:
             if self.server_socket:
                 self.server_socket.close()
@@ -276,14 +276,12 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
-    def clipboard_sender(self,_socket):
         try:
             data = {"type": "clipboard", "content": app_config.clipboard}
             _socket.sendall((json.dumps(data) + "\n").encode())
         except Exception as e:
             print(f"[Clipboard] Error: {e}")
             logging.info(f"[Clipboard] Error: {e}")
-
 
     def handle_primary(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges,args=(client_socket,), daemon=True).start()
@@ -318,9 +316,10 @@ class MouseSyncApp:
                             try:
                                 evt = json.loads(data)
                                 if evt["type"] == "clipboard":
-                                    app_config.clipboard = evt["content"]
-                                    if app_config.clipboard != self.last_clipboard:
-                                        self.last_clipboard = app_config.clipboard
+                                    current_clipboard = evt["content"]
+                                    if current_clipboard != self.last_clipboard:
+                                        self.last_clipboard = current_clipboard
+                                        app_config.clipboard = self.last_clipboard
                                         pyperclip.copy(evt["content"])
                                         app_config.save()
                                         logging.info("[Clipboard] Updated.")
