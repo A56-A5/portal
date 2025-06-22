@@ -362,6 +362,7 @@ class MouseSyncApp:
                     print(f"[Client] Connection failed: {e}")
                     logging.info(f"[Client] Connection failed: {e}")
                     app_config.is_running = False
+                    self.cleanup()
                     app_config.save()
                     return
         print("[Client] Primary Connected")
@@ -416,6 +417,7 @@ class MouseSyncApp:
                     print(f"[Client] Connection failed: {e}")
                     logging.info(f"[Client] Connection failed: {e}")
                     app_config.is_running = False
+                    self.cleanup()
                     app_config.save()
                     return 
         print("[Client] Secondary Connected")

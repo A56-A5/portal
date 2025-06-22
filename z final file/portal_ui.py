@@ -257,7 +257,7 @@ class PortalUI:
                 self.audio_process = None
             except Exception as e:
                 print(f"Failed to terminate audio.py: {e}")
-            logging.info("Portal stopped.")
+            logging.info("❌ Portal stopped.")
 
         elif self.running and mode == "reload":
             logging.info("Reloading portal...")
