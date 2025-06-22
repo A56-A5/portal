@@ -63,7 +63,7 @@ def send_audio_linux():
         result = subprocess.run(['pactl', 'list', 'short', 'sources'], capture_output=True, text=True)
         for line in result.stdout.strip().split('\n'):
             if '.monitor' in line:
-                return line.split('\t')[1]More actions
+                return line.split('\t')[1]
         raise RuntimeError("❌ No monitor source found.")
 
     def mute_output():
