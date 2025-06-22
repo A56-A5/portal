@@ -141,7 +141,7 @@ class MouseSyncApp:
             if margin < x < self.screen_width - margin and margin < y < self.screen_height - margin:
                 self.edge_transition_cooldown = False
 
-            time.sleep(0.01)
+            time.sleep(0.02)
 
     def transition(self, to_active, new_position):
         try:
@@ -153,8 +153,7 @@ class MouseSyncApp:
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
             self.gui_app.after(1, self.create_overlay if to_active else self.destroy_overlay)
-            self.mouse_controller.position = new_position
-            self.gui_app.after_idle(lambda: self.mouse_controller.position)  
+            self.mouse_controller.position = new_position  
         else:
             if to_active:
                 self.create_overlay()
