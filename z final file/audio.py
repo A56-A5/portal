@@ -10,7 +10,7 @@ from config import app_config
 PORT = 50009
 CHUNK_SIZE = 512
 RATE = 44100 
-CHANNELS = 2
+CHANNELS = 1
 VIRTUAL_CABLE_DEVICE = "CABLE Output (VB-Audio Virtual Cable)"
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
