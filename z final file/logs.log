@@ -6,77 +6,18 @@ INFO - Portal stopped.
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 537)
-INFO - [System] Device Deactivated at (1918, 634)
-INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (2, 719)
-INFO - [System] Device Deactivated at (1918, 612)
-INFO - [System] Device Activated at (2, 749)
-INFO - [System] Device Deactivated at (1918, 630)
-INFO - [System] Device Activated at (2, 532)
-INFO - [System] Device Deactivated at (1918, 346)
+INFO - [System] Device Activated at (2, 573)
+INFO - [System] Device Deactivated at (1918, 553)
+INFO - [System] Device Activated at (2, 610)
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
 INFO - Stopping portal...
 INFO - Portal stopped.
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
+[Audio] - [Audio] Listening...
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 445)
-INFO - [System] Device Deactivated at (1918, 512)
-INFO - [System] Device Activated at (2, 492)
-INFO - [System] Device Deactivated at (1918, 494)
-INFO - [System] Device Activated at (2, 488)
-INFO - [System] Device Deactivated at (1918, 516)
-INFO - [System] Device Activated at (2, 538)
-INFO - [System] Device Deactivated at (1918, 556)
-INFO - [System] Device Activated at (2, 557)
-INFO - [System] Device Deactivated at (1918, 566)
-INFO - [System] Device Activated at (2, 424)
-INFO - [System] Device Deactivated at (1918, 644)
-INFO - [System] Device Activated at (2, 526)
-INFO - [System] Device Deactivated at (1918, 823)
-INFO - [System] Device Activated at (2, 422)
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [System] Closing all sockets
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
+INFO - [System] Device Activated at (2, 551)
+INFO - [System] Device Deactivated at (1918, 546)
 INFO - Stopping portal...
 INFO - Portal stopped.

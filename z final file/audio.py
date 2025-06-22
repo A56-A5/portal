@@ -30,6 +30,54 @@ def cleanup(sock=None, process=None, unmute=False):
                 logging.error(f"⚠️ Error closing socket: {e}")
     finally:
         logging.info("Cleaned up audio resources.")
+def run_audio_receiver():
+    p = pyaudio.PyAudio()
+
+    # Try to find a device with 'pulse' in its name or host API
+    pulse_index = None
+    for i in range(p.get_device_count()):
+        info = p.get_device_info_by_index(i)
+        if "pulse" in info['name'].lower() or "pulse" in info.get('hostApi', '').lower():
+            pulse_index = i
+            print(f"[Audio] Using PulseAudio device: {info['name']}")
+            break
+
+    if pulse_index is None:
+        print("[Audio] No PulseAudio output device found. Using default.")
+        pulse_index = None  # fallback to default
+
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    output=True,
+                    output_device_index=pulse_index,
+                    frames_per_buffer=CHUNK_SIZE)
+
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('0.0.0.0', PORT))
+    s.listen(1)
+    print("Audio waiting")
+
+    conn, addr = s.accept()
+    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    print("Audio Connected by", addr)
+    logging.info("[Audio] Connected")
+
+    try:
+        while True:
+            data = conn.recv(CHUNK_SIZE * 2)
+            if not data:
+                break
+            stream.write(data)
+    except KeyboardInterrupt:
+        print("Server interrupted.")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        conn.close()
+        s.close()
 
 def receive_audio():
     
@@ -107,7 +155,7 @@ def send_audio_windows():
            '-ac', str(CHANNELS),
            '-ar', str(RATE),
            '-f', 's16le',
-           '-loglevel', 'info',
+           '-loglevel', 'quiet',
            '-'
        ]
 
@@ -138,7 +186,10 @@ def main():
 
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
-        receive_audio()
+        if os_type == "linux":
+            run_audio_receiver()
+        else:
+            receive_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
