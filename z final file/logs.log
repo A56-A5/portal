@@ -2,9 +2,7 @@ INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 [Audio] - [Audio] Listening...
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 585)
-INFO - [System] Device Deactivated at (1918, 508)
-INFO - [System] Device Activated at (2, 508)
-INFO - [System] Device Deactivated at (1918, 691)
+INFO - [System] Device Activated at (2, 520)
+INFO - [System] Device Deactivated at (1918, 867)
 INFO - Stopping portal...
 INFO - Portal stopped.

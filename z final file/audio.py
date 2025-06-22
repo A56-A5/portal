@@ -59,53 +59,50 @@ def receive_audio():
         sock.close()
 
 def send_audio_linux():
-    def get_default_monitor():
-        result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
-        default_sink = result.stdout.strip()
-        if not default_sink:
-            raise RuntimeError("Could not determine default audio sink.")
-        return f"{default_sink}.monitor"
-
-    def mute_output():
-        subprocess.run(["pactl", "set-sink-mute", "0", "1"])
-
-    def unmute_output():
-        subprocess.run(["pactl", "set-sink-mute", "0", "0"])
-
-    monitor_source = get_default_monitor()
-    mute_output()
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    # for _ in range(5,0,-1):
-    #     try:
-    #         s.connect((app_config.audio_ip, PORT))
-    #         break
-    #     except Exception as e:
-    #         time.sleep(1)
-    # else:
-    #     logging.info(f"[Audio] Failed to connect: {e}")
-    #     print(f"[Audio] Failed to connect: {e}")
-    #     return 
+    def get_monitor_source():
+        result = subprocess.run(['pactl', 'list', 'short', 'sources'], capture_output=True, text=True)
+        for line in result.stdout.strip().split('\n'):
+            if '.monitor' in line:
+                return line.split('\t')[1]More actions
+        raise RuntimeError("❌ No monitor source found.")
     
-    print("Audio Connected to server.")
-    logging.info("[Audio] Streaming audio...")
-
-    parec_cmd = ["parec", "--format=s16le", "--rate=44100", "--channels=1", "-d", monitor_source]
-    proc = subprocess.Popen(parec_cmd, stdout=subprocess.PIPE)
-
-    try:
-        while True:
-            data = proc.stdout.read(CHUNK_SIZE)
-            if not data:
-                break
-            s.sendto(data,(app_config.audio_ip,PORT))
-    except KeyboardInterrupt:
-        print("Audio stopped.")
-        logging.info("[Audio] Streaming stopped.")
-    finally:
-        proc.terminate()
-        unmute_output()
-        s.close()
+    def mute_output():
+        subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '1'])
+    
+    def unmute_output():
+        subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '0'])
+    
+    def send_audio_linux():
+        monitor = get_monitor_source()
+        mute_output()
+    
+        ffmpeg_cmd = [
+            'ffmpeg',
+            '-f', 'pulse',
+            '-i', monitor,
+            '-ac', str(CHANNELS),
+            '-ar', str(RATE),
+            '-f', 's16le',
+            '-loglevel', 'quiet',
+            '-'
+        ]
+    
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+    
+        print(f"📤 Sending audio from {monitor} (muted locally)")
+        try:
+            while True:
+                data = process.stdout.read(CHUNK_SIZE)
+                if not data:
+                    break
+                sock.sendto(data, (app_config.audio_ip, PORT))
+        except KeyboardInterrupt:
+            print("❌ Sender stopped.")
+        finally:
+            unmute_output()
+            sock.close()
+            process.terminate()
 
 def send_audio_windows():
 
