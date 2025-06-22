@@ -476,6 +476,7 @@ class MouseSyncApp:
                                 pyperclip.copy(evt["content"])
                                 app_config.save()
                                 print("[Clipboard] Updated clipboard content")
+                                logging.info("[Clipboard] Updated.")
                                 self.last_clipboard = evt["content"]
                     except Exception as e:
                         print(f"[Client] Secondary parse error: {e}")
