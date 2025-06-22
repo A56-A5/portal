@@ -68,7 +68,7 @@ def run_audio_receiver():
 
     try:
         while True:
-            data = conn.recv(CHUNK_SIZE * 2)
+            data = conn.recvfrom(CHUNK_SIZE * 2)
             if not data:
                 break
             stream.write(data)
