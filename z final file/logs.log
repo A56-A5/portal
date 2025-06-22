@@ -1,23 +1,9 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
-INFO - [Server] Connected Successfully
 INFO - Stopping portal...
 INFO - Portal stopped.
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 573)
-INFO - [System] Device Deactivated at (1918, 553)
-INFO - [System] Device Activated at (2, 610)
-INFO - [Server] Send failed: {e}
-INFO - [System] Closing all sockets
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-[Audio] - [Audio] Listening...
-INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 551)
-INFO - [System] Device Deactivated at (1918, 546)
 INFO - Stopping portal...
 INFO - Portal stopped.

@@ -37,7 +37,7 @@ def run_audio_receiver():
     pulse_index = None
     for i in range(p.get_device_count()):
         info = p.get_device_info_by_index(i)
-        if "pulse" in info['name'].lower() or "pulse" in info.get('hostApi', '').lower():
+        if "pulse" in info['name'] or "pulse" in info.get('hostApi', ''):
             pulse_index = i
             print(f"[Audio] Using PulseAudio device: {info['name']}")
             break
