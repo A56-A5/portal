@@ -10,8 +10,8 @@ from config import app_config
 PORT = 50009
 CHUNK_SIZE = 512
 RATE = 44100 
-CHANNELS = 1
-VIRTUAL_CABLE_DEVICE = "CABLE Output"
+CHANNELS = 2
+VIRTUAL_CABLE_DEVICE = "CABLE Output (VB-Audio Virtual Cable)"
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
 
@@ -98,41 +98,33 @@ def send_audio_linux():
         unmute_output()
         sock.close()
         process.terminate()
+
 def send_audio_windows():
-
-    device_index = None
-    p = pyaudio.PyAudio()
-    for i in range(p.get_device_count()):
-        device_info = p.get_device_info_by_index(i)
-        if VIRTUAL_CABLE_DEVICE in device_info.get('name'):
-            device_index = i
-            break
-
-    if device_index is None:
-        raise RuntimeError(f"[Audio] Could not find device: {VIRTUAL_CABLE_DEVICE}")
-
-    device_info = p.get_device_info_by_index(device_index)
-    if device_info['maxInputChannels'] < 1:
-        raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    input=True,
-                    input_device_index=device_index,
-                    frames_per_buffer=CHUNK_SIZE)
+    ffmpeg_cmd = [
+           'ffmpeg',
+           '-f', 'dshow',
+           '-i', f'audio={VIRTUAL_CABLE_DEVICE}',
+           '-ac', str(CHANNELS),
+           '-ar', str(RATE),
+           '-f', 's16le',
+           '-loglevel', 'info',
+           '-'
+       ]
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-    print("📤 Sending audio from VB-Cable...")
+    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+    print(f"📤 Sending audio from {VIRTUAL_CABLE_DEVICE} using FFmpeg...")
     try:
         while True:
-            data = stream.read(CHUNK_SIZE)
+            data = process.stdout.read(CHUNK_SIZE)
+            if not data:
+                break
             sock.sendto(data, (app_config.audio_ip, PORT))
     except KeyboardInterrupt:
         print("❌ Sender stopped.")
     finally:
         sock.close()
+        process.terminate()
 
 def main():
     def monitor_stop():
