@@ -46,7 +46,7 @@ def receive_audio():
 
     try:
         while True:
-            data, _ = s.recvfrom(CHUNK_SIZE * 2)
+            data, _ = s.recvfrom(CHUNK_SIZE)
             if not data:
                 continue
             stream.write(data)
@@ -108,19 +108,6 @@ def send_audio_linux():
         s.close()
 
 def send_audio_windows():
-    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
-    from ctypes import cast, POINTER
-    from comtypes import CLSCTX_ALL
-
-    def mute_output_windows():
-        try:
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            volume = cast(interface, POINTER(IAudioEndpointVolume))
-            volume.SetMute(1, None)
-        except Exception as e:
-            print(f"⚠️ Error muting output: {e}")
-
     device_index = None
     p = pyaudio.PyAudio()
     for i in range(p.get_device_count()):
@@ -135,48 +122,45 @@ def send_audio_windows():
     device_info = p.get_device_info_by_index(device_index)
     if device_info['maxInputChannels'] < 1:
         raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
+    
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-
-    connected = False
-    for _ in range(5):
+    for c in range(5,0,-1):
         try:
-            sock.connect((app_config.audio_ip, PORT))
-            connected = True
-            mute_output_windows()
+            s.connect((app_config.audio_ip, PORT))
             break
-        except Exception:
-            time.sleep(3)
-
-    if not connected:
-        print("[Audio] ❌ Failed to connect to receiver.")
-        logging.info("Sender failed to connect.")
-        return
+        except Exception as e:
+            logging.info(f"[Audio] Connection Attempt: {c}")
+            print(f"[Audio] Connection Attempt: {c}")
+            time.sleep(1)
+            if c == 0:
+                logging.info(f"[Audio] Failed to connect: {e}")
+                print(f"[Audio] Failed to connect: {e}")
+                return
 
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
                     rate=RATE,
                     input=True,
                     input_device_index=device_index,
-                    frames_per_buffer=CHUNK_SIZE * 2)
+                    frames_per_buffer=CHUNK_SIZE)
 
-    print("[Audio] 🎙️ Streaming from Virtual Cable (muted locally)...")
-    logging.info("Streaming from Virtual Cable...")
+    print("[Audio] Streaming from Virtual Cable...")
+    logging.info("[Audio] Streaming from Virtual Cable...")
 
     try:
         while True:
-            data = stream.read(CHUNK_SIZE * 2, exception_on_overflow=False)
+            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
             if not data:
                 break
-            sock.send(data)
+            s.sendall(data)
     except KeyboardInterrupt:
         print("[Audio] Audio streaming interrupted.")
     finally:
         stream.stop_stream()
         stream.close()
         p.terminate()
-        sock.close()
-        logging.info("Sender stopped.")
+        s.close()
 
 def main():
     def monitor_stop():
