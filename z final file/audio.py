@@ -9,7 +9,7 @@ from config import app_config
 
 PORT = 50009
 CHUNK_SIZE = 1024
-RATE = 48000 
+RATE = 44100 
 CHANNELS = 1
 VIRTUAL_CABLE_DEVICE = "CABLE Output"
 
@@ -32,8 +32,7 @@ def cleanup(sock=None, process=None, unmute=False):
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
-    if platform.system().lower() == "linux":
-        RATE = 44100 
+    
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -60,7 +59,6 @@ def receive_audio():
         sock.close()
 
 def send_audio_linux():
-    RATE = 44100 
     def get_default_monitor():
         result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
         default_sink = result.stdout.strip()
