@@ -2,6 +2,7 @@ import socket
 import subprocess
 import platform
 import pyaudio
+import time 
 import logging
 from config import app_config
 
@@ -49,7 +50,7 @@ def receive_audio():
                     frames_per_buffer=CHUNK_SIZE)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    sock.bind(('', PORT))
+    sock.bind(("0.0.0.0", PORT))
 
     print("🔊 Receiving audio...")
     logging.info("Receiving audio...")
@@ -95,11 +96,12 @@ def send_audio_linux():
 
     for i in range(5,0,-1):
         try:
-            sock.connect(app_config.audio_ip,PORT)
+            sock.connect((app_config.audio_ip,PORT))
             mute_output()
             break
         except Exception as e:
             print("")
+            time.sleep(3)
     else:
         print("[Audio] Unable to Connect")
         logging.info("[Audio] Unable to Connect")
@@ -160,12 +162,13 @@ def send_audio_windows():
 
     for i in range(5,0,-1):
         try:
-            sock.connect(app_config.audio_ip,PORT)
+            sock.connect((app_config.audio_ip,PORT))
             print("📤 Sending audio from VB-Cable...")
             mute_output_windows()
             logging.info("Sending audio from VB-Cable...")
             break
         except Exception as e:
+            time.sleep(3)
             print("")
     else:
         print("Failed to Connect to Audio")

@@ -141,7 +141,7 @@ class MouseSyncApp:
             if margin < x < self.screen_width - margin and margin < y < self.screen_height - margin:
                 self.edge_transition_cooldown = False
 
-            time.sleep(0.02)
+            time.sleep(0.01)
 
     def transition(self, to_active, new_position):
         try:
@@ -152,7 +152,7 @@ class MouseSyncApp:
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         if self.os_type == "windows":
-            self.gui_app.after(1, self.create_overlay if to_active else self.destroy_overlay)
+            self.gui_app.after_idle( self.create_overlay if to_active else self.destroy_overlay)
             self.mouse_controller.position = new_position  
         else:
             if to_active:
@@ -185,6 +185,7 @@ class MouseSyncApp:
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
+        time.sleep(0.2)
 
     def input_sender_mouse(self, client_socket):
         def send_json(data):
