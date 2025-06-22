@@ -262,15 +262,15 @@ class MouseSyncApp:
         while app_config.is_running:
             try:
                 current_clipboard = pyperclip.paste()
-                if current_clipboard != self.last_clipboard1:
-                    self.last_clipboard1 = current_clipboard
+                if current_clipboard != self.last_clipboard:
+                    self.last_clipboard = current_clipboard
                     app_config.clipboard = current_clipboard
                     app_config.save()
                 
                 app_config.load()
-                if app_config.clipboard != self.last_clipboard1:
-                    self.last_clipboard1 = app_config.clipboard
-                    pyperclip.copy(self.last_clipboard1)
+                if app_config.clipboard != self.last_clipboard:
+                    self.last_clipboard = app_config.clipboard
+                    pyperclip.copy(self.last_clipboard)
 
             except Exception as e:
                 print(f"[Clipboard] Error: {e}")
