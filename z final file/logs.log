@@ -1,5 +1,60 @@
+INFO - Stopping portal...
+INFO - \u274c Portal stopped.
+INFO - Portal started
+[Audio] - \U0001f4e4 Sending audio from VB-Cable...
+INFO - [Server] Waiting for Client to connect
+INFO - [System] Device Activated at (2, 514)
+INFO - [System] Device Deactivated at (1918, 718)
+INFO - [System] Device Activated at (2, 496)
+INFO - [System] Device Deactivated at (1918, 502)
+INFO - [System] Device Activated at (2, 506)
+INFO - [System] Device Deactivated at (1918, 680)
+INFO - [System] Device Activated at (2, 384)
+INFO - [System] Device Deactivated at (1918, 462)
+INFO - Stopping portal...
+INFO - \u274c Portal stopped.
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
-[Audio] - \U0001f4e4 Sending audio from VB-Cable...
+[Audio] - \U0001f50a Receiving audio...
+INFO - [System] Device Activated at (2, 345)
+INFO - [System] Device Deactivated at (1918, 416)
+INFO - [System] Device Activated at (2, 413)
+INFO - [System] Device Deactivated at (1918, 392)
+INFO - [System] Device Activated at (2, 691)
+INFO - [System] Device Deactivated at (1918, 700)
+INFO - [System] Device Activated at (2, 686)
+INFO - [System] Device Deactivated at (1918, 694)
+INFO - [System] Device Activated at (2, 685)
+INFO - [System] Device Deactivated at (1918, 688)
+INFO - [System] Device Activated at (2, 684)
+INFO - [System] Device Deactivated at (1918, 692)
+INFO - [System] Device Activated at (2, 682)
+INFO - [System] Device Deactivated at (1918, 689)
+INFO - [System] Device Activated at (2, 677)
+INFO - [System] Device Deactivated at (1918, 688)
+INFO - [System] Device Activated at (2, 635)
+INFO - [System] Device Deactivated at (1918, 634)
+INFO - [System] Device Activated at (2, 631)
+INFO - [System] Device Deactivated at (1918, 636)
+INFO - [System] Device Activated at (2, 630)
+INFO - [System] Device Deactivated at (1918, 634)
+INFO - [System] Device Activated at (2, 625)
+INFO - [System] Device Deactivated at (1918, 626)
+INFO - [System] Device Activated at (2, 623)
+INFO - [System] Device Deactivated at (1918, 629)
+INFO - [System] Device Activated at (2, 619)
+INFO - [System] Device Deactivated at (1918, 707)
+INFO - [System] Device Activated at (2, 583)
+INFO - [System] Device Deactivated at (1918, 586)
+INFO - [System] Device Activated at (2, 556)
+INFO - [System] Device Deactivated at (1918, 658)
+INFO - [System] Device Activated at (2, 359)
+INFO - [System] Device Deactivated at (1918, 587)
+INFO - [System] Mode set to client
+INFO - [System] Device Activated at (2, 431)
+INFO - [System] Device Deactivated at (1918, 452)
+INFO - [System] Device Deactivated at (1918, 365)
+INFO - [System] Device Activated at (2, 457)
+INFO - [System] Device Deactivated at (1918, 450)
 INFO - Stopping portal...
 INFO - \u274c Portal stopped.
