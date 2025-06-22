@@ -4,6 +4,7 @@ import platform
 import time
 import logging
 import threading
+import pyaudio
 from config import app_config
 
 PORT = 50009
@@ -44,25 +45,31 @@ def cleanup(sock=None, process=None, unmute=False):
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
-    ffplay_cmd = [
-        'ffplay',
-        '-f', 's16le',
-        '-ac', str(CHANNELS),
-        '-ar', str(RATE),
-        '-i', f'udp://0.0.0.0:{PORT}?fifo_size=5000000&overrun_nonfatal=1'
-    ]
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    output=True,
+                    frames_per_buffer=CHUNK_SIZE)
 
-    print("🔊 Receiving audio via ffplay...")
-    logging.info("Receiving audio via ffplay...")
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(('0.0.0.0', PORT))
+    print(f"🎧 UDP Audio Receiver listening on port {PORT}")
+    logging.info("UDP Receiver started")
 
     try:
-        process = subprocess.Popen(ffplay_cmd)
-        process.wait()
+        while True:
+            data, _ = s.recvfrom(CHUNK_SIZE * 2)
+            if not data:
+                continue
+            stream.write(data)
     except KeyboardInterrupt:
-        print("❌ Receiver stopped.")
-        logging.info("Receiver stopped.")
+        print("Server interrupted.")
     finally:
-        cleanup(process=process)
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        s.close()
 
 def send_audio_linux():
     def get_monitor_source():
