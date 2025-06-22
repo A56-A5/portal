@@ -1,19 +1,28 @@
-INFO - [System] Mode set to server
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
+INFO - [Server] Connected Successfully
+INFO - [System] Device Activated at (2, 487)
 INFO - [System] Device Activated at (2, 455)
-INFO - [System] Device Deactivated at (1918, 450)
-INFO - [System] Device Activated at (2, 498)
-INFO - [System] Device Deactivated at (1918, 465)
-INFO - [System] Device Activated at (2, 453)
-INFO - [System] Device Deactivated at (1918, 407)
-INFO - [System] Device Activated at (2, 514)
-INFO - [System] Device Deactivated at (1918, 518)
-INFO - [System] Device Activated at (2, 549)
-INFO - [System] Device Deactivated at (1918, 480)
-INFO - [System] Device Activated at (2, 681)
-INFO - [System] Device Deactivated at (1918, 581)
-INFO - [System] Device Activated at (2, 618)
-INFO - [System] Device Deactivated at (1918, 601)
-INFO - Stopping portal...
-INFO - Portal stopped.
+INFO - [System] Device Deactivated at (1918, 478)
+INFO - [System] Device Activated at (2, 466)
+INFO - [System] Device Deactivated at (1918, 552)
+INFO - [System] Device Activated at (2, 497)
+INFO - [System] Device Activated at (2, 0)
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}

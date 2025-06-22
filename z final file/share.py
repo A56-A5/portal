@@ -173,11 +173,12 @@ class MouseSyncApp:
 
         if to_active:
             try:
-                clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
-                self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
-                print("[Clipboard] Sent clipboard on transition to active")
+                if self.clipboard != app_config.clipboard:
+                    clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
+                    self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
+                    print("[Clipboard] Sent clipboard on transition to active")
             except Exception as e:
-                print(f"[Clipboard] Send failed during transition: {e}")
+                print(f"")
 
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
@@ -315,11 +316,13 @@ class MouseSyncApp:
                         else:
                             try:
                                 evt = json.loads(data)
-                                if evt["type"] == "clipboard" and evt["Content"] != app_config.clipboard:
+                                if evt["type"] == "clipboard":
                                     app_config.clipboard = evt["content"]
-                                    pyperclip.copy(evt["content"])
-                                    app_config.save()
-                                    logging.info("[Clipboard] Updated.")
+                                    if app_config.clipboard != self.clipboard:
+                                        self.clipboard = app_config.clipboard
+                                        pyperclip.copy(evt["content"])
+                                        app_config.save()
+                                        logging.info("[Clipboard] Updated.")
                             except json.JSONDecodeError as e:
                                 print(f"[Clipboard] JSON decode error: {e}")
                     except Exception as e:
@@ -330,13 +333,13 @@ class MouseSyncApp:
             self.secondary_server = sec_socket
             self.handle_secondary(sec_socket)
             threading.Thread(target=read_clipboard, daemon=True).start()
+            logging.info("[Server] Connected Successfully")
 
         self.secondary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
         self.secondary_server_socket.listen(1)
         
-        logging.info("[Server] Connected Successfully")
         threading.Thread(target=accept_primary, daemon=True).start()
         threading.Thread(target=accept_secondary, daemon=True).start()
 
