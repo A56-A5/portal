@@ -174,7 +174,7 @@ class MouseSyncApp:
 
         if to_active:
             try:
-                if self.last_clipboard != app_config.clipboard:
+                if pyperclip.paste() != app_config.clipboard:
                     clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
                     self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
                     print("[Clipboard] Sent clipboard on transition to active")
@@ -276,6 +276,7 @@ class MouseSyncApp:
                 print(f"[Clipboard] Error: {e}")
             time.sleep(0.5)
 
+    def clipboard_sender(self,_socket):
         try:
             data = {"type": "clipboard", "content": app_config.clipboard}
             _socket.sendall((json.dumps(data) + "\n").encode())
@@ -467,9 +468,8 @@ class MouseSyncApp:
                             app_config.active_device = evt["value"]
                             app_config.save()
                             if not app_config.active_device:
-                                if not hasattr(self, "_clipboard_sender_started") or not self._clipboard_sender_started:
-                                    self._clipboard_sender_started = True
-                                    threading.Thread(target=self.clipboard_sender, args=(self.secondary_client_socket,), daemon=True).start()
+                                self.clipboard_sender(self.secondary_client_socket)
+                                print('[Clipboard] send to server')
                         elif evt["type"] == "clipboard":
                             if self.last_clipboard != evt["content"]:
                                 app_config.clipboard = evt["content"]
