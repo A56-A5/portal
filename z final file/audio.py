@@ -73,61 +73,54 @@ def receive_audio():
         s.close()
 
 def send_audio_linux():
-    def get_monitor_source():
-        result = subprocess.run(['pactl', 'list', 'short', 'sources'], capture_output=True, text=True)
-        for line in result.stdout.strip().split('\n'):
-            if '.monitor' in line:
-                return line.split('\t')[1]
-        raise RuntimeError("❌ No monitor source found.")
+    def get_default_monitor():
+        result = subprocess.run(["pactl", "get-default-sink"], stdout=subprocess.PIPE, text=True)
+        default_sink = result.stdout.strip()
+        if not default_sink:
+            raise RuntimeError("Could not determine default audio sink.")
+        return f"{default_sink}.monitor"
 
     def mute_output():
-        subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '1'])
+        subprocess.run(["pactl", "set-sink-mute", "0", "1"])
 
-    monitor = get_monitor_source()
+    def unmute_output():
+        subprocess.run(["pactl", "set-sink-mute", "0", "0"])
 
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-f', 'pulse',
-        '-i', monitor,
-        '-ac', str(CHANNELS),
-        '-ar', str(RATE),
-        '-f', 's16le',
-        '-loglevel', 'quiet',
-        '-'
-    ]
+    monitor_source = get_default_monitor()
+    mute_output()
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
-
-    connected = False
-    for _ in range(5):
+    for _ in range(5,0,-1):
         try:
-            sock.connect((app_config.audio_ip, PORT))
-            mute_output()
-            connected = True
+            s.connect((app_config.audio_ip, PORT))
             break
-        except Exception:
-            time.sleep(3)
+        except Exception as e:
+            time.sleep(1)
+    else:
+        logging.info(f"[Audio] Failed to connect: {e}")
+        print(f"[Audio] Failed to connect: {e}")
+        return 
+    
+    print("Audio Connected to server.")
+    logging.info("[Audio] Streaming audio...")
 
-    if not connected:
-        print("[Audio] ❌ Unable to connect to receiver.")
-        cleanup(sock=sock, process=process)
-        return
-
-    print(f"📤 Sending audio from {monitor} (muted locally)")
-    logging.info("Sending audio from monitor (muted locally)")
+    parec_cmd = ["parec", "--format=s16le", "--rate=44100", "--channels=1", "-d", monitor_source]
+    proc = subprocess.Popen(parec_cmd, stdout=subprocess.PIPE)
 
     try:
         while True:
-            data = process.stdout.read(CHUNK_SIZE * 2)
+            data = proc.stdout.read(CHUNK_SIZE)
             if not data:
                 break
-            sock.send(data)
+            s.sendall(data)
     except KeyboardInterrupt:
-        print("❌ Sender stopped.")
-        logging.info("Sender stopped.")
+        print("Audio stopped.")
+        logging.info("[Audio] Streaming stopped.")
     finally:
-        cleanup(sock=sock, process=process, unmute=True)
+        proc.terminate()
+        unmute_output()
+        s.close()
 
 def send_audio_windows():
     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
