@@ -174,10 +174,10 @@ class MouseSyncApp:
 
         if to_active:
             try:
-                if pyperclip.paste() != app_config.clipboard:
+                if pyperclip.paste() != self.last_clipboard:
                     clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
                     self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
-                    print("[Clipboard] Sent clipboard on transition to active")
+                    print("[Clipboard] Sent clipboard to client")
             except Exception as e:
                 print(f"")
 
@@ -318,9 +318,8 @@ class MouseSyncApp:
                                 evt = json.loads(data)
                                 if evt["type"] == "clipboard":
                                     current_clipboard = evt["content"]
-                                    if current_clipboard != self.last_clipboard:
-                                        self.last_clipboard = current_clipboard
-                                        app_config.clipboard = self.last_clipboard
+                                    if current_clipboard != pyperclip.paste():
+                                        app_config.clipboard = current_clipboard
                                         pyperclip.copy(evt["content"])
                                         app_config.save()
                                         logging.info("[Clipboard] Updated.")
@@ -468,10 +467,11 @@ class MouseSyncApp:
                             app_config.active_device = evt["value"]
                             app_config.save()
                             if not app_config.active_device:
-                                self.clipboard_sender(self.secondary_client_socket)
-                                print('[Clipboard] send to server')
+                                if self.last_clipboard != pyperclip.paste():
+                                    self.clipboard_sender(self.secondary_client_socket)
+                                    print('[Clipboard] send to server')
                         elif evt["type"] == "clipboard":
-                            if self.last_clipboard != evt["content"]:
+                            if pyperclip.paste() != evt["content"]:
                                 app_config.clipboard = evt["content"]
                                 pyperclip.copy(evt["content"])
                                 app_config.save()
