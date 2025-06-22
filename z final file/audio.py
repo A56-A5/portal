@@ -56,7 +56,7 @@ def receive_audio():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.bind(('0.0.0.0', PORT))
     print(f"🎧 UDP Audio Receiver listening on port {PORT}")
-    logging.info("UDP Receiver started")
+    logging.info("[Audio] Listening...")
 
     try:
         while True:
