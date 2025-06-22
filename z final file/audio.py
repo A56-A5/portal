@@ -11,6 +11,7 @@ PORT = 50009
 CHUNK_SIZE = 1024
 RATE = 44100
 CHANNELS = 1
+VIRTUAL_CABLE_DEVICE = "CABLE Output"
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
 
@@ -98,15 +99,19 @@ def send_audio_linux():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
 
+    connected = False
     for _ in range(5):
         try:
             sock.connect((app_config.audio_ip, PORT))
             mute_output()
+            connected = True
             break
         except Exception:
             time.sleep(3)
-    else:
+
+    if not connected:
         print("[Audio] ❌ Unable to connect to receiver.")
+        cleanup(sock=sock, process=process)
         return
 
     print(f"📤 Sending audio from {monitor} (muted locally)")
@@ -117,7 +122,7 @@ def send_audio_linux():
             data = process.stdout.read(CHUNK_SIZE * 2)
             if not data:
                 break
-            sock.sendto(data, (app_config.audio_ip, PORT))
+            sock.send(data)
     except KeyboardInterrupt:
         print("❌ Sender stopped.")
         logging.info("Sender stopped.")
@@ -138,46 +143,62 @@ def send_audio_windows():
         except Exception as e:
             print(f"⚠️ Error muting output: {e}")
 
-    ffmpeg_cmd = [
-        'ffmpeg',
-        '-f', 'dshow',
-        '-i', 'audio=CABLE Output (VB-Audio Virtual Cable)',
-        '-ac', str(CHANNELS),
-        '-ar', str(RATE),
-        '-f', 's16le',
-        '-hide_banner',
-        '-loglevel', 'error',
-        '-'
-    ]
+    device_index = None
+    p = pyaudio.PyAudio()
+    for i in range(p.get_device_count()):
+        device_info = p.get_device_info_by_index(i)
+        if VIRTUAL_CABLE_DEVICE in device_info.get('name'):
+            device_index = i
+            break
+
+    if device_index is None:
+        raise RuntimeError(f"[Audio] Could not find device: {VIRTUAL_CABLE_DEVICE}")
+
+    device_info = p.get_device_info_by_index(device_index)
+    if device_info['maxInputChannels'] < 1:
+        raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
 
+    connected = False
     for _ in range(5):
         try:
             sock.connect((app_config.audio_ip, PORT))
             mute_output_windows()
+            connected = True
             break
         except Exception:
             time.sleep(3)
-    else:
-        print("❌ Failed to connect to receiver.")
+
+    if not connected:
+        print("[Audio] ❌ Failed to connect to receiver.")
+        logging.info("Sender failed to connect.")
         return
 
-    print("📤 Sending audio from VB-Cable... (muted locally)")
-    logging.info("Sending audio from VB-Cable...")
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    input_device_index=device_index,
+                    frames_per_buffer=CHUNK_SIZE)
+
+    print("[Audio] 🎙️ Streaming from Virtual Cable (muted locally)...")
+    logging.info("Streaming from Virtual Cable...")
 
     try:
         while True:
-            data = process.stdout.read(CHUNK_SIZE * 2)
+            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
             if not data:
-                continue
-            sock.sendto(data, (app_config.audio_ip, PORT))
+                break
+            sock.send(data)
     except KeyboardInterrupt:
-        print("❌ Sender stopped.")
-        logging.info("Sender stopped.")
+        print("[Audio] Audio streaming interrupted.")
     finally:
-        cleanup(sock=sock, process=process, unmute=True)
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        sock.close()
+        logging.info("Sender stopped.")
 
 def main():
     def monitor_stop():
