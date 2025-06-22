@@ -79,16 +79,16 @@ def send_audio_linux():
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
-    for _ in range(5,0,-1):
-        try:
-            s.connect((app_config.audio_ip, PORT))
-            break
-        except Exception as e:
-            time.sleep(1)
-    else:
-        logging.info(f"[Audio] Failed to connect: {e}")
-        print(f"[Audio] Failed to connect: {e}")
-        return 
+    # for _ in range(5,0,-1):
+    #     try:
+    #         s.connect((app_config.audio_ip, PORT))
+    #         break
+    #     except Exception as e:
+    #         time.sleep(1)
+    # else:
+    #     logging.info(f"[Audio] Failed to connect: {e}")
+    #     print(f"[Audio] Failed to connect: {e}")
+    #     return 
     
     print("Audio Connected to server.")
     logging.info("[Audio] Streaming audio...")
@@ -101,7 +101,7 @@ def send_audio_linux():
             data = proc.stdout.read(CHUNK_SIZE)
             if not data:
                 break
-            s.sendall(data)
+            s.sendto(data,(app_config.audio_ip,PORT))
     except KeyboardInterrupt:
         print("Audio stopped.")
         logging.info("[Audio] Streaming stopped.")
