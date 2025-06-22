@@ -4,6 +4,7 @@ import platform
 import pyaudio
 import time 
 import logging
+import threading 
 from config import app_config
 
 PORT = 50009
@@ -56,7 +57,7 @@ def receive_audio():
     logging.info("Receiving audio...")
     try:
         while True:
-            data, _ = sock.recvfrom(CHUNK_SIZE)
+            data, _ = sock.recvfrom(CHUNK_SIZE * 2)
             stream.write(data)
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
@@ -188,6 +189,13 @@ def send_audio_windows():
         unmute_output_windows()
 
 def main():
+    def monitor_stop():
+        while True:
+            if app_config.is_running:
+                continue
+            cleanup()
+
+    threading.Thread(target=monitor_stop, daemon=True).start()
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
         receive_audio()
@@ -203,5 +211,6 @@ def main():
         print("❌ Invalid audio_mode in config.")
         logging.info("Invalid audio_mode in config.")
 
+    
 if __name__ == "__main__":
     main()
