@@ -43,20 +43,22 @@ def cleanup(stream=None, p=None, sock=None, process=None):
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
-    ffplay_cmd = [
-        'ffplay',
-        '-f', 's16le',
-        '-ac', str(CHANNELS),
-        '-ar', str(RATE),
-        '-loglevel', 'info',
-        f'udp://0.0.0.0:{PORT}'
+    ffmpeg_cmd = [
+    'ffmpeg',
+    '-f', 's16le',
+    '-ac', str(CHANNELS),
+    '-ar', str(RATE),
+    '-i', f'udp://0.0.0.0:{PORT}?fifo_size=5000000&overrun_nonfatal=1',
+    '-f', 'pulse' if platform.system().lower() == 'linux' else 'dshow',
+    'default'
     ]
+
 
     print("🔊 Receiving audio via ffplay...")
     logging.info("Receiving audio via ffplay...")
 
     try:
-        process = subprocess.Popen(ffplay_cmd)
+        process = subprocess.Popen(ffmpeg_cmd)
         process.wait()
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
