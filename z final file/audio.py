@@ -1,64 +1,62 @@
 import socket
 import subprocess
 import platform
-import pyaudio
-import time 
+import time
 import logging
-import threading 
+import threading
 from config import app_config
 
 PORT = 50009
 CHUNK_SIZE = 1024
 RATE = 44100
 CHANNELS = 1
-stream =  p = sock = process = None
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
 
-def cleanup(stream=None, p=None, sock=None, process=None):
+def cleanup(sock=None, process=None, unmute=False):
     try:
-        if stream:
-            try:
-                stream.stop_stream()
-                stream.close()
-            except Exception as e:
-                logging.error(f"Error closing audio stream")
-        if p:
-            try:
-                p.terminate()
-            except Exception as e:
-                logging.error(f"⚠️ Error terminating PyAudio: {e}")
-        if sock:
-            try:
-                sock.close()
-            except Exception as e:
-                logging.error(f"⚠️ Error closing socket: {e}")
         if process:
             try:
                 process.terminate()
                 process.wait(timeout=2)
             except Exception as e:
                 logging.error(f"⚠️ Error terminating process: {e}")
+        if sock:
+            try:
+                sock.close()
+            except Exception as e:
+                logging.error(f"⚠️ Error closing socket: {e}")
     finally:
+        if unmute:
+            if platform.system().lower() == 'linux':
+                subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '0'])
+            elif platform.system().lower() == 'windows':
+                try:
+                    from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
+                    from ctypes import cast, POINTER
+                    from comtypes import CLSCTX_ALL
+                    devices = AudioUtilities.GetSpeakers()
+                    interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
+                    volume = cast(interface, POINTER(IAudioEndpointVolume))
+                    volume.SetMute(0, None)
+                except Exception:
+                    pass
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
-    ffmpeg_cmd = [
-    'ffmpeg',
-    '-f', 's16le',
-    '-ac', str(CHANNELS),
-    '-ar', str(RATE),
-    '-i', f'udp://0.0.0.0:{PORT}?fifo_size=5000000&overrun_nonfatal=1',
-    '-f', 'pulse' if platform.system().lower() == 'linux' else 'dshow',
-    'default'
+    ffplay_cmd = [
+        'ffplay',
+        '-f', 's16le',
+        '-ac', str(CHANNELS),
+        '-ar', str(RATE),
+        '-i', f'udp://0.0.0.0:{PORT}?fifo_size=5000000&overrun_nonfatal=1'
     ]
-
 
     print("🔊 Receiving audio via ffplay...")
     logging.info("Receiving audio via ffplay...")
 
     try:
-        process = subprocess.Popen(ffmpeg_cmd)
+        process = subprocess.Popen(ffplay_cmd)
         process.wait()
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
@@ -66,9 +64,7 @@ def receive_audio():
     finally:
         cleanup(process=process)
 
-
 def send_audio_linux():
-
     def get_monitor_source():
         result = subprocess.run(['pactl', 'list', 'short', 'sources'], capture_output=True, text=True)
         for line in result.stdout.strip().split('\n'):
@@ -78,9 +74,6 @@ def send_audio_linux():
 
     def mute_output():
         subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '1'])
-
-    def unmute_output():
-        subprocess.run(['pactl', 'set-sink-mute', '@DEFAULT_SINK@', '0'])
 
     monitor = get_monitor_source()
 
@@ -94,24 +87,24 @@ def send_audio_linux():
         '-loglevel', 'quiet',
         '-'
     ]
+
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
 
-    for i in range(5,0,-1):
+    for _ in range(5):
         try:
-            sock.connect((app_config.audio_ip,PORT))
+            sock.connect((app_config.audio_ip, PORT))
             mute_output()
             break
-        except Exception as e:
-            print("")
+        except Exception:
             time.sleep(3)
     else:
-        print("[Audio] Unable to Connect")
-        logging.info("[Audio] Unable to Connect")
+        print("[Audio] ❌ Unable to connect to receiver.")
         return
 
     print(f"📤 Sending audio from {monitor} (muted locally)")
     logging.info("Sending audio from monitor (muted locally)")
+
     try:
         while True:
             data = process.stdout.read(CHUNK_SIZE * 2)
@@ -123,31 +116,20 @@ def send_audio_linux():
         logging.info("Sender stopped.")
     finally:
         cleanup(sock=sock, process=process, unmute=True)
-        unmute_output()
 
 def send_audio_windows():
     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
     from ctypes import cast, POINTER
     from comtypes import CLSCTX_ALL
+
     def mute_output_windows():
         try:
             devices = AudioUtilities.GetSpeakers()
             interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
             volume = cast(interface, POINTER(IAudioEndpointVolume))
             volume.SetMute(1, None)
-            print("🔇 Windows output muted.")
         except Exception as e:
             print(f"⚠️ Error muting output: {e}")
-
-    def unmute_output_windows():
-        try:
-            devices = AudioUtilities.GetSpeakers()
-            interface = devices.Activate(IAudioEndpointVolume._iid_, CLSCTX_ALL, None)
-            volume = cast(interface, POINTER(IAudioEndpointVolume))
-            volume.SetMute(0, None)
-            print("🔊 Windows output unmuted.")
-        except Exception as e:
-            print(f"⚠️ Error unmuting output")
 
     ffmpeg_cmd = [
         'ffmpeg',
@@ -164,24 +146,19 @@ def send_audio_windows():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
 
-    if process and process.stdout:
-        print("✅ ffmpeg process started.")
-    else:
-        print("❌ Failed to start ffmpeg.")
-
-    for i in range(5,0,-1):
+    for _ in range(5):
         try:
-            sock.connect((app_config.audio_ip,PORT))
-            print("📤 Sending audio from VB-Cable...")
+            sock.connect((app_config.audio_ip, PORT))
             mute_output_windows()
-            logging.info("Sending audio from VB-Cable...")
             break
-        except Exception as e:
+        except Exception:
             time.sleep(3)
-            print("")
     else:
-        print("Failed to Connect to Audio")
-        return 
+        print("❌ Failed to connect to receiver.")
+        return
+
+    print("📤 Sending audio from VB-Cable... (muted locally)")
+    logging.info("Sending audio from VB-Cable...")
 
     try:
         while True:
@@ -193,17 +170,18 @@ def send_audio_windows():
         print("❌ Sender stopped.")
         logging.info("Sender stopped.")
     finally:
-        cleanup(sock=sock, process=process)
-        unmute_output_windows()
+        cleanup(sock=sock, process=process, unmute=True)
 
 def main():
     def monitor_stop():
         while True:
-            if app_config.is_running:
-                continue
-            cleanup()
+            if not app_config.is_running:
+                cleanup()
+                break
+            time.sleep(1)
 
     threading.Thread(target=monitor_stop, daemon=True).start()
+
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
         receive_audio()
@@ -219,6 +197,5 @@ def main():
         print("❌ Invalid audio_mode in config.")
         logging.info("Invalid audio_mode in config.")
 
-    
 if __name__ == "__main__":
     main()
