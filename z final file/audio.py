@@ -107,7 +107,7 @@ def send_audio_linux():
         unmute_output()
         s.close()
 
-def run_audio_sender_windows():
+def send_audio_windows():
     from pycaw.pycaw import AudioUtilities, IAudioEndpointVolume
     from ctypes import cast, POINTER
     from comtypes import CLSCTX_ALL
@@ -158,14 +158,14 @@ def run_audio_sender_windows():
                     rate=RATE,
                     input=True,
                     input_device_index=device_index,
-                    frames_per_buffer=CHUNK_SIZE)
+                    frames_per_buffer=CHUNK_SIZE * 2)
 
     print("[Audio] 🎙️ Streaming from Virtual Cable (muted locally)...")
     logging.info("Streaming from Virtual Cable...")
 
     try:
         while True:
-            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+            data = stream.read(CHUNK_SIZE * 2, exception_on_overflow=False)
             if not data:
                 break
             sock.send(data)
