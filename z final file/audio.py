@@ -8,7 +8,7 @@ import pyaudio
 from config import app_config
 
 PORT = 50009
-CHUNK_SIZE = 1024
+CHUNK_SIZE = 512
 RATE = 44100 
 CHANNELS = 1
 VIRTUAL_CABLE_DEVICE = "CABLE Output"
@@ -75,7 +75,6 @@ def send_audio_linux():
     monitor_source = get_default_monitor()
     mute_output()
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 
     # for _ in range(5,0,-1):
     #     try:
