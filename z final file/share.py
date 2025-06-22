@@ -29,8 +29,8 @@ class MouseSyncApp:
         self.screen_width = None
         self.screen_height = None
         self.gui_app = None
-        self.last_clipboard = pyperclip.paste()
-        self.last_clipboard1 = self.last_clipboard
+        self.last_send = pyperclip.paste()
+        self.last_clipboard1 = pyperclip.paste()
         self.os_type = platform.system().lower()
 
         logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a",format ="%(levelname)s - %(message)s")
@@ -174,7 +174,8 @@ class MouseSyncApp:
 
         if to_active:
             try:
-                if pyperclip.paste() != self.last_clipboard:
+                if pyperclip.paste() != self.last_send:
+                    self.last_send = app_config.clipboard
                     clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
                     self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
                     print("[Clipboard] Sent clipboard to client")
@@ -467,7 +468,8 @@ class MouseSyncApp:
                             app_config.active_device = evt["value"]
                             app_config.save()
                             if not app_config.active_device:
-                                if self.last_clipboard != pyperclip.paste():
+                                if self.last_send != pyperclip.paste():
+                                    self.last_send = pyperclip.paste()
                                     self.clipboard_sender(self.secondary_client_socket)
                                     print('[Clipboard] send to server')
                         elif evt["type"] == "clipboard":
@@ -477,7 +479,6 @@ class MouseSyncApp:
                                 app_config.save()
                                 print("[Clipboard] Updated clipboard content")
                                 logging.info("[Clipboard] Updated.")
-                                self.last_clipboard = evt["content"]
                     except Exception as e:
                         print(f"[Client] Secondary parse error: {e}")
 
