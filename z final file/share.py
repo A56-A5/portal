@@ -354,7 +354,7 @@ class MouseSyncApp:
                                         logging.info("[Clipboard] Updated.")
                             except json.JSONDecodeError as e:
                                 print(f"[Clipboard] JSON decode error: {e}")
-                            
+
                     except Exception as e:
                         print(f"[Clipboard] Error reading clipboard data: {e}")
             sec_socket, sec_addr = self.secondary_server_socket.accept()
@@ -526,7 +526,6 @@ class MouseSyncApp:
                 time.sleep(0.5)
             self.cleanup()
             self.gui_app.quit()
-        threading.Thread(target=self.clipboard_monitor,daemon=True).start()
         threading.Thread(target=monitor_stop, daemon=True).start()
 
         if self.os_type == "windows":
