@@ -230,7 +230,14 @@ class MouseSyncApp:
                 win32api.SetCursorPos(new_position)
             else: 
                 self.mouse_controller.position = new_position
-
+        
+        try:
+            active_msg = {"type": "active_device", "value": to_active}
+            self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
+        except Exception as e:
+            print(f"[Transition] Failed to send active_device state: {e}")
+            logging.info(f"[Transition] Failed to send active_device state: {e}")
+            
         if to_active:
             current_clip = get_clipboard()
             if self.last_send != current_clip:
@@ -496,6 +503,7 @@ class MouseSyncApp:
                         elif evt["type"] == "active_device":
                             app_config.active_device = evt["value"]
                             app_config.save()
+                            print(app_config.active_device)
                             if not app_config.active_device:
                                 current_clip = get_clipboard()
                                 if self.last_send != current_clip:

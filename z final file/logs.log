@@ -1,31 +1,20 @@
+INFO - [System] Mode set to client
 INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (2, 430)
-INFO - [System] Device Deactivated at (1918, 506)
-INFO - [System] Device Activated at (2, 583)
-INFO - [System] Device Deactivated at (1918, 649)
-INFO - [System] Device Activated at (2, 570)
-INFO - [System] Device Deactivated at (1918, 606)
-INFO - [System] Device Activated at (2, 550)
-INFO - [System] Device Deactivated at (1918, 587)
-INFO - [System] Device Activated at (2, 544)
-INFO - [System] Device Deactivated at (1918, 524)
-INFO - [System] Device Activated at (2, 491)
-INFO - [System] Device Deactivated at (1918, 571)
-INFO - [System] Device Activated at (2, 530)
-INFO - [System] Device Deactivated at (1918, 546)
-INFO - [System] Device Activated at (2, 505)
-INFO - [System] Device Deactivated at (1918, 557)
-INFO - [System] Device Activated at (2, 422)
-INFO - [System] Device Deactivated at (1918, 484)
-INFO - [System] Device Activated at (2, 704)
-INFO - [System] Device Deactivated at (1918, 386)
-INFO - [System] Device Activated at (2, 718)
-INFO - [System] Device Deactivated at (1918, 832)
-INFO - [System] Device Activated at (2, 448)
-INFO - [System] Device Deactivated at (1918, 602)
-INFO - [System] Device Activated at (2, 575)
-INFO - [System] Device Deactivated at (1918, 619)
+INFO - Retrying connection Attempt: 5
+INFO - Retrying connection Attempt: 4
+INFO - Retrying connection Attempt: 3
 INFO - Stopping portal...
 INFO - Portal stopped.
+INFO - Portal started
+INFO - [Client] Connected successfully.
+INFO - [Clipboard] Updated.
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - Retrying connection Attempt: 5
+INFO - [Client] Connected successfully.
+INFO - [Clipboard] Updated.
+INFO - [Clipboard] Updated.
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - [System] Mode set to server
