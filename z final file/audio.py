@@ -31,6 +31,37 @@ def cleanup(sock=None, process=None, unmute=False):
     finally:
         logging.info("Cleaned up audio resources.")
 
+def receive_windows_audio():
+    p = pyaudio.PyAudio()
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    output=True,
+                    output_device_index=8,
+                    frames_per_buffer=CHUNK_SIZE)
+
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
+    sock.bind(('', PORT))
+
+    print("🔊 Receiving audio...")
+    logging.info("[Audio] Listening...")
+
+    try:
+        while True:
+            data, _ = sock.recvfrom(CHUNK_SIZE * 2)  # 16-bit = 2 bytes/sample
+            stream.write(data)
+            print(f"🔁 Received {len(data)} bytes")
+
+    except KeyboardInterrupt:
+        print("❌ Receiver stopped.")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        sock.close()
+
 def receive_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
@@ -60,8 +91,6 @@ def receive_audio():
         stream.close()
         p.terminate()
         sock.close()
-
-
 
 def get_monitor_source():
     result = subprocess.run(['pactl', 'list', 'short', 'sources'], capture_output=True, text=True)
@@ -152,7 +181,10 @@ def main():
 
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
-        receive_audio()
+        if os_type == "linux":
+            receive_windows_audio()
+        else:
+            receive_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()

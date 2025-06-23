@@ -1,11 +1,13 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (726, 1078)
-INFO - [System] Device Deactivated at (455, 2)
-INFO - [System] Device Activated at (747, 1078)
-INFO - [System] Device Deactivated at (739, 2)
-INFO - [System] Device Activated at (674, 1078)
-INFO - [System] Device Deactivated at (559, 2)
+INFO - [System] Device Activated at (1918, 1078)
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
+INFO - [Server] Send failed: {e}
 INFO - Stopping portal...
 INFO - Portal stopped.
