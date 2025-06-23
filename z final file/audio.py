@@ -32,7 +32,6 @@ def cleanup(sock=None, process=None, unmute=False):
         logging.info("Cleaned up audio resources.")
 
 def receive_audio():
-    
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -42,14 +41,18 @@ def receive_audio():
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 65536)
     sock.bind(('', PORT))
 
     print("🔊 Receiving audio...")
     logging.info("[Audio] Listening...")
+
     try:
         while True:
-            data, _ = sock.recvfrom(CHUNK_SIZE)
+            data, _ = sock.recvfrom(CHUNK_SIZE * 2)  # 16-bit = 2 bytes/sample
             stream.write(data)
+            print(f"🔁 Received {len(data)} bytes")
+
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")
     finally:
@@ -57,6 +60,7 @@ def receive_audio():
         stream.close()
         p.terminate()
         sock.close()
+
 
 
 def get_monitor_source():
@@ -133,6 +137,8 @@ def send_audio_windows():
         print("❌ Sender stopped.")
     finally:
         sock.close()
+        stream.close()
+        p.terminate()
 
 def main():
     def monitor_stop():
