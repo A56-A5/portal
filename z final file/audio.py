@@ -11,7 +11,7 @@ PORT = 50009
 CHUNK_SIZE = 512
 RATE = 44100 
 CHANNELS = 1
-VIRTUAL_CABLE_DEVICE = "CABLE Output (VB-Audio Virtual Cable)"
+VIRTUAL_CABLE_DEVICE = "CABLE Output"
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
 
@@ -30,56 +30,6 @@ def cleanup(sock=None, process=None, unmute=False):
                 logging.error(f"⚠️ Error closing socket: {e}")
     finally:
         logging.info("Cleaned up audio resources.")
-def run_audio_receiver():
-    p = pyaudio.PyAudio()
-
-    # Try to find a PulseAudio output device
-    pulse_index = None
-    for i in range(p.get_device_count()):
-        info = p.get_device_info_by_index(i)
-        host_api_index = info['hostApi']
-        host_api_name = p.get_host_api_info_by_index(host_api_index)['name'].lower()
-        if "pulse" in info['name'].lower() or "pulse" in host_api_name:
-            pulse_index = i
-            print(f"[Audio] Using PulseAudio device: {info['name']} ({host_api_name})")
-            break
-
-    if pulse_index is None:
-        print("[Audio] No PulseAudio output device found. Using default.")
-        pulse_index = None  # fallback to default device
-
-    stream = p.open(format=pyaudio.paInt16,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    output=True,
-                    output_device_index=pulse_index,
-                    frames_per_buffer=CHUNK_SIZE)
-
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    s.bind(('0.0.0.0', PORT))
-    s.listen(1)
-    print("Audio waiting")
-
-    conn, addr = s.accept()
-    conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    print("Audio Connected by", addr)
-    logging.info("[Audio] Connected")
-
-    try:
-        while True:
-            data = conn.recvfrom(CHUNK_SIZE * 2)
-            if not data:
-                break
-            stream.write(data)
-    except KeyboardInterrupt:
-        print("Server interrupted.")
-    finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        conn.close()
-        s.close()
 
 def receive_audio():
     
@@ -150,31 +100,39 @@ def send_audio_linux():
         process.terminate()
 
 def send_audio_windows():
-    ffmpeg_cmd = [
-           'ffmpeg',
-           '-f', 'dshow',
-           '-i', f'audio={VIRTUAL_CABLE_DEVICE}',
-           '-ac', str(CHANNELS),
-           '-ar', str(RATE),
-           '-f', 's16le',
-           '-loglevel', 'quiet',
-           '-'
-       ]
+
+    device_index = None
+    p = pyaudio.PyAudio()
+    for i in range(p.get_device_count()):
+        device_info = p.get_device_info_by_index(i)
+        if VIRTUAL_CABLE_DEVICE in device_info.get('name'):
+            device_index = i
+            break
+
+    if device_index is None:
+        raise RuntimeError(f"[Audio] Could not find device: {VIRTUAL_CABLE_DEVICE}")
+
+    device_info = p.get_device_info_by_index(device_index)
+    if device_info['maxInputChannels'] < 1:
+        raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    input_device_index=device_index,
+                    frames_per_buffer=CHUNK_SIZE)
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
-    print(f"📤 Sending audio from {VIRTUAL_CABLE_DEVICE} using FFmpeg...")
+
+    print("📤 Sending audio from VB-Cable...")
     try:
         while True:
-            data = process.stdout.read(CHUNK_SIZE)
-            if not data:
-                break
+            data = stream.read(CHUNK_SIZE)
             sock.sendto(data, (app_config.audio_ip, PORT))
     except KeyboardInterrupt:
         print("❌ Sender stopped.")
     finally:
         sock.close()
-        process.terminate()
 
 def main():
     def monitor_stop():
@@ -188,10 +146,7 @@ def main():
 
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
-        if os_type == "linux":
-            run_audio_receiver()
-        else:
-            receive_audio()
+        receive_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
