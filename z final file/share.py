@@ -206,8 +206,6 @@ class MouseSyncApp:
 
     def clipboard_sender(self, _socket):
         current_clip = get_clipboard()
-        if self.last_send == current_clip:
-            return
         try:
             data = {"type": "clipboard", "content": current_clip}
             _socket.sendall((json.dumps(data) + "\n").encode())
@@ -234,7 +232,11 @@ class MouseSyncApp:
                 self.mouse_controller.position = new_position
 
         if to_active:
-            self.clipboard_sender(self.secondary_server)
+            current_clip = get_clipboard()
+            if self.last_send != current_clip:
+                self.last_send = current_clip
+                self.clipboard_sender(self.secondary_server)
+
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
@@ -505,6 +507,7 @@ class MouseSyncApp:
                             if current_clip != evt["content"]:
                                 app_config.clipboard = evt["content"]
                                 set_clipboard(evt["content"])
+                                self.last_send = evt["content"]
                                 app_config.save()
                                 print("[Clipboard] Updated clipboard content")
                                 logging.info("[Clipboard] Updated.")
