@@ -1,4 +1,7 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
+INFO - [Server] Connected Successfully
+INFO - [System] Device Activated at (1918, 449)
+INFO - [System] Device Deactivated at (2, 580)
 INFO - Stopping portal...
 INFO - Portal stopped.

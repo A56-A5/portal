@@ -11,6 +11,10 @@ from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
 from config import app_config
+try:
+    import win32api 
+except:
+    print("")
 
 class MouseSyncApp:
     def __init__(self):
