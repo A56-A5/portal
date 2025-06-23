@@ -6,18 +6,73 @@ import json
 import time
 import platform
 import pyperclip
+import subprocess
 import logging 
 from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
 from config import app_config
+
 win32api = None
+win32clipboard = None
 if platform.system().lower() == "windows":
     try:
         import win32api
+        import win32clipboard
     except ImportError:
         pass  
+clipboard_lock = threading.Lock()
+os_type = platform.system().lower()
 
+if os_type == "windows":
+    import win32clipboard
+
+    def get_clipboard():
+        with clipboard_lock:
+            try:
+                win32clipboard.OpenClipboard()
+                data = win32clipboard.GetClipboardData()
+                win32clipboard.CloseClipboard()
+                return data
+            except Exception:
+                win32clipboard.CloseClipboard()
+                return ""
+
+    def set_clipboard(text):
+        with clipboard_lock:
+            try:
+                win32clipboard.OpenClipboard()
+                win32clipboard.EmptyClipboard()
+                win32clipboard.SetClipboardText(text)
+                win32clipboard.CloseClipboard()
+            except Exception:
+                win32clipboard.CloseClipboard()
+
+elif os_type == "linux":
+    def get_clipboard():
+        with clipboard_lock:
+            try:
+                return subprocess.check_output(['xclip', '-selection', 'clipboard', '-o']).decode()
+            except Exception:
+                return ""
+
+    def set_clipboard(text):
+        with clipboard_lock:
+            try:
+                p = subprocess.Popen(['xclip', '-selection', 'clipboard'], stdin=subprocess.PIPE)
+                p.communicate(input=text.encode())
+            except Exception:
+                pass
+else:
+    import pyperclip
+
+    def get_clipboard():
+        with clipboard_lock:
+            return pyperclip.paste()
+
+    def set_clipboard(text):
+        with clipboard_lock:
+            pyperclip.copy(text)
 class MouseSyncApp:
     def __init__(self):
         self.edge_transition_cooldown = False
@@ -149,6 +204,16 @@ class MouseSyncApp:
 
             time.sleep(0.01)
 
+    def clipboard_sender(self, _socket):
+        try:
+            current_clip = get_clipboard()
+            data = {"type": "clipboard", "content": current_clip}
+            _socket.sendall((json.dumps(data) + "\n").encode())
+            print("[Clipboard] Sent clipboard data")
+        except Exception as e:
+            print(f"[Clipboard] Error: {e}")
+            logging.info(f"[Clipboard] Error: {e}")
+
     def transition(self, to_active, new_position):
         app_config.load()
         app_config.active_device = to_active
@@ -167,24 +232,8 @@ class MouseSyncApp:
             else: 
                 self.mouse_controller.position = new_position
 
-                
-        try:
-            active_msg = {"type": "active_device", "value": to_active}
-            self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
-        except Exception as e:
-            print(f"[Transition] Failed to send active_device state: {e}")
-            logging.info(f"[Transition] Failed to send active_device state: {e}")
-
         if to_active:
-            try:
-                if pyperclip.paste() != self.last_send:
-                    self.last_send = pyperclip.paste()
-                    clipboard_msg = {"type": "clipboard", "content": app_config.clipboard}
-                    self.secondary_server.sendall((json.dumps(clipboard_msg) + "\n").encode())
-                    print("[Clipboard] Sent clipboard to client")
-            except Exception as e:
-                print(f"")
-
+            self.clipboard_sender(self.secondary_server)
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
@@ -263,32 +312,6 @@ class MouseSyncApp:
     
         threading.Thread(target=keyboard_listener_watcher, daemon=True).start()
     
-    def clipboard_monitor(self):
-        while app_config.is_running:
-            try:
-                current_clipboard = pyperclip.paste()
-                if current_clipboard != self.last_clipboard1:
-                    self.last_clipboard1 = current_clipboard
-                    app_config.clipboard = current_clipboard
-                    app_config.save()
-                
-                app_config.load()
-                if app_config.clipboard != self.last_clipboard1:
-                    self.last_clipboard1 = app_config.clipboard
-                    pyperclip.copy(self.last_clipboard1)
-
-            except Exception as e:
-                print(f"[Clipboard] Error: {e}")
-            time.sleep(0.5)
-
-    def clipboard_sender(self,_socket):
-        try:
-            data = {"type": "clipboard", "content": pyperclip.paste()}
-            _socket.sendall((json.dumps(data) + "\n").encode())
-        except Exception as e:
-            print(f"[Clipboard] Error: {e}")
-            logging.info(f"[Clipboard] Error: {e}")
-
     def handle_primary(self, client_socket):
         threading.Thread(target=self.monitor_mouse_edges,args=(client_socket,), daemon=True).start()
         threading.Thread(target=self.input_sender_mouse, args=(client_socket,), daemon=True).start()
@@ -323,13 +346,15 @@ class MouseSyncApp:
                                 evt = json.loads(data)
                                 if evt["type"] == "clipboard":
                                     current_clipboard = evt["content"]
-                                    if current_clipboard != pyperclip.paste():
+                                    local_clip = get_clipboard()
+                                    if current_clipboard != local_clip:
                                         app_config.clipboard = current_clipboard
-                                        pyperclip.copy(evt["content"])
+                                        set_clipboard(current_clipboard)
                                         app_config.save()
                                         logging.info("[Clipboard] Updated.")
                             except json.JSONDecodeError as e:
                                 print(f"[Clipboard] JSON decode error: {e}")
+                            
                     except Exception as e:
                         print(f"[Clipboard] Error reading clipboard data: {e}")
             sec_socket, sec_addr = self.secondary_server_socket.accept()
@@ -469,17 +494,20 @@ class MouseSyncApp:
                             app_config.active_device = evt["value"]
                             app_config.save()
                             if not app_config.active_device:
-                                if self.last_send != pyperclip.paste():
-                                    self.last_send = pyperclip.paste()
+                                current_clip = get_clipboard()
+                                if self.last_send != current_clip:
+                                    self.last_send = current_clip
                                     self.clipboard_sender(self.secondary_client_socket)
-                                    print('[Clipboard] send to server')
+                                    print('[Clipboard] Sent clipboard to server')
                         elif evt["type"] == "clipboard":
-                            if pyperclip.paste() != evt["content"]:
+                            current_clip = get_clipboard()
+                            if current_clip != evt["content"]:
                                 app_config.clipboard = evt["content"]
-                                pyperclip.copy(evt["content"])
+                                set_clipboard(evt["content"])
                                 app_config.save()
                                 print("[Clipboard] Updated clipboard content")
                                 logging.info("[Clipboard] Updated.")
+
                     except Exception as e:
                         print(f"[Client] Secondary parse error: {e}")
 
