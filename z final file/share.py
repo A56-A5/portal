@@ -237,7 +237,7 @@ class MouseSyncApp:
         except Exception as e:
             print(f"[Transition] Failed to send active_device state: {e}")
             logging.info(f"[Transition] Failed to send active_device state: {e}")
-            
+
         if to_active:
             current_clip = get_clipboard()
             if self.last_send != current_clip:
@@ -503,13 +503,11 @@ class MouseSyncApp:
                         elif evt["type"] == "active_device":
                             app_config.active_device = evt["value"]
                             app_config.save()
-                            print(app_config.active_device)
                             if not app_config.active_device:
                                 current_clip = get_clipboard()
                                 if self.last_send != current_clip:
                                     self.last_send = current_clip
                                     self.clipboard_sender(self.secondary_client_socket)
-                                    print('[Clipboard] Sent clipboard to server')
                         elif evt["type"] == "clipboard":
                             current_clip = get_clipboard()
                             if current_clip != evt["content"]:
