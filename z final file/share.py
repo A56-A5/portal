@@ -73,6 +73,7 @@ else:
     def set_clipboard(text):
         with clipboard_lock:
             pyperclip.copy(text)
+
 class MouseSyncApp:
     def __init__(self):
         self.edge_transition_cooldown = False
@@ -90,8 +91,7 @@ class MouseSyncApp:
         self.screen_width = None
         self.screen_height = None
         self.gui_app = None
-        self.last_send = pyperclip.paste()
-        self.last_clipboard1 = pyperclip.paste()
+        self.last_send = None
         self.os_type = platform.system().lower()
 
         logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a",format ="%(levelname)s - %(message)s")
@@ -205,14 +205,15 @@ class MouseSyncApp:
             time.sleep(0.01)
 
     def clipboard_sender(self, _socket):
+        current_clip = get_clipboard()
+        if self.last_send() == current_clip:
+            return
         try:
-            current_clip = get_clipboard()
             data = {"type": "clipboard", "content": current_clip}
             _socket.sendall((json.dumps(data) + "\n").encode())
             print("[Clipboard] Sent clipboard data")
         except Exception as e:
             print(f"[Clipboard] Error: {e}")
-            logging.info(f"[Clipboard] Error: {e}")
 
     def transition(self, to_active, new_position):
         app_config.load()
