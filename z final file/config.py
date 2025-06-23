@@ -22,6 +22,11 @@ class AppConfig:
             "server_ip": "" ,
             "audio_ip":"",
 
+            # Check Window
+            "logs_viewer": False,
+            "Share_input": False,
+            "Audio_input": False,
+
             #clipboard
             "clipboard" : "" 
         }
