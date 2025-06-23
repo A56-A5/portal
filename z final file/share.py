@@ -206,7 +206,7 @@ class MouseSyncApp:
 
     def clipboard_sender(self, _socket):
         current_clip = get_clipboard()
-        if self.last_send() == current_clip:
+        if self.last_send == current_clip:
             return
         try:
             data = {"type": "clipboard", "content": current_clip}
