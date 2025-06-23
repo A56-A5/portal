@@ -355,10 +355,6 @@ class MouseSyncApp:
 
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        try:
-            import win32api 
-        except:
-            print("")
         print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
         c1,c2 = 5,5
         for i in range(c1,-1,-1):
