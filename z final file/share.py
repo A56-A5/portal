@@ -11,10 +11,12 @@ from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
 from config import app_config
-try:
-    import win32api
-except ImportError:
-    win32api = None 
+win32api = None
+if platform.system().lower() == "windows":
+    try:
+        import win32api
+    except ImportError:
+        pass  
 
 class MouseSyncApp:
     def __init__(self):
@@ -148,10 +150,6 @@ class MouseSyncApp:
             time.sleep(0.01)
 
     def transition(self, to_active, new_position):
-        try:
-            import win32api 
-        except:
-            print("")
         app_config.load()
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
@@ -163,10 +161,12 @@ class MouseSyncApp:
                 self.create_overlay()
             else:
                 self.destroy_overlay()
-            if self.os_type == "linux":
-                self.mouse_controller.position = new_position
-            elif self.os_type == "windows":
+            
+            if win32api:
                 win32api.SetCursorPos(new_position)
+            else: 
+                self.mouse_controller.position = new_position
+
                 
         try:
             active_msg = {"type": "active_device", "value": to_active}
@@ -400,10 +400,11 @@ class MouseSyncApp:
                         if evt["type"] == "move":
                             x = int(evt["x"] * self.screen_width)
                             y = int(evt["y"] * self.screen_height)
-                            if self.os_type == "linux":
-                                self.mouse_controller.position = (x, y)
-                            elif self.os_type == "windows":
-                                win32api.SetCursorPos((x, y))
+                            new_position = (x,y)
+                            if win32api:
+                                win32api.SetCursorPos(new_position)
+                            else: 
+                                self.mouse_controller.position = new_position
                         elif evt["type"] == "click":
                             btn = getattr(Button, evt['button'])
                             if evt['pressed']:
