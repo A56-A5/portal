@@ -65,7 +65,41 @@ def linux_receiver_audio():
         conn.close()
         s.close()
 
-def windows_receiver_audio():
+def windows_tcp_receiver_audio():
+        p = pyaudio.PyAudio()
+        stream = p.open(format=pyaudio.paInt16,
+                        channels=CHANNELS,
+                        rate=RATE,
+                        output=True,
+                        frames_per_buffer=CHUNK_SIZE)
+
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.bind(('0.0.0.0', PORT))
+        s.listen(1)
+        print("Audio waiting")
+
+        conn, addr = s.accept()
+        conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        print("Audio Connected by", addr)
+        logging.info("[Audio] Connected")
+
+        try:
+            while True:
+                data = conn.recv(CHUNK_SIZE * 2)
+                if not data:
+                    break
+                stream.write(data)
+        except KeyboardInterrupt:
+            print("Server interrupted.")
+        finally:
+            stream.stop_stream()
+            stream.close()
+            p.terminate()
+            conn.close()
+            s.close()
+
+def windows_udp_receiver_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -209,7 +243,7 @@ def main():
         if os_type == "linux":
             linux_receiver_audio()
         else:
-            windows_receiver_audio()
+            windows_tcp_receiver_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
