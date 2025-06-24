@@ -1,63 +1,22 @@
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
-[Audio] - [Audio] Listening...
+[Audio] - [Audio] Connected
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 445)
-INFO - [System] Device Deactivated at (2, 61)
-INFO - [System] Device Activated at (1918, 456)
-INFO - [System] Device Deactivated at (2, 683)
-INFO - [System] Device Activated at (1918, 352)
-INFO - [System] Device Deactivated at (2, 583)
-INFO - [System] Device Activated at (1918, 605)
-INFO - [System] Device Deactivated at (2, 592)
-INFO - [System] Device Activated at (1918, 439)
-INFO - [System] Device Deactivated at (2, 410)
-INFO - [System] Device Activated at (1918, 366)
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [System] Closing all sockets
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-[Audio] - [Audio] Listening...
-INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 61)
-INFO - [System] Device Deactivated at (2, 1079)
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-[Audio] - [Audio] Listening...
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Connected Successfully
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 137)
-INFO - [System] Device Deactivated at (2, 542)
-INFO - [System] Device Activated at (1918, 229)
-INFO - [System] Device Deactivated at (2, 432)
-INFO - [System] Device Activated at (1918, 346)
-INFO - [System] Device Deactivated at (2, 447)
-INFO - [System] Device Activated at (1918, 252)
-INFO - [System] Device Deactivated at (2, 1079)
-INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (1918, 1079)
-INFO - [System] Device Deactivated at (2, 622)
-INFO - [System] Device Activated at (1918, 346)
+INFO - [System] Device Activated at (1918, 432)
 INFO - [System] Device Deactivated at (2, 496)
-INFO - [System] Device Activated at (1918, 68)
-INFO - [System] Device Deactivated at (2, 699)
-INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (1918, 139)
-INFO - [System] Device Deactivated at (2, 592)
-INFO - [System] Device Activated at (1918, 67)
-INFO - [System] Device Deactivated at (2, 488)
-INFO - [System] Device Activated at (1918, 246)
-INFO - [System] Device Deactivated at (2, 266)
-INFO - [System] Device Activated at (1918, 438)
-INFO - [System] Device Deactivated at (2, 964)
+INFO - [System] Device Activated at (1918, 506)
+INFO - [System] Device Deactivated at (2, 460)
+INFO - [System] Device Activated at (1918, 673)
+INFO - [System] Device Deactivated at (2, 640)
+INFO - [System] Device Activated at (1918, 590)
+INFO - [System] Device Deactivated at (2, 446)
+INFO - [System] Device Activated at (1918, 630)
+INFO - [System] Device Deactivated at (2, 858)
+INFO - [System] Device Activated at (1918, 655)
+INFO - [System] Device Deactivated at (2, 605)
+INFO - [System] Device Activated at (1918, 604)
+INFO - [System] Device Deactivated at (2, 687)
+INFO - [System] Device Activated at (1918, 442)
+INFO - [System] Device Deactivated at (2, 328)
 INFO - Stopping portal...
 INFO - Portal stopped.

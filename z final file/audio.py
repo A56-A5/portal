@@ -169,7 +169,7 @@ def send_audio_linux():
         sock.close()
         process.terminate()
 
-def send_audio_windows():
+def send_tcp_audio_windows():
  # Find the virtual audio cable device index
     device_index = None
     p = pyaudio.PyAudio()
@@ -228,6 +228,64 @@ def send_audio_windows():
         p.terminate()
         s.close()
 
+def send_udp_audio_windows():
+    device_index = None
+    p = pyaudio.PyAudio()
+    for i in range(p.get_device_count()):
+        device_info = p.get_device_info_by_index(i)
+        if VIRTUAL_CABLE_DEVICE in device_info.get('name'):
+            device_index = i
+            break
+
+    if device_index is None:
+        raise RuntimeError(f"[Audio] Could not find device: {VIRTUAL_CABLE_DEVICE}")
+
+    device_info = p.get_device_info_by_index(device_index)
+    if device_info['maxInputChannels'] < 1:
+        raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
+    
+    # Connect to receiver
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    c = 5
+    while c != 0:
+        try:
+            s.connect((app_config.audio_ip, PORT))
+            break
+        except Exception as e:
+            logging.info(f"[Audio] Connection Attempt: {c}")
+            print(f"[Audio] Connection Attempt: {c}")
+            time.sleep(1)
+            c -= 1
+            if c == 0:
+                logging.info(f"[Audio] Failed to connect: {e}")
+                print(f"[Audio] Failed to connect: {e}")
+                return
+
+    stream = p.open(format=pyaudio.paInt16,
+                    channels=CHANNELS,
+                    rate=RATE,
+                    input=True,
+                    input_device_index=device_index,
+                    frames_per_buffer=CHUNK_SIZE)
+
+    print("[Audio] Streaming from Virtual Cable...")
+    logging.info("[Audio] Streaming from Virtual Cable...")
+
+    try:
+        while True:
+            data = stream.read(CHUNK_SIZE, exception_on_overflow=False)
+            if not data:
+                break
+            s.sendall(data)
+    except KeyboardInterrupt:
+        print("[Audio] Audio streaming interrupted.")
+    finally:
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        s.close()
+        
 def main():
     def monitor_stop():
         while True:
@@ -248,7 +306,7 @@ def main():
         if os_type == "linux":
             send_audio_linux()
         elif os_type == "windows":
-            send_audio_windows()
+            send_tcp_audio_windows()
         else:
             print(f"❌ Unsupported OS: {os_type}")
             logging.info("Unsupported OS")
