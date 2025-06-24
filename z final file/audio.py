@@ -119,7 +119,6 @@ def windows_udp_receiver_audio():
         while True:
             data, _ = sock.recvfrom(CHUNK_SIZE * 2)  # 16-bit = 2 bytes/sample
             stream.write(data)
-            print(f"🔁 Received {len(data)} bytes")
 
     except KeyboardInterrupt:
         print("❌ Receiver stopped.")

@@ -2,18 +2,17 @@ INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 [Audio] - [Audio] Listening...
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 172)
-INFO - [System] Device Deactivated at (2, 557)
-INFO - [System] Device Activated at (1918, 465)
-INFO - [System] Device Deactivated at (2, 470)
-INFO - [System] Device Activated at (1918, 80)
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
-INFO - [System] Closing all sockets
-INFO - [Server] Send failed: {e}
-INFO - [Server] Send failed: {e}
+INFO - [System] Device Activated at (1918, 387)
+INFO - [System] Device Deactivated at (2, 860)
+INFO - [System] Device Activated at (1918, 845)
+INFO - [System] Device Deactivated at (2, 659)
+INFO - [System] Device Activated at (1918, 635)
+INFO - [System] Device Deactivated at (2, 665)
+INFO - [System] Device Activated at (1918, 492)
+INFO - [System] Device Deactivated at (2, 751)
+INFO - [System] Device Activated at (1918, 917)
+INFO - [System] Device Deactivated at (2, 189)
+INFO - [System] Device Activated at (1918, 196)
+INFO - [System] Device Deactivated at (2, 344)
 INFO - Stopping portal...
 INFO - Portal stopped.
