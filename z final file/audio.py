@@ -301,12 +301,12 @@ def main():
         if os_type == "linux":
             linux_receiver_audio()
         else:
-            windows_tcp_receiver_audio()
+            windows_udp_receiver_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
         elif os_type == "windows":
-            send_tcp_audio_windows()
+            send_udp_audio_windows()
         else:
             print(f"❌ Unsupported OS: {os_type}")
             logging.info("Unsupported OS")
