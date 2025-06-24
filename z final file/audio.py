@@ -31,7 +31,7 @@ def cleanup(sock=None, process=None, unmute=False):
     finally:
         logging.info("Cleaned up audio resources.")
 
-def receive_windows_audio():
+def linux_receiver_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -65,7 +65,7 @@ def receive_windows_audio():
         conn.close()
         s.close()
 
-def receive_audio():
+def windows_receiver_audio():
     p = pyaudio.PyAudio()
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
@@ -152,8 +152,6 @@ def send_audio_windows():
     if device_info['maxInputChannels'] < 1:
         raise RuntimeError(f"[Audio] Device '{VIRTUAL_CABLE_DEVICE}' does not support input channels.")
     
-    
-    
     # Connect to receiver
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -172,7 +170,6 @@ def send_audio_windows():
                 print(f"[Audio] Failed to connect: {e}")
                 return
 
-    # Open PyAudio stream
     stream = p.open(format=pyaudio.paInt16,
                     channels=CHANNELS,
                     rate=RATE,
@@ -210,9 +207,9 @@ def main():
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
         if os_type == "linux":
-            receive_windows_audio()
+            linux_receiver_audio()
         else:
-            receive_audio()
+            windows_receiver_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
