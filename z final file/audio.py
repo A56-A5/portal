@@ -18,7 +18,7 @@ CHUNK_SIZE = 1024
 
 sock , process = None , None 
 
-INPUT = 'audio= Stereo Mix (Realtek(R) Audio)'
+INPUT = 'audio=Stereo Mix (Realtek(R) Audio)'
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
 
@@ -86,7 +86,7 @@ def send_audio_windows():
         '-f', 'dshow',
         '-i', str(INPUT),  
         '-ar', str(RATE),
-        # '-ac' , str(CHANNELS),
+        '-ac' , str(CHANNELS),
         '-f', 's16le',
         '-loglevel', 'info',
         '-'
@@ -131,6 +131,22 @@ def receive_audio():
     finally:
         cleanup(sock)
 
+def receive_audio_ffplay():
+    print(f"🎧 Receiving audio via ffplay on port {PORT}...")
+    cmd = [
+        'ffplay',
+        '-f', FORMAT,
+        '-ac', str(CHANNELS),
+        '-ar', str(RATE),
+        '-i', f'udp://0.0.0.0:{PORT}',
+        '-autoexit'  # remove this if you want it to stay open
+    ]
+
+    try:
+        subprocess.run(cmd)
+    except KeyboardInterrupt:
+        print("❌ Receiver stopped.")
+
 def main():
     def monitor_stop():
         while True:
@@ -143,7 +159,10 @@ def main():
 
     os_type = platform.system().lower()
     if app_config.audio_mode == "Receive_Audio":
-        receive_audio()
+        if os_type == "linux":
+            receive_audio_ffplay()
+        elif os_type == "windows":
+            receive_audio()
     elif app_config.audio_mode == "Share_Audio":
         if os_type == "linux":
             send_audio_linux()
