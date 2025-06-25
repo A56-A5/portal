@@ -4,32 +4,37 @@ import platform
 import time
 import logging
 import threading
-import pyaudio
+import sounddevice as sd
+import numpy as np
 from config import app_config
-target_ip = app_config.audio_ip
 
+target_ip = app_config.audio_ip
 
 PORT = 50009
 CHANNELS = 2
 RATE = 44100 
-FORMAT = pyaudio.paInt16
+FORMAT = 's16le'
 CHUNK_SIZE = 1024
+
+sock , process = None , None 
+
+INPUT = 'audio= Stereo Mix (Realtek(R) Audio)'
 
 logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="[Audio] - %(message)s")
 
-def cleanup(sock=None, process=None, unmute=False):
+def cleanup(sock=None, process=None):
     try:
         if process:
             try:
                 process.terminate()
                 process.wait(timeout=2)
             except Exception as e:
-                logging.error(f"⚠️ Error terminating process: {e}")
+                logging.error(f"Error terminating process: {e}")
         if sock:
             try:
                 sock.close()
             except Exception as e:
-                logging.error(f"⚠️ Error closing socket: {e}")
+                logging.error(f"Error closing socket: {e}")
     finally:
         logging.info("Cleaned up audio resources.")
 
@@ -47,6 +52,9 @@ def unmute_output():
 def send_audio_linux():
     monitor = get_monitor_source()
     mute_output()
+    print(f"Sending audio  {target_ip}:{PORT}")
+    logging.info(f"Sending audio {target_ip}:{PORT}")
+
     ffmpeg_cmd = [
         'ffmpeg',
         '-f', 'pulse',
@@ -62,7 +70,7 @@ def send_audio_linux():
     print(f"📤 Sending audio from {monitor} (muted locally)")
     try:
         while True:
-            data = process.stdout.read(CHUNK_SIZE * CHANNELS * 2)
+            data = process.stdout.read(CHUNK_SIZE)
             if not data:
                 break
             sock.sendto(data, (target_ip, PORT))
@@ -70,22 +78,22 @@ def send_audio_linux():
         print("❌ Sender stopped.")
     finally:
         unmute_output()
-        sock.close()
-        process.terminate()
+        cleanup(sock,process)
 
 def send_audio_windows():
     ffmpeg_cmd = [
         'ffmpeg',
         '-f', 'dshow',
-        '-i', 'audio=Stereo Mix (Realtek(R) Audio)',  # Match your input device
+        '-i', str(INPUT),  
         '-ar', str(RATE),
-        '-ac' , str(CHANNELS),
+        # '-ac' , str(CHANNELS),
         '-f', 's16le',
         '-loglevel', 'info',
         '-'
     ]
 
-    print(f"📤 Sending Windows audio from VB-Cable (raw PCM via FFmpeg) to {target_ip}:{PORT}")
+    print(f"Sending audio  {target_ip}:{PORT}")
+    logging.info(f"Sending audio {target_ip}:{PORT}")
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
 
@@ -98,34 +106,30 @@ def send_audio_windows():
     except KeyboardInterrupt:
         print("❌ Audio sending stopped.")
     finally:
-        sock.close()
-        process.terminate()
-
-def receive_audio(PORT=50009):
-    p = pyaudio.PyAudio()
-
-    stream = p.open(format=FORMAT,
-                    channels=CHANNELS,
-                    rate=RATE,
-                    output=True,
-                    frames_per_buffer=CHUNK_SIZE)
+        cleanup(sock,process)
+def receive_audio():
+    print(f"Playing Audio...")
 
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind(("0.0.0.0", PORT))
-    print(f"🎧 Listening on UDP port {PORT} (PCM s16le)...")
+
+    stream = sd.OutputStream(
+        samplerate=RATE,
+        channels=CHANNELS,
+        dtype='int16',
+        blocksize=CHUNK_SIZE
+    )
 
     try:
-        while True:
-            data, _ = sock.recvfrom(CHUNK_SIZE)  # buffer size slightly larger than chunk
-            if data:
-                stream.write(data)
+        with stream:
+            while True:
+                data, _ = sock.recvfrom(CHUNK_SIZE * CHANNELS * 2) 
+                audio_array = np.frombuffer(data, dtype='int16').reshape(-1, CHANNELS)
+                stream.write(audio_array)
     except KeyboardInterrupt:
-        print("\n❌ Receiver stopped.")
+        print("❌ Receiver stopped.")
     finally:
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
-        sock.close()
+        cleanup(sock)
 
 def main():
     def monitor_stop():

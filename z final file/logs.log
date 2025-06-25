@@ -1,29 +1,78 @@
-INFO - [System] Mode set to client
-INFO - Portal started
-INFO - [Client] Connected successfully.
-INFO - [System] Closing all sockets
 INFO - [System] Mode set to server
-INFO - Stopping portal...
-INFO - Portal stopped.
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 258)
-INFO - [System] Device Deactivated at (2, 668)
+INFO - [System] Device Activated at (1918, 415)
+INFO - [System] Device Deactivated at (2, 809)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (1918, 411)
+INFO - [System] Device Deactivated at (2, 644)
+INFO - [System] Device Activated at (1918, 487)
+INFO - [System] Device Deactivated at (2, 925)
+INFO - [System] Device Activated at (1918, 819)
+INFO - [System] Device Deactivated at (2, 841)
+INFO - [System] Device Activated at (1918, 465)
+INFO - [System] Device Deactivated at (2, 598)
+INFO - [System] Device Activated at (1918, 245)
+INFO - [System] Device Deactivated at (2, 603)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (1918, 398)
+INFO - [System] Device Deactivated at (2, 561)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (1918, 290)
+INFO - [System] Device Deactivated at (2, 520)
+INFO - [System] Device Activated at (1918, 555)
+INFO - [System] Device Deactivated at (2, 359)
+INFO - [System] Device Activated at (1918, 309)
+INFO - [System] Device Deactivated at (2, 454)
+INFO - [System] Device Activated at (1918, 465)
+INFO - [System] Device Deactivated at (2, 544)
+INFO - [System] Device Activated at (1918, 284)
+INFO - [System] Device Deactivated at (2, 258)
+INFO - [System] Device Activated at (1918, 278)
+INFO - [System] Device Deactivated at (2, 340)
+INFO - [System] Device Activated at (1918, 328)
+INFO - [System] Device Deactivated at (2, 396)
+INFO - [System] Device Activated at (1918, 423)
+INFO - [System] Device Deactivated at (2, 359)
+INFO - [System] Device Activated at (1918, 233)
+INFO - [System] Device Deactivated at (2, 485)
+INFO - [System] Device Activated at (1918, 570)
+INFO - [System] Device Deactivated at (2, 448)
+INFO - [System] Device Activated at (1918, 447)
+INFO - [System] Device Deactivated at (2, 274)
+INFO - [System] Device Activated at (1918, 264)
+INFO - [System] Device Deactivated at (2, 131)
+INFO - [System] Device Activated at (1918, 209)
+INFO - [System] Device Deactivated at (2, 408)
+INFO - [System] Device Activated at (1918, 324)
+INFO - [System] Device Deactivated at (2, 266)
+INFO - [System] Device Activated at (1918, 327)
+INFO - [System] Device Deactivated at (2, 236)
+INFO - [System] Device Activated at (1918, 89)
+INFO - [System] Device Deactivated at (2, 447)
+INFO - [System] Device Activated at (1918, 203)
+INFO - [System] Device Deactivated at (2, 532)
 INFO - [System] Device Activated at (1918, 383)
-INFO - [System] Device Deactivated at (2, 906)
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 384)
-INFO - [System] Device Deactivated at (2, 597)
-INFO - [System] Device Activated at (1918, 631)
-INFO - [System] Device Deactivated at (2, 872)
+INFO - [System] Device Deactivated at (2, 176)
+INFO - [System] Device Activated at (1918, 311)
+INFO - [System] Device Deactivated at (2, 325)
+INFO - [System] Device Activated at (1918, 335)
+INFO - [System] Device Deactivated at (2, 355)
+INFO - [System] Device Activated at (1918, 346)
+INFO - [System] Device Deactivated at (2, 672)
+INFO - [System] Device Activated at (1918, 271)
+INFO - [System] Device Deactivated at (2, 585)
 INFO - [Server] Send failed: {e}
 INFO - [Transition] Failed to send active_device state: [WinError 10054] An existing connection was forcibly closed by the remote host
-INFO - [System] Device Activated at (1918, 345)
+INFO - [Server] Send failed: {e}
+INFO - [System] Device Activated at (1918, 388)
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
 INFO - [Server] Send failed: {e}
 INFO - [Server] Send failed: {e}
 INFO - [Server] Send failed: {e}
@@ -60,26 +109,78 @@ INFO - [Server] Send failed: {e}
 INFO - [System] Closing all sockets
 INFO - [Server] Send failed: {e}
 INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Transition] Failed to send active_device state: 'MouseSyncApp' object has no attribute 'secondary_server'
+INFO - [Server] Connected Successfully
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
 INFO - Stopping portal...
 INFO - Portal stopped.
 INFO - Portal started
 INFO - [Server] Waiting for Client to connect
 INFO - [Server] Connected Successfully
-INFO - [System] Device Activated at (1918, 572)
-INFO - [System] Device Deactivated at (2, 486)
+INFO - [System] Device Activated at (1918, 432)
+INFO - [System] Device Deactivated at (2, 928)
+INFO - [System] Device Activated at (1918, 188)
+INFO - [System] Device Deactivated at (2, 346)
+INFO - [System] Device Activated at (1918, 332)
+INFO - [System] Device Deactivated at (2, 566)
+INFO - [System] Device Activated at (1918, 567)
+INFO - [System] Device Deactivated at (2, 657)
+INFO - [System] Device Activated at (1918, 458)
+INFO - [System] Device Deactivated at (2, 160)
 INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (1918, 292)
-INFO - [System] Device Deactivated at (2, 438)
-INFO - [System] Device Activated at (1918, 427)
-INFO - [System] Device Deactivated at (2, 552)
-INFO - [System] Device Activated at (1918, 449)
-INFO - [System] Device Deactivated at (2, 485)
-INFO - [System] Device Activated at (1918, 107)
-INFO - [System] Device Deactivated at (2, 496)
-INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (1918, 479)
-INFO - [System] Device Deactivated at (2, 498)
-INFO - [System] Device Activated at (1918, 433)
-INFO - [System] Device Deactivated at (2, 518)
-INFO - [System] Device Activated at (1918, 405)
-INFO - [System] Device Deactivated at (2, 375)
+INFO - [System] Device Activated at (1918, 126)
+INFO - [System] Device Deactivated at (2, 301)
+INFO - [System] Device Activated at (1918, 207)
+INFO - [System] Device Deactivated at (2, 596)
+INFO - [System] Device Activated at (1918, 564)
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
