@@ -399,12 +399,13 @@ class MouseSyncApp:
                     raise Exception("Handshake failed")
                 break
             except Exception as e:
+                E = e
                 print(f"Retrying connection (primary) Attempt: {i}")
                 logging.info(f"Retrying connection (primary) Attempt: {i}")
                 time.sleep(1)
         else:
-            print(f"[Client] Connection failed: {e}")
-            logging.info(f"[Client] Connection failed: {e}")
+            print(f"[Client] Connection failed: {E}")
+            logging.info(f"[Client] Connection failed: {E}")
             app_config.is_running = False
             self.cleanup()
             app_config.save()
@@ -455,12 +456,13 @@ class MouseSyncApp:
                 print("[Client] Connected successfully.")
                 break
             except Exception as e:
+                E = e
                 logging.info(f"Retrying connection (secondary) Attempt: {i}")
                 print(f"Retrying connection (secondary) Attempt: {i}")
                 time.sleep(1)
         else:
-            print(f"[Client] Connection failed: {e}")
-            logging.info(f"[Client] Connection failed: {e}")
+            print(f"[Client] Connection failed: {E}")
+            logging.info(f"[Client] Connection failed: {E}")
             app_config.is_running = False
             self.cleanup()
             app_config.save()
