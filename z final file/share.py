@@ -391,24 +391,24 @@ class MouseSyncApp:
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         print(f"[Client] Connecting to {app_config.server_ip}:{self.primary_port}")
-        c1,c2 = 5,5
-        for i in range(c1,-1,-1):
+
+        for i in range(10,-1,-1):
             try:
                 self.client_socket.connect((app_config.server_ip, self.primary_port))
                 if self.client_socket.recv(1024) != b'CONNECTED\n':
                     raise Exception("Handshake failed")
                 break
             except Exception as e:
-                print(f"Retrying connection Attempt: {i}")
-                logging.info(f"Retrying connection Attempt: {i}")
+                print(f"Retrying connection (primary) Attempt: {i}")
+                logging.info(f"Retrying connection (primary) Attempt: {i}")
                 time.sleep(1)
-                if i == 0:
-                    print(f"[Client] Connection failed: {e}")
-                    logging.info(f"[Client] Connection failed: {e}")
-                    app_config.is_running = False
-                    self.cleanup()
-                    app_config.save()
-                    return
+        else:
+            print(f"[Client] Connection failed: {e}")
+            logging.info(f"[Client] Connection failed: {e}")
+            app_config.is_running = False
+            self.cleanup()
+            app_config.save()
+            return
         print("[Client] Primary Connected")
 
         def receive_primary():
@@ -448,23 +448,23 @@ class MouseSyncApp:
                         print(f"[Client] Parse error: {e}")
 
         print(f"[Client] Connecting to {app_config.server_ip}:{self.secondary_port}")
-        for i in range(c2,-1,-1):
+        for i in range(10,-1,-1):
             try:
                 self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
                 logging.info("[Client] Connected successfully.")
                 print("[Client] Connected successfully.")
                 break
             except Exception as e:
-                logging.info(f"Retrying connection Attemp: {i}")
-                print(f"Retrying connection Attemp: {i}")
+                logging.info(f"Retrying connection (secondary) Attempt: {i}")
+                print(f"Retrying connection (secondary) Attempt: {i}")
                 time.sleep(1)
-                if i == 0:
-                    print(f"[Client] Connection failed: {e}")
-                    logging.info(f"[Client] Connection failed: {e}")
-                    app_config.is_running = False
-                    self.cleanup()
-                    app_config.save()
-                    return 
+        else:
+            print(f"[Client] Connection failed: {e}")
+            logging.info(f"[Client] Connection failed: {e}")
+            app_config.is_running = False
+            self.cleanup()
+            app_config.save()
+            return 
         print("[Client] Secondary Connected")
                 
         def receive_secondary():
