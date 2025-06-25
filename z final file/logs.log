@@ -1,0 +1,85 @@
+INFO - [System] Mode set to client
+INFO - Portal started
+INFO - [Client] Connected successfully.
+INFO - [System] Closing all sockets
+INFO - [System] Mode set to server
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Server] Connected Successfully
+INFO - [System] Device Activated at (1918, 258)
+INFO - [System] Device Deactivated at (2, 668)
+INFO - [System] Device Activated at (1918, 383)
+INFO - [System] Device Deactivated at (2, 906)
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Server] Connected Successfully
+INFO - [System] Device Activated at (1918, 384)
+INFO - [System] Device Deactivated at (2, 597)
+INFO - [System] Device Activated at (1918, 631)
+INFO - [System] Device Deactivated at (2, 872)
+INFO - [Server] Send failed: {e}
+INFO - [Transition] Failed to send active_device state: [WinError 10054] An existing connection was forcibly closed by the remote host
+INFO - [System] Device Activated at (1918, 345)
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - [System] Closing all sockets
+INFO - [Server] Send failed: {e}
+INFO - [Server] Send failed: {e}
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [Server] Waiting for Client to connect
+INFO - [Server] Connected Successfully
+INFO - [System] Device Activated at (1918, 572)
+INFO - [System] Device Deactivated at (2, 486)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (1918, 292)
+INFO - [System] Device Deactivated at (2, 438)
+INFO - [System] Device Activated at (1918, 427)
+INFO - [System] Device Deactivated at (2, 552)
+INFO - [System] Device Activated at (1918, 449)
+INFO - [System] Device Deactivated at (2, 485)
+INFO - [System] Device Activated at (1918, 107)
+INFO - [System] Device Deactivated at (2, 496)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (1918, 479)
+INFO - [System] Device Deactivated at (2, 498)
+INFO - [System] Device Activated at (1918, 433)
+INFO - [System] Device Deactivated at (2, 518)
+INFO - [System] Device Activated at (1918, 405)
+INFO - [System] Device Deactivated at (2, 375)
