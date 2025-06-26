@@ -1,0 +1,6 @@
+numpy
+sounddevice
+pynput
+pyperclip
+pywin32; sys_platform == 'win32'
+PyQt5; sys_platform == 'linux'

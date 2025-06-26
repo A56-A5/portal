@@ -1,2 +1,0 @@
-pywin32>=305; platform_system=="Windows"
-python-xlib>=0.31; platform_system=="Linux"
