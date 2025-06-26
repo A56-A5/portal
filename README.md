@@ -58,7 +58,7 @@ Update `config.json` or use the GUI to:
 
 Run `build.bat`:
 
-- Output: `dist/portal.exe`
+- Output: `dist/Portal-v1.0/Portal-v1.0.exe`
 
 ### 🐧 Linux
 
@@ -71,7 +71,7 @@ chmod +x build.sh
 ./build.sh
 ```
 
-- Output: `dist/main`
+- Output: `dist/Portal-v1.0/`
 
 ## 📁 Project Structure
 
@@ -93,3 +93,33 @@ portal/
 ## 🧹 Clean Shutdown
 
 Use the GUI **Stop** button to gracefully stop the app. All subprocesses, sockets, and overlays are properly cleaned up.
+
+# Debugging Stuck Sockets (Windows & Linux)
+If the app crashes or is killed without cleanup, you might encounter errors like:
+
+```bash
+[Errno 98] Address already in use          # Linux
+[WinError 10048] Only one usage of each socket address is normally permitted  # Windows
+```
+
+# Windows: Kill socket process manually
+🔍 Find process using all ports (50007,50008,50009)
+
+```bash
+netstat -aon | findstr :<PORT>   #replace <PORT>
+
+  TCP    0.0.0.0:<PORT>        0.0.0.0:0              LISTENING       <PID>
+
+taskkill /PID <PID> /F     #replace <PID> 
+```
+
+# Linux: Kill socket process manually
+🔍 Find process using all ports (50007,50008,50009)
+
+```bash
+sudo lsof -i :<PORT>    #replace <PORT>
+
+  python3  <PID> user   3u  IPv4  ...  TCP *:<PORT> (LISTEN)
+
+kill -9 <PID>    #replace <PID> 
+```

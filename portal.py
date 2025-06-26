@@ -8,6 +8,18 @@ import logging
 import platform
 import sys,os
 import socket 
+import sounddevice as sd
+import numpy as np
+import win32api
+import win32clipboard
+
+def get_executable(name):
+    if getattr(sys, 'frozen', False):
+        base = os.path.dirname(sys.executable)
+        ext = ".exe" if platform.system().lower() == "windows" else ""
+        return os.path.join(base, name + ext)
+    else:
+        return [sys.executable, name + ".py"]  
 
 class PortalUI:
     def __init__(self, root):
@@ -50,7 +62,7 @@ class PortalUI:
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]
         if selected_tab == "View Logs":
             try:
-                subprocess.Popen([sys.executable, "log_viewer.py"])
+                self.audio_process = subprocess.Popen(get_executable("log_viewer"))
                 self.tab_control.select(self.portal_tab)
             except Exception as e:
                 logging.info(f"Failed to open log viewer: {e}")
@@ -234,13 +246,13 @@ class PortalUI:
 
             
             try:
-                self.invis_process = subprocess.Popen([sys.executable, "share.py"])
+                self.audio_process = subprocess.Popen(get_executable("share"))
             except Exception as e:
                 logging.info(f"Failed to launch share.py: {e}")
 
             if app_config.audio_enabled: 
                 try:
-                    self.audio_process = subprocess.Popen([sys.executable,"audio.py"])
+                    self.audio_process = subprocess.Popen(get_executable("audio"))
                 except Exception as e:
                     logging.info(f"Failed to launch audio.py")
             

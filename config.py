@@ -13,7 +13,7 @@ class AppConfig:
             "stop_flag": False,
             "is_running": False,
             "active_device": False,
-            "audio_enabled": True,
+            "audio_enabled": False,
             "audio_mode": "Share_Audio",
 
             # Local config (specific to current instance)

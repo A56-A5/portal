@@ -139,9 +139,8 @@ def receive_audio_ffplay():
         '-ac', str(CHANNELS),
         '-ar', str(RATE),
         '-i', f'udp://0.0.0.0:{PORT}',
-        '-autoexit'  # remove this if you want it to stay open
+        '-autoexit'  
     ]
-
     try:
         subprocess.run(cmd)
     except KeyboardInterrupt:
