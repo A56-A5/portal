@@ -71,7 +71,7 @@ chmod +x build.sh
 ./build.sh
 ```
 
-- Output: `dist/Portal-v1.0/`
+- Output: `dist/Portal-v1.0/Portal-v1.0`
 
 ## 📁 Project Structure
 

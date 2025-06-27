@@ -8,11 +8,16 @@ import logging
 import platform
 import sys,os
 import socket 
-import sounddevice as sd
-import numpy as np
-import win32api
-import win32clipboard
 
+if False:
+    # Importing modules for building purpose
+    import win32api
+    import win32clipboard
+    import sounddevice as sd
+    import numpy as np
+    from PyQt5.QtWidgets import QApplication, QWidget
+    from PyQt5.QtCore import Qt
+    
 def get_executable(name):
     if getattr(sys, 'frozen', False):
         base = os.path.dirname(sys.executable)
@@ -31,10 +36,10 @@ class PortalUI:
         if hasattr(sys, "_MEIPASS"):  
             icon_path = os.path.join(sys._MEIPASS, icon_path)
 
-        if os.path.exists(icon_path):
-            root.iconbitmap(icon_path)
+        if sys.platform.startswith("win") and os.path.exists(icon_path):
+            self.root.iconbitmap(icon_path)
         self.root.geometry("350x550")
-        root.deiconify()
+        self.root.deiconify()
         self.mode = tk.StringVar(value=app_config.mode)
         self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)
         self.running = False

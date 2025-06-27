@@ -9,7 +9,7 @@ LOG_FILE = "logs.log"
 
 def read_log(text_widget):
     last_mod_time = 0
-    while True:
+    while True: 
         try:
             if os.path.exists(LOG_FILE):
                 mod_time = os.path.getmtime(LOG_FILE)
@@ -40,7 +40,7 @@ def main():
     if hasattr(sys, "_MEIPASS"):  
         icon_path = os.path.join(sys._MEIPASS, icon_path)
 
-    if os.path.exists(icon_path):
+    if sys.platform.startswith("win") and os.path.exists(icon_path):
         root.iconbitmap(icon_path)
 
     root.title("Portal Logs")
