@@ -251,7 +251,7 @@ class PortalUI:
 
             
             try:
-                self.audio_process = subprocess.Popen(get_executable("share"))
+                self.invis_process = subprocess.Popen(get_executable("share"))
             except Exception as e:
                 logging.info(f"Failed to launch share.py: {e}")
 
@@ -272,12 +272,14 @@ class PortalUI:
             try:
                 if self.invis_process:
                     self.invis_process.terminate()
+                    self.invis_process.wait()
                 self.invis_process = None
             except Exception as e:
                 print(f"Failed to terminate invis.py: {e}")
             try:
                 if self.audio_process:
                     self.audio_process.terminate()
+                    self.audio_process.wait()
                 self.audio_process = None
             except Exception as e:
                 print(f"Failed to terminate audio.py: {e}")
