@@ -1,11 +1,15 @@
-# 🎯 Portal - Cross-Device Input and Audio Sharing App
+#  Portal - Cross-Device Input and Audio Sharing App
 
 **Portal** is a cross-platform Python application for sharing your mouse, keyboard, clipboard, and audio across multiple devices on the same network. It supports both Linux and Windows.
 
-## 🙏 Inspiration
+##  Inspiration
 
 Portal was inspired by tools like [Barrier](https://github.com/debauchee/barrier) and [Synergy](https://symless.com/synergy), which pioneered cross-device input sharing.  
 This project aims to provide a simpler, Python-based alternative with audio sharing and a customizable GUI.
+
+![Platform Support](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-blue)
+![Python Version](https://img.shields.io/badge/Python-3.8%2B-green)
+![GUI Framework](https://img.shields.io/badge/GUI-PyQt5-orange)
 
 ## 🛠 Features
 
@@ -16,7 +20,7 @@ This project aims to provide a simpler, Python-based alternative with audio shar
 - Log viewer GUI  
 - GUI-based configuration with `portal_ui.py`
 
-## 📦 Requirements
+##  Requirements
 
   -  Note: ffmpeg is used internally for capturing and streaming audio across systems. Make sure it's installed and available in your system PATH.
 
@@ -38,13 +42,13 @@ pip install pywin32
 sudo apt install ffmpeg xclip pactl
 ```
 
-## 🚀 Running the App
+##  Running the App
 
 ```bash
 python portal.py
 ```
 
-## ⚙️ Configuration
+##  Configuration
 
 Update `config.json` or use the GUI to:
 - Set Server / Client mode  
@@ -52,15 +56,15 @@ Update `config.json` or use the GUI to:
 - Define client direction (Top / Left / Right / Bottom)  
 - Enter audio receiver IP
 
-## 🧱 Building Executables
+##  Building Executables
 
-### 🪟 Windows
+###  Windows
 
 Run `build.bat`:
 
 - Output: `dist/Portal-v1.0/Portal-v1.0.exe`
 
-### 🐧 Linux
+###  Linux
 
 Run `build.sh`:
 
@@ -73,7 +77,7 @@ chmod +x build.sh
 
 - Output: `dist/Portal-v1.0/Portal-v1.0`
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 portal/
@@ -90,7 +94,7 @@ portal/
 └── README.md
 ```
 
-## 🧹 Clean Shutdown
+##  Clean Shutdown
 
 Use the GUI **Stop** button to gracefully stop the app. All subprocesses, sockets, and overlays are properly cleaned up.
 
@@ -103,7 +107,7 @@ If the app crashes or is killed without cleanup, you might encounter errors like
 ```
 
 # Windows: Kill socket process manually
-🔍 Find process using all ports (50007,50008,50009)
+ Find process using all ports (50007,50008,50009)
 
 ```bash
 netstat -aon | findstr :<PORT>   #replace <PORT>
@@ -114,7 +118,7 @@ taskkill /PID <PID> /F     #replace <PID>
 ```
 
 # Linux: Kill socket process manually
-🔍 Find process using all ports (50007,50008,50009)
+ Find process using all ports (50007,50008,50009)
 
 ```bash
 sudo lsof -i :<PORT>    #replace <PORT>
