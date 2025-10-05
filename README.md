@@ -9,7 +9,8 @@ This project aims to provide a simpler, Python-based alternative with audio shar
 
 ![Platform Support](https://img.shields.io/badge/Platform-Linux%20%7C%20Windows-blue)
 ![Python Version](https://img.shields.io/badge/Python-3.8%2B-green)
-![GUI Framework](https://img.shields.io/badge/GUI-PyQt5-orange)
+![GUI Framework](https://img.shields.io/badge/GUI-Tkinter%20%7C%20PyQt5-orange)
+![Audio Tool](https://img.shields.io/badge/Audio-FFmpeg-red)
 
 ## 🛠 Features
 
