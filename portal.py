@@ -1,5 +1,5 @@
 import tkinter as tk
-from tkinter import ttk
+from tkinter import PhotoImage, ttk
 from config import app_config
 import threading
 import subprocess
@@ -38,6 +38,12 @@ class PortalUI:
 
         if sys.platform.startswith("win") and os.path.exists(icon_path):
             self.root.iconbitmap(icon_path)
+        else:
+            try:
+                img = PhotoImage(file="portal.png")  
+                self.root.iconphoto(False, img)
+            except Exception as e:
+                print("Failed to set icon:", e)
         self.root.geometry("350x550")
         self.root.deiconify()
         self.mode = tk.StringVar(value=app_config.mode)
