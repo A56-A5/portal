@@ -2,9 +2,9 @@
 echo "🔧 Building Portal and subprocess components for Linux..."
 
 # Build main portal GUI
-pyinstaller portal.py --noconsole --icon=portal.ico \
+pyinstaller portal.py --noconsole --icon=portal.png \
 --name Portal-v1.0 \
---add-data "portal.ico:." \
+--add-data "portal.png:." \
 --add-data "config.py:." \
 --add-data "config.json:."
 
