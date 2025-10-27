@@ -280,8 +280,17 @@ class ShareManager:
             if not app_config.active_device:
                 return
             try:
-                send_json({"type": "key_press", "key": key.char})
-            except AttributeError:
+                # Try to get character
+                key_char = key.char if hasattr(key, 'char') else None
+                if key_char is not None and key_char != '':
+                    print(f"[Server] Sending char: '{key_char}' (ord={ord(key_char)})")
+                    send_json({"type": "key_press", "key": key_char})
+                else:
+                    # For special keys, send as Key object string
+                    print(f"[Server] Sending key: {str(key)}")
+                    send_json({"type": "key_press", "key": str(key)})
+            except Exception as e:
+                print(f"[Keyboard] Error sending key press: {e}")
                 send_json({"type": "key_press", "key": str(key)})
         
         def on_release(key):
@@ -476,6 +485,9 @@ class ShareManager:
                                     self.keyboard_controller.press(key)
                             else:
                                 # Regular character - use tap for better compatibility in secure contexts
+                                # Debug: print what we're trying to type
+                                if key_str and len(key_str) == 1:
+                                    print(f"[Client] Typing character: '{key_str}' (ord={ord(key_str)})")
                                 self.keyboard_controller.tap(key_str)
                         else:
                             self.keyboard_controller.press(key_str)
