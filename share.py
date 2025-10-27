@@ -7,7 +7,8 @@ import time
 import platform
 import pyperclip
 import subprocess
-import logging 
+import logging
+import base64
 from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
