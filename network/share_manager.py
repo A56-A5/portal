@@ -86,7 +86,6 @@ class ShareManager:
     def cleanup(self):
         """Clean up all resources"""
         print("[System] Cleaning up sockets and resources...")
-        logging.info("[System] Closing all sockets")
         
         try:
             if self.client_socket:
@@ -340,6 +339,7 @@ class ShareManager:
         client, addr = self.server_socket.accept()
         client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         print(f"[Server] Primary connection from: {addr}")
+        logging.info(f"[Connection] Primary connection from: {addr}")
         client.sendall(b'CONNECTED\n')
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=lambda: self.send_mouse_events(client), daemon=True).start()
@@ -349,6 +349,7 @@ class ShareManager:
         sec_socket, sec_addr = self.secondary_server_socket.accept()
         sec_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         print(f"[Server] Secondary connection from: {sec_addr}")
+        logging.info(f"[Connection] Secondary connection from: {sec_addr}")
         self.secondary_server = sec_socket
         threading.Thread(target=lambda: self.send_keyboard_events(sec_socket), daemon=True).start()
         
@@ -365,7 +366,6 @@ class ShareManager:
                             local_clip = self.clipboard_controller.get_clipboard()
                             if evt["content"] != local_clip:
                                 self.clipboard_controller.set_clipboard(evt["content"])
-                                logging.info("[Clipboard] Updated.")
                     except json.JSONDecodeError:
                         pass
                 except Exception as e:
@@ -399,6 +399,7 @@ class ShareManager:
                 time.sleep(1)
         
         print("[Client] Primary Connected")
+        logging.info("[Connection] Primary Connected")
         
         # Connect secondary
         for i in range(10, -1, -1):
@@ -414,6 +415,7 @@ class ShareManager:
                 time.sleep(1)
         
         print("[Client] Secondary Connected")
+        logging.info("[Connection] Secondary Connected")
         
         threading.Thread(target=self.receive_primary, daemon=True).start()
         threading.Thread(target=self.receive_secondary, daemon=True).start()
@@ -517,7 +519,6 @@ class ShareManager:
                             self.clipboard_controller.set_clipboard(evt["content"])
                             self.last_send = evt["content"]
                             print("[Clipboard] Updated")
-                            logging.info("[Clipboard] Updated")
                 except Exception as e:
                     print(f"[Client] Parse error: {e}")
     

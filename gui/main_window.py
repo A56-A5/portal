@@ -22,7 +22,11 @@ def get_executable(name):
         ext = ".exe" if platform.system().lower() == "windows" else ""
         return os.path.join(base, name + ext)
     else:
-        return [sys.executable, name + ".py"]
+        # Handle module paths for new structure
+        if name == "log_viewer":
+            return [sys.executable, "-m", "gui.log_viewer"]
+        else:
+            return [sys.executable, name + ".py"]
 
 
 class MainWindow:
@@ -88,7 +92,7 @@ class MainWindow:
                 subprocess.Popen(get_executable("log_viewer"))
                 self.tab_control.select(self.portal_tab)
             except Exception as e:
-                logging.info(f"Failed to open log viewer: {e}")
+                pass
     
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
@@ -211,8 +215,6 @@ class MainWindow:
 
         app_config.mode = current_mode
         app_config.save()
-        if last_mode != current_mode:
-            logging.info(f"[System] Mode set to {current_mode}")
 
     def on_audio_mode_change(self, *args):
         if self.audio_mode.get() == "Share_Audio" and self.audio_enabled.get():

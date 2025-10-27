@@ -30,7 +30,6 @@ class InputHandler:
             app_config.is_running = False
             app_config.save()
             print(f"[Server] Send failed: {e}")
-            logging.info(f"[Server] Send failed: {e}")
     
     def start_mouse_sender(self, client_socket):
         """Start sending mouse events"""
@@ -168,7 +167,6 @@ class InputHandler:
                 self.connection_handler.last_send = event["content"]
                 app_config.save()
                 print("[Clipboard] Updated clipboard content")
-                logging.info("[Clipboard] Updated.")
     
     def parse_key(self, key_str):
         """Parse key string to Key object"""

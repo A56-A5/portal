@@ -1,13 +1,18 @@
-# log_viewer.py
+
+"""
+Log Viewer - GUI component for viewing application logs
+"""
 import tkinter as tk
 from tkinter import ttk
 import threading
 import time
-import os,sys
+import os
+import sys
 
 LOG_FILE = "logs.log"
 
 def read_log(text_widget):
+    """Read log file and update text widget"""
     last_mod_time = 0
     while True: 
         try:
@@ -27,6 +32,7 @@ def read_log(text_widget):
         time.sleep(1)
 
 def clear_logs(text_widget):
+    """Clear log file and text widget"""
     with open(LOG_FILE, "w") as f:
         f.truncate(0)
     text_widget.config(state='normal')
@@ -34,6 +40,7 @@ def clear_logs(text_widget):
     text_widget.config(state='disabled')
 
 def main():
+    """Main entry point for log viewer"""
     root = tk.Tk()
     root.withdraw() 
     icon_path = "portal.ico"

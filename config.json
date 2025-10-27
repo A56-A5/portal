@@ -2,7 +2,7 @@
     "stop_flag": false,
     "is_running": true,
     "active_device": false,
-    "audio_enabled": false,
+    "audio_enabled": true,
     "audio_mode": "Receive_Audio",
     "mode": "server",
     "server_direction": "Right",

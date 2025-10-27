@@ -24,7 +24,7 @@ def get_executable(name):
         if name == "share_manager":
             return [sys.executable, "-m", "network.share_manager"]
         elif name == "audio":
-            return [sys.executable, "audio.py"]
+            return [sys.executable, "-m", "network.audio_manager"]
         elif name == "log_viewer":
             return [sys.executable, "-m", "gui.log_viewer"]
         else:
@@ -49,7 +49,6 @@ class PortalApp:
         if mode == "start" and not self.running:
             if getattr(self.main_window, 'portal_thread', None) and self.main_window.portal_thread.is_alive():
                 print("Portal is already running")
-                logging.info("Portal is already running.")
                 return
             
             app_config.stop_flag = False
@@ -57,7 +56,6 @@ class PortalApp:
             app_config.is_running = True
             self.main_window.status_label.config(text="Portal is running", foreground="green")
             self.main_window.start_stop_button.config(text="Stop")
-            logging.info("Portal started")
             
             # Update configuration from UI
             app_config.server_direction = self.main_window.server_direction.get()
@@ -73,17 +71,16 @@ class PortalApp:
             try:
                 self.invis_process = subprocess.Popen(get_executable("share_manager"))
             except Exception as e:
-                logging.info(f"Failed to launch share.py: {e}")
+                print(f"Failed to launch share_manager: {e}")
             
             # Start audio process if enabled
             if app_config.audio_enabled:
                 try:
                     self.audio_process = subprocess.Popen(get_executable("audio"))
                 except Exception as e:
-                    logging.info(f"Failed to launch audio.py")
+                    print(f"Failed to launch audio: {e}")
         
         elif self.running and mode != "reload":
-            logging.info("Stopping portal...")
             app_config.stop_flag = True
             self.running = False
             app_config.is_running = False
@@ -103,12 +100,9 @@ class PortalApp:
                     self.audio_process.terminate()
                     self.audio_process.wait()
                 except Exception as e:
-                    print(f"Failed to terminate audio.py: {e}")
-            
-            logging.info("Portal stopped.")
+                    print(f"Failed to terminate audio: {e}")
         
         elif self.running and mode == "reload":
-            logging.info("Reloading portal...")
             self.on_start_stop("stop")
             time.sleep(0.5)
             self.on_start_stop("start")
