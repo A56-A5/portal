@@ -8,6 +8,7 @@ import platform
 import subprocess
 import base64
 import os
+import io
 from datetime import datetime
 from typing import Optional, Tuple
 
@@ -84,10 +85,32 @@ class ClipboardController:
                         try:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_DIB)
                             self.win32clipboard.CloseClipboard()
-                            # Convert to base64
-                            encoded = base64.b64encode(data).decode('utf-8')
-                            return f"image:{encoded}"
-                        except Exception:
+                            
+                            # Convert DIB to PNG for better compatibility
+                            try:
+                                from PIL import Image
+                                import io
+                                
+                                # DIB format needs BMP header to be valid
+                                # Add BMP header
+                                bmp_header = b'BM' + (len(data) + 54).to_bytes(4, 'little') + b'\x00\x00\x00\x00\x36\x00\x00\x00\x28\x00'
+                                bmp_data = bmp_header + data
+                                
+                                # Open as image and convert to PNG
+                                img = Image.open(io.BytesIO(bmp_data))
+                                output = io.BytesIO()
+                                img.save(output, format='PNG')
+                                png_data = output.getvalue()
+                                
+                                encoded = base64.b64encode(png_data).decode('utf-8')
+                                return f"image:{encoded}"
+                            except (ImportError, Exception) as e:
+                                # Fallback: use raw DIB data
+                                print(f"[Clipboard] Converting DIB to PNG failed: {e}")
+                                encoded = base64.b64encode(data).decode('utf-8')
+                                return f"image:{encoded}"
+                        except Exception as e:
+                            print(f"[Clipboard] Error getting image: {e}")
                             pass
                     
                     # Try text
@@ -176,8 +199,25 @@ class ClipboardController:
                         self.win32clipboard.EmptyClipboard()
                         
                         if format_type == "image":
-                            # Set as DIB (Device Independent Bitmap)
-                            self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, decoded_data)
+                            # Try to use PIL to convert image to proper format
+                            try:
+                                from PIL import Image
+                                import io
+                                img = Image.open(io.BytesIO(decoded_data))
+                                
+                                # Convert to RGB if needed
+                                if img.mode != 'RGB':
+                                    img = img.convert('RGB')
+                                
+                                # Convert to bytes
+                                output = io.BytesIO()
+                                img.save(output, format='BMP')
+                                bmp_data = output.getvalue()[14:]  # Remove BMP header, win32clipboard adds it
+                                
+                                self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, bmp_data)
+                            except ImportError:
+                                # Fallback: try to set raw data
+                                self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, decoded_data)
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')

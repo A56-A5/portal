@@ -10,6 +10,13 @@ class KeyboardController:
         self._controller = PynputKeyboardController()
         self.os_type = platform.system().lower()
         
+        # Initialize attributes first
+        self.win32api = None
+        self.win32con = None
+        self.use_win32 = False
+        self.subprocess = None
+        self.use_xdotool = False
+        
         # Use win32api for Windows (more reliable in secure contexts)
         if self.os_type == "windows":
             try:
@@ -34,27 +41,42 @@ class KeyboardController:
                     print("[Keyboard] Warning: xdotool not found. Install with: sudo apt install xdotool")
             except:
                 self.use_xdotool = False
-        else:
-            self.use_win32 = False
-            self.use_xdotool = False
     
     def press(self, key):
         """Press a key"""
-        if self.use_win32 and isinstance(key, str):
+        if self.use_win32 and isinstance(key, str) and len(key) == 1:
+            # Use win32 for single character keys (better for secure contexts)
             self._win32_press(key)
-        elif self.use_xdotool and isinstance(key, str):
+        elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
+            # Use xdotool for single character keys on Linux
             self._xdotool_press(key)
         else:
+            # For Key objects or multi-character strings, use pynput
             self._controller.press(key)
     
     def release(self, key):
         """Release a key"""
-        if self.use_win32 and isinstance(key, str):
+        if self.use_win32 and isinstance(key, str) and len(key) == 1:
             self._win32_release(key)
-        elif self.use_xdotool and isinstance(key, str):
+        elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
             # xdotool handles press+release in one command
             pass  # No action needed for release with xdotool
         else:
+            # For Key objects or multi-character strings, use pynput
+            self._controller.release(key)
+    
+    def tap(self, key):
+        """Tap a key (press and release) - useful for characters"""
+        if self.use_win32 and isinstance(key, str) and len(key) == 1:
+            # Use win32 for single character keys
+            self._win32_press(key)
+            self._win32_release(key)
+        elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
+            # Use xdotool for single character keys
+            self._xdotool_press(key)
+        else:
+            # For Key objects or multi-character strings, use pynput
+            self._controller.press(key)
             self._controller.release(key)
     
     def _win32_press(self, key_str):

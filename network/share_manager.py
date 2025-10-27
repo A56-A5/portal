@@ -460,20 +460,28 @@ class ShareManager:
                     evt = json.loads(line)
                     if evt["type"] == "key_press":
                         key_str = evt["key"]
-                        if not isinstance(key_str, str) or not key_str.startswith("Key."):
-                            self.keyboard_controller.press(key_str)
+                        if isinstance(key_str, str):
+                            if key_str.startswith("Key."):
+                                # Special key like Key.enter, Key.shift, etc.
+                                key = parse_key(key_str)
+                                if key:
+                                    self.keyboard_controller.press(key)
+                            else:
+                                # Regular character - use tap for better compatibility in secure contexts
+                                self.keyboard_controller.tap(key_str)
                         else:
-                            key = parse_key(key_str)
-                            if key:
-                                self.keyboard_controller.press(key)
+                            self.keyboard_controller.press(key_str)
                     elif evt["type"] == "key_release":
                         key_str = evt["key"]
-                        if not isinstance(key_str, str) or not key_str.startswith("Key."):
-                            self.keyboard_controller.release(key_str)
+                        if isinstance(key_str, str):
+                            if key_str.startswith("Key."):
+                                # Special key
+                                key = parse_key(key_str)
+                                if key:
+                                    self.keyboard_controller.release(key)
+                            # Regular characters don't need explicit release when using tap
                         else:
-                            key = parse_key(key_str)
-                            if key:
-                                self.keyboard_controller.release(key)
+                            self.keyboard_controller.release(key_str)
                     elif evt["type"] == "active_device":
                         app_config.active_device = evt["value"]
                         app_config.save()
