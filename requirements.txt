@@ -4,3 +4,6 @@ pynput
 pyperclip
 pywin32; sys_platform == 'win32'
 PyQt5; sys_platform == 'linux'
+
+# Linux system packages required for keyboard input in secure contexts:
+# sudo apt install xdotool

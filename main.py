@@ -20,7 +20,15 @@ def get_executable(name):
         ext = ".exe" if platform.system().lower() == "windows" else ""
         return os.path.join(base, name + ext)
     else:
-        return [sys.executable, name + ".py"]
+        # Handle module paths for new structure
+        if name == "share_manager":
+            return [sys.executable, "-m", "network.share_manager"]
+        elif name == "audio":
+            return [sys.executable, "audio.py"]
+        elif name == "log_viewer":
+            return [sys.executable, "-m", "gui.log_viewer"]
+        else:
+            return [sys.executable, name + ".py"]
 
 
 class PortalApp:
@@ -63,7 +71,7 @@ class PortalApp:
             
             # Start share process
             try:
-                self.invis_process = subprocess.Popen(get_executable("share"))
+                self.invis_process = subprocess.Popen(get_executable("share_manager"))
             except Exception as e:
                 logging.info(f"Failed to launch share.py: {e}")
             
@@ -88,7 +96,7 @@ class PortalApp:
                     self.invis_process.terminate()
                     self.invis_process.wait()
                 except Exception as e:
-                    print(f"Failed to terminate share.py: {e}")
+                    print(f"Failed to terminate share_manager: {e}")
             
             if self.audio_process:
                 try:

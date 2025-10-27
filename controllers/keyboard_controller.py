@@ -20,13 +20,30 @@ class KeyboardController:
                 self.use_win32 = True
             except ImportError:
                 self.use_win32 = False
+        elif self.os_type == "linux":
+            # Use xdotool for Linux (better for secure contexts like lockscreen)
+            try:
+                import subprocess
+                self.subprocess = subprocess
+                # Check if xdotool is available
+                result = subprocess.run(['which', 'xdotool'], capture_output=True)
+                self.use_xdotool = result.returncode == 0
+                if self.use_xdotool:
+                    print("[Keyboard] Using xdotool for Linux keyboard input")
+                else:
+                    print("[Keyboard] Warning: xdotool not found. Install with: sudo apt install xdotool")
+            except:
+                self.use_xdotool = False
         else:
             self.use_win32 = False
+            self.use_xdotool = False
     
     def press(self, key):
         """Press a key"""
         if self.use_win32 and isinstance(key, str):
             self._win32_press(key)
+        elif self.use_xdotool and isinstance(key, str):
+            self._xdotool_press(key)
         else:
             self._controller.press(key)
     
@@ -34,6 +51,9 @@ class KeyboardController:
         """Release a key"""
         if self.use_win32 and isinstance(key, str):
             self._win32_release(key)
+        elif self.use_xdotool and isinstance(key, str):
+            # xdotool handles press+release in one command
+            pass  # No action needed for release with xdotool
         else:
             self._controller.release(key)
     
@@ -54,6 +74,46 @@ class KeyboardController:
                 self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
         except Exception as e:
             print(f"[Keyboard] Win32 release error: {e}")
+    
+    def _xdotool_press(self, key_str):
+        """Press key using xdotool for better Linux support"""
+        try:
+            key = self._key_to_xdotool(key_str)
+            if key:
+                # xdotool types the key (press+release)
+                self.subprocess.run(['xdotool', 'key', key], capture_output=True)
+        except Exception as e:
+            print(f"[Keyboard] xdotool press error: {e}")
+    
+    def _key_to_xdotool(self, key_str):
+        """Convert key string to xdotool key name"""
+        # Handle special keys for xdotool
+        key_map = {
+            'enter': 'Return', 'tab': 'Tab', 'space': 'space', 'esc': 'Escape',
+            'delete': 'Delete', 'backspace': 'BackSpace', 'ctrl': 'ctrl',
+            'alt': 'alt', 'shift': 'Shift', 'up': 'Up', 'down': 'Down',
+            'left': 'Left', 'right': 'Right',
+            'Key.enter': 'Return', 'Key.tab': 'Tab', 'Key.space': 'space',
+            'Key.esc': 'Escape', 'Key.delete': 'Delete', 'Key.backspace': 'BackSpace',
+            'Key.ctrl_l': 'ctrl', 'Key.ctrl_r': 'ctrl_r', 'Key.alt_l': 'alt',
+            'Key.alt_r': 'alt_r', 'Key.shift_l': 'Shift', 'Key.shift_r': 'Shift_R',
+            'Key.up': 'Up', 'Key.down': 'Down', 'Key.left': 'Left', 'Key.right': 'Right',
+            'Key.caps_lock': 'Caps_Lock', 'Key.num_lock': 'Num_Lock',
+            'Key.f1': 'F1', 'Key.f2': 'F2', 'Key.f3': 'F3', 'Key.f4': 'F4',
+            'Key.f5': 'F5', 'Key.f6': 'F6', 'Key.f7': 'F7', 'Key.f8': 'F8',
+            'Key.f9': 'F9', 'Key.f10': 'F10', 'Key.f11': 'F11', 'Key.f12': 'F12'
+        }
+        
+        key_str_lower = key_str.lower()
+        if key_str_lower in key_map:
+            return key_map[key_str_lower]
+        
+        # Handle regular characters - xdotool accepts them directly
+        if len(key_str) == 1:
+            return key_str
+        
+        # Fallback
+        return key_str
     
     def _key_to_vk(self, key_str):
         """Convert key string to Windows virtual key code"""

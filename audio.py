@@ -6,7 +6,7 @@ import logging
 import threading
 import sounddevice as sd
 import numpy as np
-from config import app_config
+from utils.config import app_config
 
 target_ip = app_config.audio_ip
 
