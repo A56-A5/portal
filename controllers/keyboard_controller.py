@@ -3,6 +3,7 @@ Keyboard Controller - Handles keyboard input control
 Uses win32api on Windows for better compatibility in secure contexts (lockscreen, password fields)
 """
 import platform
+import time
 from pynput.keyboard import Controller as PynputKeyboardController, Key
 
 class KeyboardController:
@@ -68,9 +69,8 @@ class KeyboardController:
     def tap(self, key):
         """Tap a key (press and release) - useful for characters"""
         if self.use_win32 and isinstance(key, str) and len(key) == 1:
-            # Use win32 for single character keys
-            self._win32_press(key)
-            self._win32_release(key)
+            # Use win32 for single character keys with proper shift handling
+            self._win32_tap(key)
         elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
             # Use xdotool for single character keys
             self._xdotool_press(key)
@@ -78,6 +78,37 @@ class KeyboardController:
             # For Key objects or multi-character strings, use pynput
             self._controller.press(key)
             self._controller.release(key)
+    
+    def _win32_tap(self, key_str):
+        """Tap key using win32api with proper shift handling"""
+        try:
+            # Get VK code and shift state
+            vk_and_shift = self.win32api.VkKeyScan(ord(key_str))
+            vk = vk_and_shift & 0xFF  # Lower 8 bits are the VK code
+            shift_state = (vk_and_shift >> 8) & 0xFF  # High byte has shift state
+            
+            # Press shift if needed
+            if shift_state & 0x01:  # Shift key needed
+                self.win32api.keybd_event(0x10, 0, 0, 0)  # Press shift
+            
+            # Press the actual key
+            self.win32api.keybd_event(vk, 0, 0, 0)
+            
+            # Brief delay for key press
+            time.sleep(0.01)
+            
+            # Release the key
+            self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
+            
+            # Release shift if it was pressed
+            if shift_state & 0x01:
+                self.win32api.keybd_event(0x10, 0, self.win32con.KEYEVENTF_KEYUP, 0)
+        except Exception as e:
+            print(f"[Keyboard] Win32 tap error: {e}, falling back to pynput")
+            try:
+                self._controller.tap(key_str)
+            except:
+                pass
     
     def _win32_press(self, key_str):
         """Press key using win32api for better system-level support"""

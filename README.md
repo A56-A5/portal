@@ -14,12 +14,13 @@ This project aims to provide a simpler, Python-based alternative with audio shar
 
 ## 🛠 Features
 
-- Seamless mouse & keyboard transition across screens  
-- Clipboard synchronization  
-- Audio streaming (Share or Receive)  
-- Visual overlay during transitions  
-- Log viewer GUI  
-- GUI-based configuration with `portal_ui.py`
+- **Seamless Input Sharing**: Mouse & keyboard transition across screens
+- **Full Keyboard Support**: All characters including special keys (punctuation, symbols) work in all contexts including password fields and lock screens
+- **Bidirectional Clipboard**: Text and images sync automatically when switching controls
+- **Audio Streaming**: Share or receive audio between devices
+- **Visual Overlay**: See transitions with screen overlay
+- **Log Viewer**: GUI-based log viewer for debugging
+- **Cross-Platform**: Works on Windows and Linux
 
 ##  Requirements
 
@@ -41,10 +42,17 @@ pip install pywin32
 
 ```bash
 sudo apt install ffmpeg xclip pactl
+# For better keyboard support in secure contexts:
+sudo apt install xdotool
 ```
 
 ##  Running the App
 
+```bash
+python main.py
+```
+
+Or use the legacy entry point:
 ```bash
 python portal.py
 ```
@@ -82,17 +90,31 @@ chmod +x build.sh
 
 ```
 portal/
-├── portal.py
-├── share.py
-├── audio.py
-├── log_viewer.py
-├── config.py
-├── config.json
-├── portal.ico
-├── requirements.txt
-├── build.bat
-├── build.sh
-└── README.md
+├── main.py                 # Main entry point
+├── config.json             # Configuration file
+├── requirements.txt        # Python dependencies
+├── build.bat              # Windows build script
+├── build.sh               # Linux build script
+├── portal.ico             # Application icon
+├── README.md              # This file
+│
+├── controllers/           # Input/output device controllers
+│   ├── keyboard_controller.py
+│   ├── mouse_controller.py
+│   ├── clipboard_controller.py
+│   └── audio_controller.py
+│
+├── network/              # Network communication modules
+│   ├── connection_handler.py
+│   ├── input_handler.py
+│   └── share_manager.py
+│
+├── gui/                  # User interface components
+│   ├── main_window.py
+│   └── log_viewer.py
+│
+└── utils/                # Utility functions
+    └── config.py
 ```
 
 ##  Clean Shutdown
