@@ -1,3 +1,4 @@
+
 """
 Keyboard Controller - Handles keyboard input control
 Uses win32api on Windows for better compatibility in secure contexts (lockscreen, password fields)
@@ -70,7 +71,9 @@ class KeyboardController:
     
     def tap(self, key):
         """Tap a key (press and release) - useful for characters"""
+        print(f"[Keyboard] tap() called with: '{key}' (type={type(key).__name__})")
         if self.use_win32 and isinstance(key, str) and len(key) == 1:
+            print(f"[Keyboard] Using _win32_tap for: '{key}'")
             # Use win32 for single character keys with proper shift handling
             self._win32_tap(key)
         elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
@@ -78,11 +81,13 @@ class KeyboardController:
             self._xdotool_press(key)
         else:
             # For Key objects or multi-character strings, use pynput
+            print(f"[Keyboard] Using pynput for: '{key}'")
             self._controller.press(key)
             self._controller.release(key)
     
     def _win32_tap(self, key_str):
         """Tap key using Unicode SendInput for ALL characters - most reliable"""
+        print(f"[Keyboard] _win32_tap() called with key_str='{key_str}', ord={ord(key_str) if key_str else 'N/A'}")
         try:
             # Always use Unicode SendInput for maximum compatibility
             # INPUT structure for keyboard input
@@ -111,17 +116,19 @@ class KeyboardController:
             release = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(0, ucode, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, 0))
             
             # Send key press
-            ctypes.windll.user32.SendInput(1, ctypes.byref(press), ctypes.sizeof(press))
+            print(f"[Keyboard] Sending Unicode press for code: {ucode}")
+            result1 = ctypes.windll.user32.SendInput(1, ctypes.byref(press), ctypes.sizeof(press))
             time.sleep(0.01)
             # Send key release
-            ctypes.windll.user32.SendInput(1, ctypes.byref(release), ctypes.sizeof(release))
+            result2 = ctypes.windll.user32.SendInput(1, ctypes.byref(release), ctypes.sizeof(release))
+            print(f"[Keyboard] SendInput results: press={result1}, release={result2}")
     
         except Exception as e:
             print(f"[Keyboard] Unicode SendInput error: {e}, fallback to pynput")
             try:
                 self._controller.tap(key_str)
-            except:
-                pass
+            except Exception as e2:
+                print(f"[Keyboard] Pynput fallback also failed: {e2}")
             
     def _win32_press(self, key_str):
         """Press key using win32api for better system-level support"""
