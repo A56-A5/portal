@@ -34,20 +34,27 @@ class ClipboardController:
     def _save_to_folder(self, data: bytes, format_type: str):
         """Save received clipboard data to the clipboard folder"""
         try:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            
+            # Clear old temp files first
             if format_type == "image":
-                filename = f"image_{timestamp}.png"
+                # Remove all old temp images
+                for filename in os.listdir(self.clipboard_folder):
+                    if filename.startswith("temp_image") and filename.endswith((".png", ".jpg", ".jpeg", ".bmp")):
+                        try:
+                            os.remove(os.path.join(self.clipboard_folder, filename))
+                        except:
+                            pass
+                
+                filename = "temp_image.png"
                 filepath = os.path.join(self.clipboard_folder, filename)
                 with open(filepath, 'wb') as f:
                     f.write(data)
-                print(f"[Clipboard] Saved to: {filepath}")
+                print(f"[Clipboard] Temp image saved: {filepath}")
             else:
-                filename = f"text_{timestamp}.txt"
+                filename = "temp_text.txt"
                 filepath = os.path.join(self.clipboard_folder, filename)
                 with open(filepath, 'wb') as f:
                     f.write(data)
-                print(f"[Clipboard] Saved to: {filepath}")
+                print(f"[Clipboard] Temp text saved: {filepath}")
         except Exception as e:
             print(f"[Clipboard] Error saving to folder: {e}")
     
@@ -86,27 +93,48 @@ class ClipboardController:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_DIB)
                             self.win32clipboard.CloseClipboard()
                             
-                            # Convert DIB to PNG for better compatibility
+                            # Convert DIB to PNG format for cross-platform compatibility
                             try:
                                 from PIL import Image
-                                import io
                                 
-                                # DIB format needs BMP header to be valid
-                                # Add BMP header
-                                bmp_header = b'BM' + (len(data) + 54).to_bytes(4, 'little') + b'\x00\x00\x00\x00\x36\x00\x00\x00\x28\x00'
-                                bmp_data = bmp_header + data
+                                # DIB format: First 40 bytes are BITMAPINFOHEADER
+                                # We need to reconstruct the bitmap to load it
+                                if len(data) < 40:
+                                    raise Exception("DIB data too short")
                                 
-                                # Open as image and convert to PNG
-                                img = Image.open(io.BytesIO(bmp_data))
+                                # Read BITMAPINFOHEADER to get dimensions and bit depth
+                                width = int.from_bytes(data[0:4], 'little', signed=True)
+                                height = int.from_bytes(data[4:8], 'little', signed=True)
+                                bits_per_pixel = int.from_bytes(data[14:16], 'little')
+                                
+                                # Convert DIB to image by creating a temporary BMP file
+                                # DIB is essentially a BMP without the 14-byte header
+                                bmp_header = b'BM'  # BMP signature
+                                file_size = (len(data) + 54).to_bytes(4, 'little')
+                                reserved = b'\x00\x00\x00\x00'
+                                data_offset = b'\x36\x00\x00\x00'  # 54 in little-endian
+                                dib_header_size = b'\x28\x00\x00\x00'  # 40 in little-endian
+                                
+                                # Skip the existing BITMAPINFOHEADER and rebuild with proper header
+                                info_header = data[0:40]
+                                pixel_data = data[40:]
+                                
+                                # Reconstruct BMP file
+                                bmp_file = bmp_header + file_size + reserved + data_offset
+                                bmp_file += info_header + pixel_data
+                                
+                                # Load and convert to PNG
+                                img = Image.open(io.BytesIO(bmp_file))
                                 output = io.BytesIO()
                                 img.save(output, format='PNG')
                                 png_data = output.getvalue()
                                 
                                 encoded = base64.b64encode(png_data).decode('utf-8')
                                 return f"image:{encoded}"
+                                
                             except (ImportError, Exception) as e:
-                                # Fallback: use raw DIB data
-                                print(f"[Clipboard] Converting DIB to PNG failed: {e}")
+                                # If conversion fails, just encode the raw DIB data
+                                print(f"[Clipboard] DIB to PNG conversion failed: {e}, using raw DIB")
                                 encoded = base64.b64encode(data).decode('utf-8')
                                 return f"image:{encoded}"
                         except Exception as e:
@@ -189,10 +217,6 @@ class ClipboardController:
                 # Decode base64
                 decoded_data = base64.b64decode(base64_data)
                 
-                # Save to clipboard folder if enabled
-                if self.save_to_folder and format_type == "image":
-                    self._save_to_folder(decoded_data, format_type)
-                
                 if self.os_type == "windows" and self.win32clipboard:
                     try:
                         self.win32clipboard.OpenClipboard()
@@ -202,22 +226,39 @@ class ClipboardController:
                             # Try to use PIL to convert image to proper format
                             try:
                                 from PIL import Image
-                                import io
+                                
+                                # Try to open as image and convert
                                 img = Image.open(io.BytesIO(decoded_data))
                                 
                                 # Convert to RGB if needed
-                                if img.mode != 'RGB':
+                                if img.mode not in ('RGB', 'RGBA'):
                                     img = img.convert('RGB')
                                 
-                                # Convert to bytes
+                                # Save as BMP to get proper DIB format
                                 output = io.BytesIO()
                                 img.save(output, format='BMP')
-                                bmp_data = output.getvalue()[14:]  # Remove BMP header, win32clipboard adds it
+                                bmp_data = output.getvalue()
                                 
-                                self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, bmp_data)
-                            except ImportError:
-                                # Fallback: try to set raw data
+                                # Extract DIB from BMP (skip BMP file header, 14 bytes)
+                                if len(bmp_data) > 14:
+                                    dib_data = bmp_data[14:]  # Remove BMP header
+                                    self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, dib_data)
+                                    
+                                    # Save PNG version to temp folder
+                                    if self.save_to_folder:
+                                        self._save_to_folder(decoded_data, format_type)
+                                else:
+                                    # Invalid data, try as raw
+                                    self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, decoded_data)
+                            except (ImportError, Exception) as e:
+                                print(f"[Clipboard] Image conversion failed: {e}")
+                                # Fallback: try to set raw data as DIB
+                                # If it's already in DIB format, this should work
                                 self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, decoded_data)
+                                
+                                # Try to save anyway
+                                if self.save_to_folder:
+                                    self._save_to_folder(decoded_data, format_type)
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')

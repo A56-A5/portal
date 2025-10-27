@@ -1,23 +1,35 @@
 INFO - Portal started
-INFO - [System] Device Activated at (2, 625)
-INFO - [System] Device Deactivated at (1918, 678)
-INFO - [System] Device Activated at (2, 518)
-INFO - [System] Device Deactivated at (1918, 466)
-INFO - [System] Device Activated at (2, 478)
-INFO - [System] Device Deactivated at (1918, 481)
-INFO - [System] Device Activated at (2, 510)
-INFO - [System] Device Deactivated at (1918, 557)
-INFO - [System] Device Activated at (2, 471)
-INFO - [System] Device Deactivated at (1918, 573)
-INFO - [System] Device Activated at (2, 724)
-INFO - [System] Device Deactivated at (1918, 430)
-INFO - [System] Device Activated at (2, 947)
-INFO - [System] Device Deactivated at (1918, 720)
-INFO - [System] Device Activated at (2, 632)
-INFO - [System] Device Deactivated at (1918, 882)
-INFO - [System] Device Activated at (2, 584)
-INFO - [System] Device Deactivated at (1918, 570)
-INFO - [System] Device Activated at (2, 573)
-INFO - [System] Device Deactivated at (1918, 485)
-INFO - [System] Device Activated at (2, 4)
-INFO - [System] Device Deactivated at (1918, 17)
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [System] Device Activated at (2, 618)
+INFO - [System] Device Deactivated at (1918, 584)
+INFO - [System] Device Activated at (2, 457)
+INFO - [System] Device Deactivated at (1918, 554)
+INFO - [System] Device Activated at (2, 463)
+INFO - [System] Device Deactivated at (1918, 404)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (2, 678)
+INFO - [System] Device Deactivated at (1918, 379)
+INFO - [System] Device Activated at (2, 647)
+INFO - [System] Device Deactivated at (1918, 922)
+INFO - [System] Device Activated at (2, 655)
+INFO - [System] Closing all sockets
+INFO - Stopping portal...
+INFO - Portal stopped.
+INFO - Portal started
+INFO - [System] Device Activated at (2, 457)
+INFO - [System] Device Deactivated at (1918, 507)
+INFO - [System] Device Activated at (2, 715)
+INFO - [System] Device Deactivated at (1918, 667)
+INFO - [System] Device Activated at (2, 869)
+INFO - [System] Device Deactivated at (1918, 670)
+INFO - [Clipboard] Updated.
+INFO - [System] Device Activated at (2, 635)
+INFO - [System] Device Deactivated at (1918, 633)
+INFO - [System] Device Activated at (2, 607)
+INFO - [System] Device Deactivated at (1918, 629)
+INFO - [System] Device Activated at (2, 613)
+INFO - [System] Device Deactivated at (1918, 621)
+INFO - [System] Device Activated at (2, 230)
+INFO - [System] Device Deactivated at (1918, 393)
