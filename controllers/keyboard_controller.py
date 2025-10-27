@@ -44,51 +44,33 @@ class KeyboardController:
     
     def press(self, key):
         """Press a key"""
-        if self.use_win32 and isinstance(key, str):
-            # Use win32 for string keys (better for secure contexts)
-            if len(key) == 1:
-                self._win32_press(key)
-            else:
-                # For multi-character strings, use pynput
-                self._controller.press(key)
-        elif self.use_xdotool and isinstance(key, str):
-            # Use xdotool for string keys on Linux
-            if len(key) == 1:
-                self._xdotool_press(key)
-            else:
-                # For multi-character strings, use pynput
-                self._controller.press(key)
+        if self.use_win32 and isinstance(key, str) and len(key) == 1:
+            # Use win32 for single character keys (better for secure contexts)
+            self._win32_press(key)
+        elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
+            # Use xdotool for single character keys on Linux
+            self._xdotool_press(key)
         else:
-            # For Key objects, use pynput
+            # For Key objects or multi-character strings, use pynput
             self._controller.press(key)
     
     def release(self, key):
         """Release a key"""
-        if self.use_win32 and isinstance(key, str):
-            # Use win32 for string keys
-            if len(key) == 1:
-                self._win32_release(key)
-            else:
-                # For multi-character strings, use pynput
-                self._controller.release(key)
+        if self.use_win32 and isinstance(key, str) and len(key) == 1:
+            self._win32_release(key)
         elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
             # xdotool handles press+release in one command
             pass  # No action needed for release with xdotool
         else:
-            # For Key objects, use pynput
+            # For Key objects or multi-character strings, use pynput
             self._controller.release(key)
     
     def tap(self, key):
         """Tap a key (press and release) - useful for characters"""
-        if self.use_win32 and isinstance(key, str):
-            # Use win32 for string keys
-            if len(key) == 1:
-                self._win32_press(key)
-                self._win32_release(key)
-            else:
-                # For multi-character strings, use pynput
-                self._controller.press(key)
-                self._controller.release(key)
+        if self.use_win32 and isinstance(key, str) and len(key) == 1:
+            # Use win32 for single character keys
+            self._win32_press(key)
+            self._win32_release(key)
         elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
             # Use xdotool for single character keys
             self._xdotool_press(key)
@@ -102,16 +84,41 @@ class KeyboardController:
         try:
             vk = self._key_to_vk(key_str)
             if vk:
+                # For special characters, we might need to handle shift key
+                # VkKeyScan returns high-order byte for shift state
+                vk_and_shift = self.win32api.VkKeyScan(ord(key_str))
+                shift_state = (vk_and_shift >> 8) & 0xFF
+                
+                # If shift is needed, press it
+                if shift_state & 0x01:  # Shift key needed
+                    self.win32api.keybd_event(0x10, 0, 0, 0)  # Press shift
+                
+                # Press the actual key
                 self.win32api.keybd_event(vk, 0, 0, 0)
+            else:
+                # Fallback to direct typing if VK lookup fails
+                # Use keybd_event with the raw key
+                self._controller.tap(key_str)
         except Exception as e:
-            print(f"[Keyboard] Win32 press error: {e}")
+            print(f"[Keyboard] Win32 press error: {e}, falling back to pynput")
+            try:
+                self._controller.tap(key_str)
+            except:
+                pass
     
     def _win32_release(self, key_str):
         """Release key using win32api"""
         try:
             vk = self._key_to_vk(key_str)
             if vk:
+                # Release the key
                 self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
+                
+                # Release shift if it was pressed
+                vk_and_shift = self.win32api.VkKeyScan(ord(key_str))
+                shift_state = (vk_and_shift >> 8) & 0xFF
+                if shift_state & 0x01:
+                    self.win32api.keybd_event(0x10, 0, self.win32con.KEYEVENTF_KEYUP, 0)
         except Exception as e:
             print(f"[Keyboard] Win32 release error: {e}")
     
@@ -165,41 +172,32 @@ class KeyboardController:
             'Key.enter': 0x0D, 'Key.tab': 0x09, 'Key.space': 0x20, 'Key.esc': 0x1B,
             'Key.delete': 0x2E, 'Key.backspace': 0x08, 'Key.ctrl_l': 0x11, 'Key.ctrl_r': 0x11,
             'Key.alt_l': 0x12, 'Key.alt_r': 0x12, 'Key.shift_l': 0x10, 'Key.shift_r': 0x10,
-            'Key.up': 0x26, 'Key.down': 0x28, 'Key.left': 0x25, 'Key.right': 0x27,
-            # Special characters on number row
-            '`': 0xC0, '~': 0xC0, '1': 0x31, '!': 0x31, '2': 0x32, '@': 0x32,
-            '3': 0x33, '#': 0x33, '4': 0x34, '$': 0x34, '5': 0x35, '%': 0x35,
-            '6': 0x36, '^': 0x36, '7': 0x37, '&': 0x37, '8': 0x38, '*': 0x38,
-            '9': 0x39, '(': 0x39, '0': 0x30, ')': 0x30, '-': 0xBD, '_': 0xBD,
-            '=': 0xBB, '+': 0xBB,
-            # Special characters
-            '.': 0xBE, '/': 0xBF, ';': 0xBA, ':': 0xBA,
-            "'": 0xDE, '"': 0xDE, '[': 0xDB, '{': 0xDB,
-            ']': 0xDD, '}': 0xDD, '\\': 0xDC, '|': 0xDC,
-            ',': 0xBC, '<': 0xBC
+            'Key.up': 0x26, 'Key.down': 0x28, 'Key.left': 0x25, 'Key.right': 0x27
         }
         
         key_str_lower = key_str.lower()
-        if key_str in key_map:  # Check exact match first for special chars
-            return key_map[key_str]
         if key_str_lower in key_map:
             return key_map[key_str_lower]
         
-        # Handle regular characters (a-z, 0-9)
+        # Handle regular characters
         if len(key_str) == 1:
-            char_upper = key_str.upper()
-            # Letters (VK codes are sequential)
-            if 'A' <= char_upper <= 'Z':
-                return ord(char_upper)
-            # Numbers
-            if '0' <= char_upper <= '9':
-                return ord(char_upper)
+            # For special characters, use VkKeyScan which gets the VK for any character
+            # including punctuation, numbers with shift, etc.
+            try:
+                vk_and_shift = self.win32api.VkKeyScan(ord(key_str))
+                return vk_and_shift & 0xFF  # Lower 8 bits are the VK code
+            except:
+                # Fallback to direct lookup
+                char_upper = key_str.upper()
+                # Letters
+                if 'A' <= char_upper <= 'Z':
+                    return ord(char_upper)
+                # Numbers
+                if '0' <= char_upper <= '9':
+                    return ord(char_upper)
         
-        # Fallback: use ord()
-        try:
-            return ord(key_str)
-        except:
-            return None
+        # Fallback
+        return None
     
     def parse_key(self, key_str: str):
         """Parse key string to Key object"""

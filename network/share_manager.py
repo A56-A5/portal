@@ -206,8 +206,16 @@ class ShareManager:
             except Exception as e:
                 print(f"[Transition] Failed to send active_device state: {e}")
         
-        # Send clipboard on transition to active
+        # Send clipboard on transition to active (server to client)
         if to_active:
+            current_clip = self.clipboard_controller.get_clipboard()
+            if self.last_send != current_clip:
+                self.last_send = current_clip
+                if hasattr(self, 'secondary_server') and self.secondary_server:
+                    self.clipboard_sender(self.secondary_server)
+        
+        # Also send clipboard when transitioning FROM active to inactive (bidirectional sync)
+        if not to_active and app_config.mode == "server":
             current_clip = self.clipboard_controller.get_clipboard()
             if self.last_send != current_clip:
                 self.last_send = current_clip
@@ -336,29 +344,22 @@ class ShareManager:
         
         # Read clipboard from client
         def read_clipboard():
-            buffer = ""
             while app_config.is_running:
                 try:
-                    data = self.secondary_server.recv(4096).decode()
+                    data = self.secondary_server.recv(1024).decode()
                     if not data:
                         break
-                    buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        try:
-                            evt = json.loads(line)
-                            if evt["type"] == "clipboard":
-                                local_clip = self.clipboard_controller.get_clipboard()
-                                if evt["content"] != local_clip:
-                                    print(f"[Clipboard] Receiving clipboard from client")
-                                    self.clipboard_controller.set_clipboard(evt["content"])
-                                    self.last_send = evt["content"]  # Update last_send to prevent loops
-                                    logging.info("[Clipboard] Updated from client.")
-                        except json.JSONDecodeError:
-                            pass
+                    try:
+                        evt = json.loads(data)
+                        if evt["type"] == "clipboard":
+                            local_clip = self.clipboard_controller.get_clipboard()
+                            if evt["content"] != local_clip:
+                                self.clipboard_controller.set_clipboard(evt["content"])
+                                logging.info("[Clipboard] Updated.")
+                    except json.JSONDecodeError:
+                        pass
                 except Exception as e:
                     print(f"[Clipboard] Error: {e}")
-                    break
         
         threading.Thread(target=read_clipboard, daemon=True).start()
     

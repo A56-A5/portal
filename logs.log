@@ -1,27 +1,9 @@
 INFO - Portal started
-INFO - Stopping portal...
-INFO - Portal stopped.
-INFO - Portal started
-INFO - [System] Device Activated at (2, 439)
-INFO - [System] Device Deactivated at (1918, 661)
-INFO - [System] Device Activated at (2, 561)
-INFO - [System] Device Deactivated at (1918, 640)
-INFO - [System] Device Activated at (2, 618)
-INFO - [System] Device Deactivated at (1918, 624)
-INFO - [System] Device Activated at (2, 568)
-INFO - [System] Device Deactivated at (1918, 742)
-INFO - [System] Device Activated at (2, 654)
-INFO - [System] Device Deactivated at (1918, 728)
-INFO - [System] Device Activated at (2, 546)
-INFO - [System] Device Deactivated at (1918, 808)
-INFO - [System] Device Activated at (2, 332)
-INFO - [System] Device Deactivated at (1918, 466)
-INFO - [Clipboard] Updated.
-INFO - [System] Device Activated at (2, 498)
-INFO - [System] Device Deactivated at (1918, 452)
-INFO - [System] Device Activated at (2, 625)
-INFO - [System] Device Deactivated at (1918, 1015)
-INFO - [System] Device Activated at (2, 329)
-INFO - [System] Device Deactivated at (1918, 1032)
+INFO - [System] Device Activated at (2, 425)
+INFO - [System] Device Deactivated at (1918, 756)
+INFO - [Clipboard] Updated from client.
+INFO - [System] Device Activated at (2, 527)
+INFO - [System] Device Deactivated at (1918, 877)
+INFO - [Clipboard] Updated from client.
 INFO - Stopping portal...
 INFO - Portal stopped.
