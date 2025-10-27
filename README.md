@@ -52,11 +52,6 @@ sudo apt install xdotool
 python main.py
 ```
 
-Or use the legacy entry point:
-```bash
-python portal.py
-```
-
 ##  Configuration
 
 Update `config.json` or use the GUI to:
@@ -96,25 +91,31 @@ portal/
 ├── build.bat              # Windows build script
 ├── build.sh               # Linux build script
 ├── portal.ico             # Application icon
+├── portal.png             # Application icon (Linux)
 ├── README.md              # This file
 │
 ├── controllers/           # Input/output device controllers
+│   ├── __init__.py
 │   ├── keyboard_controller.py
 │   ├── mouse_controller.py
 │   ├── clipboard_controller.py
 │   └── audio_controller.py
 │
 ├── network/              # Network communication modules
-│   ├── connection_handler.py
-│   ├── input_handler.py
-│   └── share_manager.py
+│   ├── __init__.py
+│   ├── share_manager.py      # Main input sharing manager
+│   ├── audio_manager.py      # Audio streaming manager
+│   ├── connection_handler.py # Connection management
+│   └── input_handler.py      # Input event handling
 │
 ├── gui/                  # User interface components
-│   ├── main_window.py
-│   └── log_viewer.py
+│   ├── __init__.py
+│   ├── main_window.py       # Main GUI window
+│   └── log_viewer.py         # Log viewer window
 │
 └── utils/                # Utility functions
-    └── config.py
+    ├── __init__.py
+    └── config.py           # Configuration management
 ```
 
 ##  Clean Shutdown
