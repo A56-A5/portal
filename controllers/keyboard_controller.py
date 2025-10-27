@@ -1,4 +1,5 @@
 
+
 """
 Keyboard Controller - Handles keyboard input control
 Uses win32api on Windows for better compatibility in secure contexts (lockscreen, password fields)
@@ -72,12 +73,22 @@ class KeyboardController:
     def tap(self, key):
         """Tap a key (press and release) - useful for characters"""
         print(f"[Keyboard] tap() called with: '{key}' (type={type(key).__name__})")
-        if self.use_win32 and isinstance(key, str) and len(key) == 1:
-            print(f"[Keyboard] Using _win32_tap for: '{key}'")
-            # Use win32 for single character keys with proper shift handling
-            self._win32_tap(key)
+        if isinstance(key, str) and len(key) == 1:
+            # Check if it's a special character (not alphanumeric)
+            if key.isalnum():
+                # For alphanumeric, try win32 first (works in secure contexts)
+                if self.use_win32:
+                    print(f"[Keyboard] Using _win32_tap for alphanumeric: '{key}'")
+                    self._win32_tap(key)
+                elif self.use_xdotool:
+                    self._xdotool_press(key)
+                else:
+                    self._controller.type(key)
+            else:
+                # For special characters, use pynput type (most reliable)
+                print(f"[Keyboard] Using pynput.type() for special char: '{key}'")
+                self._controller.type(key)
         elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
-            # Use xdotool for single character keys
             self._xdotool_press(key)
         else:
             # For Key objects or multi-character strings, use pynput
