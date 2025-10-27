@@ -280,14 +280,15 @@ class ShareManager:
             if not app_config.active_device:
                 return
             try:
-                # Try to get character
-                key_char = key.char if hasattr(key, 'char') else None
-                if key_char is not None and key_char != '':
-                    print(f"[Server] Sending char: '{key_char}' (ord={ord(key_char)})")
+                # Always try to get the character representation
+                if hasattr(key, 'char') and key.char is not None:
+                    key_char = key.char
+                    # Send character directly
                     send_json({"type": "key_press", "key": key_char})
+                elif hasattr(key, 'name'):
+                    # For special keys without char attribute
+                    send_json({"type": "key_press", "key": str(key)})
                 else:
-                    # For special keys, send as Key object string
-                    print(f"[Server] Sending key: {str(key)}")
                     send_json({"type": "key_press", "key": str(key)})
             except Exception as e:
                 print(f"[Keyboard] Error sending key press: {e}")

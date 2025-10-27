@@ -1,7 +1,7 @@
 {
     "stop_flag": false,
-    "is_running": false,
-    "active_device": true,
+    "is_running": true,
+    "active_device": false,
     "audio_enabled": false,
     "audio_mode": "Receive_Audio",
     "mode": "server",
