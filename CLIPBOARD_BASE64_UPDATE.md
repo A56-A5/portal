@@ -204,7 +204,7 @@ else:
 1. **Image Support**: Clipboard can now transfer images between devices
 2. **Special Characters**: Base64 encoding handles Unicode and special characters safely
 3. **Binary Data**: Support for any binary clipboard data
-4. **Format Detection**: Automatically detects and preserves format (text vs image)
+4. **Format Detection**: Automatically detects and preserves format (text vs image)image.png
 5. **Cross-Platform**: Works on Windows and Linux
 
 ## Testing

@@ -501,13 +501,25 @@ class MouseSyncApp:
                     try:
                         evt = json.loads(line)
                         if evt["type"] == "key_press":
-                            key = parse_key(evt["key"])
-                            if key:
-                                self.keyboard_controller.press(key)
+                            # Pass key string directly to controller for win32 compatibility
+                            key_str = evt["key"]
+                            # Only parse if it's a Key object, otherwise use string
+                            if not isinstance(key_str, str) or not key_str.startswith("Key."):
+                                self.keyboard_controller.press(key_str)
+                            else:
+                                key = parse_key(key_str)
+                                if key:
+                                    self.keyboard_controller.press(key)
                         elif evt["type"] == "key_release":
-                            key = parse_key(evt["key"])
-                            if key:
-                                self.keyboard_controller.release(key)
+                            # Pass key string directly to controller for win32 compatibility
+                            key_str = evt["key"]
+                            # Only parse if it's a Key object, otherwise use string
+                            if not isinstance(key_str, str) or not key_str.startswith("Key."):
+                                self.keyboard_controller.release(key_str)
+                            else:
+                                key = parse_key(key_str)
+                                if key:
+                                    self.keyboard_controller.release(key)
                         elif evt["type"] == "active_device":
                             app_config.active_device = evt["value"]
                             app_config.save()

@@ -1,18 +1,54 @@
 """
 Clipboard Controller - Handles clipboard operations across different operating systems
 Supports text, images, and other formats using base64 encoding
+Saves received images/files to a dedicated clipboard folder
 """
 import threading
 import platform
 import subprocess
 import base64
+import os
+from datetime import datetime
 from typing import Optional, Tuple
 
 class ClipboardController:
-    def __init__(self):
+    def __init__(self, save_to_folder=True):
         self.lock = threading.Lock()
         self.os_type = platform.system().lower()
+        self.save_to_folder = save_to_folder
+        self.clipboard_folder = "clipboard"
         self._init_clipboard_functions()
+        self._ensure_clipboard_folder()
+    
+    def _ensure_clipboard_folder(self):
+        """Create clipboard folder if it doesn't exist"""
+        if self.save_to_folder:
+            try:
+                if not os.path.exists(self.clipboard_folder):
+                    os.makedirs(self.clipboard_folder)
+                    print(f"[Clipboard] Created folder: {self.clipboard_folder}")
+            except Exception as e:
+                print(f"[Clipboard] Error creating folder: {e}")
+    
+    def _save_to_folder(self, data: bytes, format_type: str):
+        """Save received clipboard data to the clipboard folder"""
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            if format_type == "image":
+                filename = f"image_{timestamp}.png"
+                filepath = os.path.join(self.clipboard_folder, filename)
+                with open(filepath, 'wb') as f:
+                    f.write(data)
+                print(f"[Clipboard] Saved to: {filepath}")
+            else:
+                filename = f"text_{timestamp}.txt"
+                filepath = os.path.join(self.clipboard_folder, filename)
+                with open(filepath, 'wb') as f:
+                    f.write(data)
+                print(f"[Clipboard] Saved to: {filepath}")
+        except Exception as e:
+            print(f"[Clipboard] Error saving to folder: {e}")
     
     def _init_clipboard_functions(self):
         """Initialize OS-specific clipboard functions"""
@@ -129,6 +165,10 @@ class ClipboardController:
                 
                 # Decode base64
                 decoded_data = base64.b64decode(base64_data)
+                
+                # Save to clipboard folder if enabled
+                if self.save_to_folder and format_type == "image":
+                    self._save_to_folder(decoded_data, format_type)
                 
                 if self.os_type == "windows" and self.win32clipboard:
                     try:
