@@ -1,85 +1,95 @@
+"""
+Main Window - Primary UI for Portal application
+"""
 import tkinter as tk
 from tkinter import PhotoImage, ttk
-from config import app_config
-# Note: For organized structure, import from utils.config instead
-# from utils.config import app_config
+import sys
+import os
 import threading
 import subprocess
 import time
-import logging 
+import logging
 import platform
-import sys,os
-import socket 
+import socket
 
-if False:
-    # Importing modules for building purpose
-    import win32api
-    import win32clipboard
-    import sounddevice as sd
-    import numpy as np
-    from PyQt5.QtWidgets import QApplication, QWidget
-    from PyQt5.QtCore import Qt
-    
+from utils.config import app_config
+
+
 def get_executable(name):
+    """Get executable path for subprocess"""
     if getattr(sys, 'frozen', False):
         base = os.path.dirname(sys.executable)
         ext = ".exe" if platform.system().lower() == "windows" else ""
         return os.path.join(base, name + ext)
     else:
-        return [sys.executable, name + ".py"]  
+        return [sys.executable, name + ".py"]
 
-class PortalUI:
-    def __init__(self, root):
+
+class MainWindow:
+    def __init__(self, root, on_start_stop):
         self.root = root
         self.os_type = platform.system().lower()
+        self.on_start_stop = on_start_stop
+        
         self.root.title("Portal")
-        self.root.withdraw() 
-        icon_path = "portal.ico"
-        if hasattr(sys, "_MEIPASS"):  
-            icon_path = os.path.join(sys._MEIPASS, icon_path)
-
-        if sys.platform.startswith("win") and os.path.exists(icon_path):
-            self.root.iconbitmap(icon_path)
-        else:
-            try:
-                img = PhotoImage(file="portal.png")  
-                self.root.iconphoto(False, img)
-            except Exception as e:
-                print("Failed to set icon:", e)
+        self.root.withdraw()
+        self.setup_icon()
         self.root.geometry("350x550")
         self.root.deiconify()
+        
         self.mode = tk.StringVar(value=app_config.mode)
         self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)
         self.running = False
         self.invis_process = None
         self.audio_process = None
-
+        
+        # Create tabs
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
         self.logs_tab = ttk.Frame(self.tab_control)
         self.tab_control.add(self.portal_tab, text='Portal')
         self.tab_control.add(self.logs_tab, text='View Logs')
         self.tab_control.pack(expand=1, fill='both')
-
-        with open("logs.log","w") as f:
+        
+        # Initialize logging
+        with open("logs.log", "w") as f:
             print("")
-
-        logging.basicConfig(level=logging.INFO, filename="logs.log", filemode="a", format="%(levelname)s - %(message)s")
-
+        logging.basicConfig(
+            level=logging.INFO,
+            filename="logs.log",
+            filemode="a",
+            format="%(levelname)s - %(message)s"
+        )
+        
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
-
+        
         threading.Thread(target=self.check_status, daemon=True).start()
-
+    
+    def setup_icon(self):
+        """Setup application icon"""
+        icon_path = "portal.ico"
+        if hasattr(sys, "_MEIPASS"):
+            icon_path = os.path.join(sys._MEIPASS, icon_path)
+        
+        if sys.platform.startswith("win") and os.path.exists(icon_path):
+            self.root.iconbitmap(icon_path)
+        else:
+            try:
+                img = PhotoImage(file="portal.png")
+                self.root.iconphoto(False, img)
+            except Exception as e:
+                print("Failed to set icon:", e)
+    
     def on_tab_changed(self, event):
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]
         if selected_tab == "View Logs":
             try:
-                self.audio_process = subprocess.Popen(get_executable("log_viewer"))
+                subprocess.Popen(get_executable("log_viewer"))
                 self.tab_control.select(self.portal_tab)
             except Exception as e:
                 logging.info(f"Failed to open log viewer: {e}")
-
+    
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
         mode_frame.pack(pady=10, padx=10, fill='x')
@@ -108,7 +118,7 @@ class PortalUI:
         ip_label = ttk.Label(server_row, text=f"-  ({device_ip})", font=bold_font)
         ip_label.pack(side='left', padx=10)
 
-        self.server_direction = tk.StringVar(value="Top")
+        self.server_direction = tk.StringVar(value=app_config.server_direction)
         self.server_location_label = tk.Label(mode_frame, text="Choose where the client device is located:", fg='black')
         self.server_location_label.pack(anchor='w', padx=30, pady=(5, 0))
 
@@ -137,15 +147,13 @@ class PortalUI:
         self.audio_mode = tk.StringVar(value=app_config.audio_mode)
         self.audio_mode.trace_add("write", self.on_audio_mode_change)
 
-        self.audio_disabled_rb = ttk.Checkbutton(self.portal_tab, text="Enable Audio ", variable=self.audio_enabled, command=self.toggle_audio, style="Bold.TRadiobutton")
-        self.audio_disabled_rb.pack(anchor='w', padx=10, pady=(0, 5))
+        self.audio_enabled_cb = ttk.Checkbutton(self.portal_tab, text="Enable Audio ", variable=self.audio_enabled, command=self.toggle_audio)
+        self.audio_enabled_cb.pack(anchor='w', padx=10, pady=(0, 5))
         self.audio_share_rb = ttk.Radiobutton(self.portal_tab, text="Share Audio", variable=self.audio_mode, value="Share_Audio")
         self.audio_receive_rb = ttk.Radiobutton(self.portal_tab, text="Receive Audio", variable=self.audio_mode, value="Receive_Audio")
 
-        for rb in [self.audio_disabled_rb, self.audio_share_rb, self.audio_receive_rb]:
-            rb.pack(anchor='w', padx=20, pady=2 )
-        self.audio_share_rb.pack(padx=40)
-        self.audio_receive_rb.pack(padx=40)
+        self.audio_share_rb.pack(anchor='w', padx=40, pady=2)
+        self.audio_receive_rb.pack(anchor='w', padx=40, pady=2)
 
         control_frame = ttk.Frame(self.portal_tab)
         control_frame.pack(pady=20)
@@ -153,10 +161,10 @@ class PortalUI:
         self.status_label = ttk.Label(control_frame, text="Portal is not running", foreground="red")
         self.status_label.grid(row=0, column=0, columnspan=2, pady=5)
 
-        self.reload_button = ttk.Button(control_frame, text="Reload", command=lambda: self.toggle_portal("reload"))
+        self.reload_button = ttk.Button(control_frame, text="Reload", command=lambda: self.on_start_stop("reload"))
         self.reload_button.grid(row=1, column=0, padx=5)
 
-        self.start_stop_button = ttk.Button(control_frame, text="Start", command=lambda: self.toggle_portal("start"))
+        self.start_stop_button = ttk.Button(control_frame, text="Start", command=lambda: self.on_start_stop("start"))
         self.start_stop_button.grid(row=1, column=1, padx=5)
 
         self.toggle_mode()
@@ -233,84 +241,11 @@ class PortalUI:
         self.audio_receive_rb.config(state=state)
         app_config.audio_enabled = self.audio_enabled.get()
         app_config.audio_mode = self.audio_mode.get()
-
-    def toggle_portal(self, mode):
-        if mode == "start" and not self.running:
-            if getattr(self, 'portal_thread', None) and self.portal_thread.is_alive():
-                print("Portal is already running")
-                logging.info("Portal is already running.")
-                return
-
-            app_config.stop_flag = False
-            self.running = True
-            app_config.is_running = True
-            self.status_label.config(text="Portal is running", foreground="green")
-            self.start_stop_button.config(text="Stop")
-            logging.info("Portal started")
-
-            app_config.server_direction = self.server_direction.get()
-            if self.client_ip_entry.get() != "Enter Server IP":
-                app_config.server_ip = self.client_ip_entry.get()
-
-            app_config.mode = self.mode.get()
-            app_config.audio_enabled = self.audio_enabled.get()
-            app_config.audio_mode = self.audio_mode.get()
-            app_config.save()  
-
-            
-            try:
-                self.invis_process = subprocess.Popen(get_executable("share"))
-            except Exception as e:
-                logging.info(f"Failed to launch share.py: {e}")
-
-            if app_config.audio_enabled: 
-                try:
-                    self.audio_process = subprocess.Popen(get_executable("audio"))
-                except Exception as e:
-                    logging.info(f"Failed to launch audio.py")
-            
-
-        elif self.running and mode != "reload":
-            logging.info("Stopping portal...")
-            app_config.stop_flag = True
-            self.running = False
-            app_config.is_running = False
-            self.status_label.config(text="Portal is not running", foreground="red")
-            self.start_stop_button.config(text="Start")
-            try:
-                if self.invis_process:
-                    self.invis_process.terminate()
-                    self.invis_process.wait()
-                self.invis_process = None
-            except Exception as e:
-                print(f"Failed to terminate invis.py: {e}")
-            try:
-                if self.audio_process:
-                    self.audio_process.terminate()
-                    self.audio_process.wait()
-                self.audio_process = None
-            except Exception as e:
-                print(f"Failed to terminate audio.py: {e}")
-            logging.info("Portal stopped.")
-
-        elif self.running and mode == "reload":
-            logging.info("Reloading portal...")
-            self.toggle_portal("stop")
-            time.sleep(0.5)
-            self.toggle_portal("start")
-
-        else:
-            logging.info(f"Unknown command: {mode}")
-
+    
     def check_status(self):
         while app_config.is_running and not app_config.stop_flag:
             time.sleep(0.5)
         
         self.status_label.config(text="Portal is not running", foreground="red")
         self.start_stop_button.config(text="Start")
-        
 
-if __name__ == "__main__":
-    root = tk.Tk()
-    app = PortalUI(root)
-    root.mainloop()

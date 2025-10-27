@@ -12,6 +12,11 @@ from pynput import mouse,keyboard
 from pynput.keyboard import Controller as KeyboardController, Key  
 from pynput.mouse import Button, Controller
 from config import app_config
+# Note: For organized structure, use:
+# from utils.config import app_config
+# from controllers.clipboard_controller import ClipboardController
+# from controllers.mouse_controller import MouseController
+# from controllers.keyboard_controller import KeyboardController
 
 win32api = None
 win32clipboard = None

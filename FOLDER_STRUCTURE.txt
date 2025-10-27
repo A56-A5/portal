@@ -1,0 +1,68 @@
+Portal - Organized Folder Structure
+====================================
+
+CREATED FOLDERS:
+----------------
+controllers/    - Input/output device controllers
+network/        - Network communication modules  
+gui/            - User interface components
+utils/          - Utility functions and configuration
+
+
+CONTROLLER MODULES (controllers/):
+----------------------------------
+✓ clipboard_controller.py   - Clipboard operations (Windows/Linux)
+✓ mouse_controller.py       - Mouse control (position, clicks, scroll)
+✓ keyboard_controller.py    - Keyboard input simulation
+✓ audio_controller.py       - Audio capture and playback
+
+
+NETWORK MODULES (network/):
+----------------------------
+✓ connection_handler.py     - TCP connection management
+✓ input_handler.py          - Input event processing
+
+
+GUI MODULES (gui/):
+-------------------
+✓ main_window.py            - Main portal interface
+✓ log_viewer.py             - Log viewing window
+
+
+UTILITY MODULES (utils/):
+-------------------------
+✓ config.py                 - Configuration management
+
+
+ENTRY POINTS:
+-------------
+portal.py          - Original main entry (backward compatible)
+main.py            - New organized entry point  
+share.py           - Original share module (still works)
+audio.py           - Original audio module (still works)
+
+
+DOCUMENTATION:
+--------------
+STRUCTURE.md               - Detailed module documentation
+README_NEW_STRUCTURE.md    - Quick reference guide
+FOLDER_STRUCTURE.txt       - This file
+
+
+BENEFITS:
+---------
+1. Clear separation of concerns
+2. Easy to locate and modify specific functionality
+3. Controllers can be reused independently
+4. Better code organization and maintainability
+5. Backward compatible with original code
+
+
+USAGE:
+------
+Original:  python portal.py  (still works)
+New:       python main.py    (organized structure)
+
+
+Status: ✓ Organization Complete
+

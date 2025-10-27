@@ -1,0 +1,15 @@
+{
+    "stop_flag": false,
+    "is_running": true,
+    "active_device": false,
+    "audio_enabled": true,
+    "audio_mode": "Share_Audio",
+    "mode": "server",
+    "server_direction": "Right",
+    "server_ip": "",
+    "audio_ip": "192.168.1.74",
+    "server_primary_port": 50007,
+    "server_secondary_port": 50008,
+    "audio_port": 50009,
+    "clipboard": ""
+}
