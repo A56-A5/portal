@@ -93,50 +93,68 @@ class ClipboardController:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_DIB)
                             self.win32clipboard.CloseClipboard()
                             
-                            # Convert DIB to PNG format for cross-platform compatibility
-                            try:
-                                from PIL import Image
-                                
-                                # DIB format: First 40 bytes are BITMAPINFOHEADER
-                                # We need to reconstruct the bitmap to load it
-                                if len(data) < 40:
-                                    raise Exception("DIB data too short")
-                                
-                                # Read BITMAPINFOHEADER to get dimensions and bit depth
-                                width = int.from_bytes(data[0:4], 'little', signed=True)
-                                height = int.from_bytes(data[4:8], 'little', signed=True)
-                                bits_per_pixel = int.from_bytes(data[14:16], 'little')
-                                
-                                # Convert DIB to image by creating a temporary BMP file
-                                # DIB is essentially a BMP without the 14-byte header
-                                bmp_header = b'BM'  # BMP signature
-                                file_size = (len(data) + 54).to_bytes(4, 'little')
-                                reserved = b'\x00\x00\x00\x00'
-                                data_offset = b'\x36\x00\x00\x00'  # 54 in little-endian
-                                dib_header_size = b'\x28\x00\x00\x00'  # 40 in little-endian
-                                
-                                # Skip the existing BITMAPINFOHEADER and rebuild with proper header
-                                info_header = data[0:40]
-                                pixel_data = data[40:]
-                                
-                                # Reconstruct BMP file
-                                bmp_file = bmp_header + file_size + reserved + data_offset
-                                bmp_file += info_header + pixel_data
-                                
-                                # Load and convert to PNG
-                                img = Image.open(io.BytesIO(bmp_file))
-                                output = io.BytesIO()
-                                img.save(output, format='PNG')
-                                png_data = output.getvalue()
-                                
-                                encoded = base64.b64encode(png_data).decode('utf-8')
-                                return f"image:{encoded}"
-                                
-                            except (ImportError, Exception) as e:
-                                # If conversion fails, just encode the raw DIB data
-                                print(f"[Clipboard] DIB to PNG conversion failed: {e}, using raw DIB")
-                                encoded = base64.b64encode(data).decode('utf-8')
-                                return f"image:{encoded}"
+                             # Convert DIB to PNG format for cross-platform compatibility
+                             try:
+                                 from PIL import Image
+                                 import struct
+                                 
+                                 # DIB format: First 40 bytes are BITMAPINFOHEADER
+                                 if len(data) < 40:
+                                     raise Exception("DIB data too short")
+                                 
+                                 # Read BITMAPINFOHEADER
+                                 width = struct.unpack('<i', data[0:4])[0]
+                                 height = struct.unpack('<i', data[4:8])[0]
+                                 planes = struct.unpack('<H', data[8:10])[0]
+                                 bit_count = struct.unpack('<H', data[10:12])[0]
+                                 compression = struct.unpack('<I', data[12:16])[0]
+                                 
+                                 # Calculate color table size
+                                 colors_used = struct.unpack('<I', data[28:32])[0]
+                                 
+                                 # Color table comes right after header (if present)
+                                 color_table_size = colors_used * 4 if colors_used > 0 and bit_count <= 8 else 0
+                                 
+                                 # Pixel data starts after header + color table
+                                 pixel_data_offset = 40 + color_table_size
+                                 
+                                 if len(data) < pixel_data_offset:
+                                     raise Exception("DIB data incomplete")
+                                 
+                                 # Extract pixel data
+                                 if bit_count == 24:
+                                     # RGB format - convert to image
+                                     try:
+                                         # Create BMP header
+                                         bmp_header = b'BM'  # Signature
+                                         file_size = (14 + len(data)).to_bytes(4, 'little')  # Total file size
+                                         reserved = b'\x00\x00\x00\x00'  # Reserved
+                                         data_offset = (14 + 40).to_bytes(4, 'little')  # Data offset
+                                         
+                                         # Create BMP file
+                                         bmp_data = bmp_header + file_size + reserved + data_offset + data
+                                         
+                                         # Load and convert to PNG
+                                         img = Image.open(io.BytesIO(bmp_data))
+                                         output = io.BytesIO()
+                                         img.save(output, format='PNG')
+                                         png_data = output.getvalue()
+                                         
+                                         encoded = base64.b64encode(png_data).decode('utf-8')
+                                         return f"image:{encoded}"
+                                     except Exception as e:
+                                         raise Exception(f"Failed to convert bitmap: {e}")
+                                 else:
+                                     # Use VkAllocBitmapHandle function approach
+                                     # For non-24bit formats, just encode as-is
+                                     encoded = base64.b64encode(data).decode('utf-8')
+                                     return f"image:{encoded}"
+                                 
+                             except (ImportError, Exception) as e:
+                                 # If conversion fails, just encode the raw DIB data
+                                 print(f"[Clipboard] DIB to PNG conversion failed: {e}, using raw DIB")
+                                 encoded = base64.b64encode(data).decode('utf-8')
+                                 return f"image:{encoded}"
                         except Exception as e:
                             print(f"[Clipboard] Error getting image: {e}")
                             pass
@@ -283,6 +301,10 @@ class ClipboardController:
                                 stdin=subprocess.PIPE
                             )
                             p.communicate(input=decoded_data)
+                            
+                            # Save PNG version to temp folder
+                            if self.save_to_folder:
+                                self._save_to_folder(decoded_data, format_type)
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')
