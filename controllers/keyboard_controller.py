@@ -40,10 +40,6 @@ class KeyboardController:
                 # Check if xdotool is available
                 result = subprocess.run(['which', 'xdotool'], capture_output=True)
                 self.use_xdotool = result.returncode == 0
-                if self.use_xdotool:
-                    print("[Keyboard] Using xdotool for Linux keyboard input")
-                else:
-                    print("[Keyboard] Warning: xdotool not found. Install with: sudo apt install xdotool")
             except:
                 self.use_xdotool = False
     
@@ -72,13 +68,11 @@ class KeyboardController:
     
     def tap(self, key):
         """Tap a key (press and release) - useful for characters"""
-        print(f"[Keyboard] tap() called with: '{key}' (type={type(key).__name__})")
         if isinstance(key, str) and len(key) == 1:
             # Check if it's a special character (not alphanumeric)
             if key.isalnum():
                 # For alphanumeric, try win32 first (works in secure contexts)
                 if self.use_win32:
-                    print(f"[Keyboard] Using _win32_tap for alphanumeric: '{key}'")
                     self._win32_tap(key)
                 elif self.use_xdotool:
                     self._xdotool_press(key)
@@ -86,19 +80,16 @@ class KeyboardController:
                     self._controller.type(key)
             else:
                 # For special characters, use pynput type (most reliable)
-                print(f"[Keyboard] Using pynput.type() for special char: '{key}'")
                 self._controller.type(key)
         elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
             self._xdotool_press(key)
         else:
             # For Key objects or multi-character strings, use pynput
-            print(f"[Keyboard] Using pynput for: '{key}'")
             self._controller.press(key)
             self._controller.release(key)
     
     def _win32_tap(self, key_str):
         """Tap key using Unicode SendInput for ALL characters - most reliable"""
-        print(f"[Keyboard] _win32_tap() called with key_str='{key_str}', ord={ord(key_str) if key_str else 'N/A'}")
         try:
             # Always use Unicode SendInput for maximum compatibility
             # INPUT structure for keyboard input
@@ -127,19 +118,16 @@ class KeyboardController:
             release = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(0, ucode, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, 0))
             
             # Send key press
-            print(f"[Keyboard] Sending Unicode press for code: {ucode}")
-            result1 = ctypes.windll.user32.SendInput(1, ctypes.byref(press), ctypes.sizeof(press))
+            ctypes.windll.user32.SendInput(1, ctypes.byref(press), ctypes.sizeof(press))
             time.sleep(0.01)
             # Send key release
-            result2 = ctypes.windll.user32.SendInput(1, ctypes.byref(release), ctypes.sizeof(release))
-            print(f"[Keyboard] SendInput results: press={result1}, release={result2}")
+            ctypes.windll.user32.SendInput(1, ctypes.byref(release), ctypes.sizeof(release))
     
         except Exception as e:
-            print(f"[Keyboard] Unicode SendInput error: {e}, fallback to pynput")
             try:
                 self._controller.tap(key_str)
             except Exception as e2:
-                print(f"[Keyboard] Pynput fallback also failed: {e2}")
+                pass
             
     def _win32_press(self, key_str):
         """Press key using win32api for better system-level support"""
@@ -162,7 +150,6 @@ class KeyboardController:
                 # Use keybd_event with the raw key
                 self._controller.tap(key_str)
         except Exception as e:
-            print(f"[Keyboard] Win32 press error: {e}, falling back to pynput")
             try:
                 self._controller.tap(key_str)
             except:
@@ -182,7 +169,7 @@ class KeyboardController:
                 if shift_state & 0x01:
                     self.win32api.keybd_event(0x10, 0, self.win32con.KEYEVENTF_KEYUP, 0)
         except Exception as e:
-            print(f"[Keyboard] Win32 release error: {e}")
+            pass
     
     def _xdotool_press(self, key_str):
         """Press key using xdotool for better Linux support"""
@@ -192,7 +179,7 @@ class KeyboardController:
                 # xdotool types the key (press+release)
                 self.subprocess.run(['xdotool', 'key', key], capture_output=True)
         except Exception as e:
-            print(f"[Keyboard] xdotool press error: {e}")
+            pass
     
     def _key_to_xdotool(self, key_str):
         """Convert key string to xdotool key name"""

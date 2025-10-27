@@ -355,21 +355,28 @@ class ShareManager:
         
         # Read clipboard from client
         def read_clipboard():
+            buffer = ""
             while app_config.is_running:
                 try:
                     data = self.secondary_server.recv(1024).decode()
                     if not data:
                         break
-                    try:
-                        evt = json.loads(data)
-                        if evt["type"] == "clipboard":
-                            local_clip = self.clipboard_controller.get_clipboard()
-                            if evt["content"] != local_clip:
-                                self.clipboard_controller.set_clipboard(evt["content"])
-                    except json.JSONDecodeError:
-                        pass
+                    
+                    buffer += data
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        try:
+                            evt = json.loads(line)
+                            if evt["type"] == "clipboard":
+                                local_clip = self.clipboard_controller.get_clipboard()
+                                if evt["content"] != local_clip:
+                                    self.clipboard_controller.set_clipboard(evt["content"])
+                                    self.last_send = evt["content"]
+                        except json.JSONDecodeError:
+                            pass
                 except Exception as e:
                     print(f"[Clipboard] Error: {e}")
+                    break
         
         threading.Thread(target=read_clipboard, daemon=True).start()
     
@@ -488,9 +495,6 @@ class ShareManager:
                                     self.keyboard_controller.press(key)
                             else:
                                 # Regular character - use tap for better compatibility in secure contexts
-                                # Debug: print what we're trying to type
-                                if key_str and len(key_str) == 1:
-                                    print(f"[Client] Typing character: '{key_str}' (ord={ord(key_str)})")
                                 self.keyboard_controller.tap(key_str)
                         else:
                             self.keyboard_controller.press(key_str)
