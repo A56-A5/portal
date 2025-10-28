@@ -66,7 +66,7 @@ Update `config.json` or use the GUI to:
 
 Run `build.bat`:
 
-- Output: `dist/Portal-v1.0/Portal-v1.0.exe`
+- Output: `dist/Portal-v1.0.exe` (single file)
 
 ###  Linux
 
@@ -79,7 +79,7 @@ chmod +x build.sh
 ./build.sh
 ```
 
-- Output: `dist/Portal-v1.0/Portal-v1.0`
+- Output: `dist/Portal-v1.0` (single file)
 
 ##  Project Structure
 

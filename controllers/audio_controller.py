@@ -100,6 +100,7 @@ class AudioController:
         except (KeyboardInterrupt, Exception):
             pass
         finally:
+            logging.info(f"[Audio] Send linux stop {target_ip}:{port}")
             self.unmute_output()
             self.cleanup(sock, process)
     
@@ -130,6 +131,7 @@ class AudioController:
         except (KeyboardInterrupt, Exception):
             pass
         finally:
+            logging.info(f"[Audio] Send windows stop {target_ip}:{port}")
             self.cleanup(sock, process)
     
     def receive_audio(self, port: int):
@@ -159,6 +161,7 @@ class AudioController:
         except (KeyboardInterrupt, Exception):
             pass
         finally:
+            logging.info(f"[Audio] Receive stop {port}")
             self.cleanup(sock)
     
     def receive_audio_ffplay(self, port: int):
@@ -177,6 +180,7 @@ class AudioController:
         
         process = None
         try:
+            logging.info(f"[Audio] ffplay start {port}")
             process = subprocess.Popen(cmd)
             while app_config.is_running and not app_config.stop_flag:
                 if process.poll() is not None:
@@ -191,4 +195,5 @@ class AudioController:
                     process.wait(timeout=2)
                 except:
                     pass
+            logging.info(f"[Audio] ffplay stop {port}")
 

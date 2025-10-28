@@ -13,20 +13,20 @@ import platform
 import socket
 
 from utils.config import app_config
+from gui.log_viewer import open_log_viewer
 
 
 def get_executable(name):
-    """Get executable path for subprocess"""
-    if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-        ext = ".exe" if platform.system().lower() == "windows" else ""
-        return os.path.join(base, name + ext)
-    else:
-        # Handle module paths for new structure
-        if name == "log_viewer":
-            return [sys.executable, "-m", "gui.log_viewer"]
-        else:
-            return [sys.executable, name + ".py"]
+    """Return command to launch a module using current interpreter.
+
+    Always invokes as `python -m package.module` so it works both when
+    running from source and inside a single-file PyInstaller bundle.
+    """
+    module_map = {
+        "log_viewer": "gui.log_viewer",
+    }
+    module = module_map.get(name, name)
+    return [sys.executable, "-m", module]
 
 
 class MainWindow:
@@ -89,7 +89,7 @@ class MainWindow:
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]
         if selected_tab == "View Logs":
             try:
-                subprocess.Popen(get_executable("log_viewer"))
+                open_log_viewer(self.root)
                 self.tab_control.select(self.portal_tab)
             except Exception as e:
                 pass

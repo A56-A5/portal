@@ -233,8 +233,10 @@ class ShareManager:
             data = {"type": "clipboard", "content": current_clip}
             socket.sendall((json.dumps(data) + "\n").encode())
             print("[Clipboard] Sent clipboard data")
+            logging.info("[Clipboard] Sent clipboard data")
         except Exception as e:
             print(f"[Clipboard] Error: {e}")
+            logging.info(f"[Clipboard] Error: {e}")
     
     def send_mouse_events(self, socket):
         """Send mouse events from server"""
@@ -330,6 +332,7 @@ class ShareManager:
         self.secondary_server_socket.listen(1)
         
         print("[Server] Waiting for Client to connect")
+        logging.info("[Server] Waiting for Client to connect")
         
         threading.Thread(target=self.accept_primary, daemon=True).start()
         threading.Thread(target=self.accept_secondary, daemon=True).start()
@@ -341,6 +344,8 @@ class ShareManager:
         print(f"[Server] Primary connection from: {addr}")
         logging.info(f"[Connection] Primary connection from: {addr}")
         client.sendall(b'CONNECTED\n')
+        print("[Server] Primary handshake sent")
+        logging.info("[Connection] Primary handshake sent")
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         threading.Thread(target=lambda: self.send_mouse_events(client), daemon=True).start()
     
@@ -352,6 +357,8 @@ class ShareManager:
         logging.info(f"[Connection] Secondary connection from: {sec_addr}")
         self.secondary_server = sec_socket
         threading.Thread(target=lambda: self.send_keyboard_events(sec_socket), daemon=True).start()
+        print("[Server] Secondary ready for keyboard/clipboard")
+        logging.info("[Connection] Secondary ready for keyboard/clipboard")
         
         # Read clipboard from client
         def read_clipboard():
@@ -458,6 +465,8 @@ class ShareManager:
                         self.mouse_controller.scroll(evt['dx'], evt['dy'])
                 except Exception as e:
                     print(f"[Client] Parse error: {e}")
+                    logging.info(f"[Client] Parse error: {e}")
+                    logging.info(f"[Client] Parse error: {e}")
     
     def receive_secondary(self):
         """Receive keyboard events and clipboard"""

@@ -14,21 +14,31 @@ import logging
 
 
 def get_executable(name):
-    """Get executable path for subprocess"""
+    """Return command to launch a child role within the same executable.
+
+    Use a flag understood by this program to dispatch into specific roles
+    inside a single-file bundle without reopening the main UI.
+    """
     if getattr(sys, 'frozen', False):
-        base = os.path.dirname(sys.executable)
-        ext = ".exe" if platform.system().lower() == "windows" else ""
-        return os.path.join(base, name + ext)
+        return [sys.executable, f"--child={name}"]
     else:
-        # Handle module paths for new structure
-        if name == "share_manager":
-            return [sys.executable, "-m", "network.share_manager"]
-        elif name == "audio":
-            return [sys.executable, "-m", "network.audio_manager"]
-        elif name == "log_viewer":
-            return [sys.executable, "-m", "gui.log_viewer"]
-        else:
-            return [sys.executable, name + ".py"]
+        script_path = os.path.abspath(__file__)
+        return [sys.executable, script_path, f"--child={name}"]
+
+
+def run_child_role(name):
+    """Dispatch execution to a child role by name and exit when done."""
+    if name == "share_manager":
+        from network.share_manager import ShareManager
+        ShareManager().run()
+    elif name == "audio":
+        from network.audio_manager import AudioManager
+        AudioManager().run()
+    elif name == "log_viewer":
+        from gui.log_viewer import main as log_main
+        log_main()
+    else:
+        print(f"Unknown child role: {name}")
 
 
 class PortalApp:
@@ -113,6 +123,27 @@ class PortalApp:
 
 
 if __name__ == "__main__":
+    # Configure logging early and consistently for both parent and child roles
+    try:
+        base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
+        log_path = os.path.join(base_dir, "logs.log")
+        logging.basicConfig(
+            level=logging.INFO,
+            filename=log_path,
+            filemode="a",
+            format="%(levelname)s - %(message)s",
+            force=True,
+        )
+    except Exception:
+        pass
+
+    # Support child role dispatch for single-file builds
+    for arg in sys.argv[1:]:
+        if arg.startswith("--child="):
+            role = arg.split("=", 1)[1]
+            run_child_role(role)
+            sys.exit(0)
+
     app = PortalApp()
     app.run()
 
