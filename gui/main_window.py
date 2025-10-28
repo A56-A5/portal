@@ -51,8 +51,10 @@ class MainWindow:
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
         self.logs_tab = ttk.Frame(self.tab_control)
+        self.settings_tab = ttk.Frame(self.tab_control)
         self.tab_control.add(self.portal_tab, text='Portal')
         self.tab_control.add(self.logs_tab, text='View Logs')
+        self.tab_control.add(self.settings_tab, text='Settings')
         self.tab_control.pack(expand=1, fill='both')
         
         # Initialize logging
@@ -67,6 +69,7 @@ class MainWindow:
         
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
+        self.create_settings_tab()
         
         threading.Thread(target=self.check_status, daemon=True).start()
     
@@ -243,6 +246,7 @@ class MainWindow:
         self.audio_receive_rb.config(state=state)
         app_config.audio_enabled = self.audio_enabled.get()
         app_config.audio_mode = self.audio_mode.get()
+        app_config.save()
     
     def check_status(self):
         while app_config.is_running and not app_config.stop_flag:
@@ -250,4 +254,83 @@ class MainWindow:
         
         self.status_label.config(text="Portal is not running", foreground="red")
         self.start_stop_button.config(text="Start")
+
+    def create_settings_tab(self):
+        settings_frame = ttk.LabelFrame(self.settings_tab, text="Input Sharing")
+        settings_frame.pack(pady=10, padx=10, fill='x')
+
+        # Master enable/disable toggle for input sharing
+        self.input_sharing_enabled = tk.BooleanVar(value=getattr(app_config, 'input_sharing_enabled', True))
+        def on_toggle_sharing():
+            app_config.input_sharing_enabled = self.input_sharing_enabled.get()
+            if not app_config.input_sharing_enabled:
+                app_config.active_device = False
+            app_config.save()
+        sharing_cb = ttk.Checkbutton(settings_frame, text="Enable input sharing", variable=self.input_sharing_enabled, command=on_toggle_sharing)
+        sharing_cb.pack(anchor='w', padx=10, pady=5)
+
+        hotkey_frame = ttk.LabelFrame(self.settings_tab, text="Toggle Hotkey")
+        hotkey_frame.pack(pady=10, padx=10, fill='x')
+
+        ttk.Label(hotkey_frame, text="Press a key or combo, then release:").pack(anchor='w', padx=10, pady=(5, 0))
+        self.hotkey_var = tk.StringVar(value=getattr(app_config, 'sharing_hotkey', ""))
+        self.hotkey_entry = ttk.Entry(hotkey_frame, textvariable=self.hotkey_var, width=30)
+        self.hotkey_entry.pack(anchor='w', padx=10, pady=5)
+
+        # Recording modal to capture next combo
+        def normalize_combo(mods, key):
+            parts = []
+            ordered = ['Control', 'Alt', 'Shift', 'Super']
+            for m in ordered:
+                if m in mods:
+                    parts.append(m.lower())
+            if key:
+                parts.append(str(key).lower())
+            return "+".join(parts)
+
+        def start_record():
+            recorder = tk.Toplevel(self.root)
+            recorder.title("Record Hotkey")
+            recorder.geometry("300x120")
+            tk.Label(recorder, text="Press keys... (Esc to cancel)").pack(pady=10)
+            mods = set()
+            last_key = [None]
+
+            def on_key(event):
+                sym = event.keysym
+                if sym in ("Escape",):
+                    recorder.destroy()
+                    return
+                if sym in ("Shift_L", "Shift_R"):
+                    mods.add("Shift")
+                elif sym in ("Control_L", "Control_R"):
+                    mods.add("Control")
+                elif sym in ("Alt_L", "Alt_R", "Meta_L", "Meta_R"):
+                    mods.add("Alt")
+                elif sym in ("Super_L", "Super_R", "Win_L", "Win_R"):
+                    mods.add("Super")
+                else:
+                    last_key[0] = sym
+
+            def on_release(event):
+                combo = normalize_combo(mods, last_key[0])
+                if combo:
+                    self.hotkey_var.set(combo)
+                    app_config.sharing_hotkey = combo
+                    app_config.save()
+                recorder.destroy()
+
+            recorder.bind("<KeyPress>", on_key)
+            recorder.bind("<KeyRelease>", on_release)
+            recorder.focus_set()
+
+        record_btn = ttk.Button(hotkey_frame, text="Record...", command=start_record)
+        record_btn.pack(anchor='w', padx=10, pady=5)
+
+        def save_hotkey_text():
+            app_config.sharing_hotkey = self.hotkey_var.get().strip()
+            app_config.save()
+
+        save_btn = ttk.Button(hotkey_frame, text="Save", command=save_hotkey_text)
+        save_btn.pack(anchor='w', padx=10, pady=5)
 

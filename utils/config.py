@@ -16,6 +16,10 @@ class AppConfig:
             "audio_enabled": False,
             "audio_mode": "Share_Audio",
 
+            # Input sharing master gate and hotkey
+            "input_sharing_enabled": True,
+            "sharing_hotkey": "",
+
             # Local config (specific to current instance)
             "mode": "server",  # or "client"
             "server_direction": "Right",  # screen direcion related to client

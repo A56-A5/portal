@@ -63,6 +63,7 @@ class ShareManager:
         app_config.save()
         
         self.setup_screen()
+        self.start_hotkey_listener()
     
     def setup_screen(self):
         """Setup GUI app and get screen dimensions"""
@@ -153,6 +154,12 @@ class ShareManager:
         margin = 2
         
         while app_config.is_running:
+            # If input sharing is disabled, ensure inactive and skip transitions
+            if not getattr(app_config, 'input_sharing_enabled', True):
+                if app_config.active_device:
+                    self.transition(False, self.mouse_controller.position)
+                time.sleep(0.05)
+                continue
             x, y = self.mouse_controller.position
             
             if not app_config.active_device and not self.edge_transition_cooldown:
@@ -184,6 +191,8 @@ class ShareManager:
     def transition(self, to_active, new_position):
         """Handle device transition"""
         app_config.load()
+        if to_active and not getattr(app_config, 'input_sharing_enabled', True):
+            return
         app_config.active_device = to_active
         self.edge_transition_cooldown = True
         
@@ -225,6 +234,90 @@ class ShareManager:
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
         time.sleep(0.2)
+
+    def start_hotkey_listener(self):
+        """Start a global listener for the user-defined sharing hotkey.
+        The hotkey toggles app_config.input_sharing_enabled. """
+        from pynput import keyboard as kb
+
+        pressed_mods = set()
+        last_key = [None]
+
+        def parse_config_hotkey():
+            app_config.load()
+            hot = getattr(app_config, 'sharing_hotkey', '') or ''
+            parts = [p.strip() for p in hot.split('+') if p.strip()]
+            mods = set()
+            key = None
+            for p in parts:
+                up = p.upper()
+                if up in ("CTRL", "CONTROL"):
+                    mods.add('control')
+                elif up in ("ALT", "OPTION"):
+                    mods.add('alt')
+                elif up in ("SHIFT",):
+                    mods.add('shift')
+                elif up in ("SUPER", "WIN", "META"):
+                    mods.add('super')
+                else:
+                    key = p.lower()
+            return mods, key
+
+        def current_matches(target_mods, target_key):
+            if not target_mods and not target_key:
+                return False
+            if not target_key:
+                return False
+            if last_key[0] is None:
+                return False
+            return (target_mods.issubset(pressed_mods) and str(last_key[0]).lower() == target_key)
+
+        def on_press(key):
+            try:
+                if isinstance(key, kb.Key):
+                    if key in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r):
+                        pressed_mods.add('shift')
+                    elif key in (kb.Key.ctrl, kb.Key.ctrl_l, kb.Key.ctrl_r):
+                        pressed_mods.add('control')
+                    elif key in (kb.Key.alt, kb.Key.alt_l, kb.Key.alt_r):
+                        pressed_mods.add('alt')
+                    elif key in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r, kb.Key.windows):
+                        pressed_mods.add('super')
+                else:
+                    # Alphanumeric or others with char
+                    last_key[0] = getattr(key, 'char', None) or str(key).replace('Key.', '')
+            except Exception:
+                pass
+
+        def on_release(key):
+            try:
+                target_mods, target_key = parse_config_hotkey()
+                if current_matches(target_mods, target_key):
+                    # Toggle sharing enabled
+                    enabled = getattr(app_config, 'input_sharing_enabled', True)
+                    app_config.input_sharing_enabled = not enabled
+                    if not app_config.input_sharing_enabled and app_config.active_device:
+                        # Force deactivate and notify peer if needed
+                        self.transition(False, self.mouse_controller.position)
+                    app_config.save()
+                # Clear mods on release of modifier keys
+                if isinstance(key, kb.Key):
+                    if key in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r):
+                        pressed_mods.discard('shift')
+                    elif key in (kb.Key.ctrl, kb.Key.ctrl_l, kb.Key.ctrl_r):
+                        pressed_mods.discard('control')
+                    elif key in (kb.Key.alt, kb.Key.alt_l, kb.Key.alt_r):
+                        pressed_mods.discard('alt')
+                    elif key in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r, kb.Key.windows):
+                        pressed_mods.discard('super')
+                else:
+                    last_key[0] = None
+            except Exception:
+                pass
+
+        listener = keyboard.Listener(on_press=on_press, on_release=on_release, suppress=False)
+        listener.daemon = True
+        listener.start()
     
     def clipboard_sender(self, socket):
         """Send clipboard data"""

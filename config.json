@@ -4,6 +4,8 @@
     "active_device": false,
     "audio_enabled": true,
     "audio_mode": "Share_Audio",
+    "input_sharing_enabled": true,
+    "sharing_hotkey": "control+alt+d",
     "mode": "server",
     "server_direction": "Right",
     "server_ip": "",
