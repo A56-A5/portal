@@ -9,7 +9,7 @@
     "mode": "server",
     "server_direction": "Right",
     "server_ip": "",
-    "audio_ip": "192.168.1.74",
+    "audio_ip": "",
     "server_primary_port": 50007,
     "server_secondary_port": 50008,
     "audio_port": 50009,
