@@ -1,0 +1,26 @@
+INFO - [Server] Waiting for Client to connect
+INFO - [Connection] Primary connection from: ('192.168.1.74', 60894)
+INFO - [Connection] Primary handshake sent
+INFO - [Connection] Secondary connection from: ('192.168.1.74', 57560)
+INFO - [Connection] Secondary ready for keyboard/clipboard
+INFO - [Server] Waiting for Client to connect
+INFO - [Connection] Primary connection from: ('192.168.1.74', 54434)
+INFO - [Connection] Primary handshake sent
+INFO - [Connection] Secondary connection from: ('192.168.1.74', 42702)
+INFO - [Connection] Secondary ready for keyboard/clipboard
+INFO - [Clipboard] Sent clipboard data
+INFO - [System] Device Activated at (2, 615)
+INFO - [System] Device Deactivated at (1918, 590)
+INFO - [System] Device Activated at (2, 349)
+INFO - [System] Device Deactivated at (1918, 432)
+INFO - [System] Device Activated at (2, 434)
+INFO - [System] Device Deactivated at (1918, 434)
+INFO - [Hotkey] Input sharing toggled : False
+INFO - [Hotkey] Input sharing toggled : False
+INFO - [Hotkey] Input sharing toggled : True
+INFO - [Hotkey] Input sharing toggled : False
+INFO - [Hotkey] Input sharing toggled : True
+INFO - [System] Device Activated at (2, 653)
+INFO - [System] Device Deactivated at (1918, 628)
+INFO - [Hotkey] Input sharing toggled : False
+INFO - [Hotkey] Input sharing toggled : False

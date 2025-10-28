@@ -237,7 +237,7 @@ class ShareManager:
 
     def start_hotkey_listener(self):
         """Start a global listener for the user-defined sharing hotkey.
-        The hotkey toggles app_config.input_sharing_enabled. """
+        The hotkey toggles app_config.input_sharing_enabled instantly."""
         from pynput import keyboard as kb
 
         pressed_mods = set()
@@ -272,35 +272,48 @@ class ShareManager:
                 return False
             return (target_mods.issubset(pressed_mods) and str(last_key[0]).lower() == target_key)
 
+        def toggle_input_sharing():
+            """Instant toggle and immediate transition reset"""
+            enabled = getattr(app_config, 'input_sharing_enabled', True)
+            app_config.input_sharing_enabled = not enabled
+            app_config.save()
+
+            # Force immediate deactivation if turning off
+            if not app_config.input_sharing_enabled and app_config.active_device:
+                self.transition(False, self.mouse_controller.position)
+
+            # Reset cooldown and edge detection so it works instantly when toggled back on
+            self.edge_transition_cooldown = False
+
+            print(f"[Hotkey] Input sharing toggled → {app_config.input_sharing_enabled}")
+            logging.info(f"[Hotkey] Input sharing toggled : {app_config.input_sharing_enabled}")
+
         def on_press(key):
             try:
                 if isinstance(key, kb.Key):
-                    if key in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r):
+                    name = str(key).lower()
+                    if "shift" in name:
                         pressed_mods.add('shift')
-                    elif key in (kb.Key.ctrl, kb.Key.ctrl_l, kb.Key.ctrl_r):
+                    elif "ctrl" in name:
                         pressed_mods.add('control')
-                    elif key in (kb.Key.alt, kb.Key.alt_l, kb.Key.alt_r):
+                    elif "alt" in name:
                         pressed_mods.add('alt')
-                    elif key in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r, kb.Key.windows):
+                    elif "cmd" in name or "win" in name or "super" in name:
                         pressed_mods.add('super')
                 else:
-                    # Alphanumeric or others with char
                     last_key[0] = getattr(key, 'char', None) or str(key).replace('Key.', '')
-            except Exception:
-                pass
+        
+                # Check for match instantly
+                target_mods, target_key = parse_config_hotkey()
+                if current_matches(target_mods, target_key):
+                    toggle_input_sharing()
+        
+            except Exception as e:
+                print(f"[Hotkey ERROR] {e}")
+        
 
         def on_release(key):
             try:
-                target_mods, target_key = parse_config_hotkey()
-                if current_matches(target_mods, target_key):
-                    # Toggle sharing enabled
-                    enabled = getattr(app_config, 'input_sharing_enabled', True)
-                    app_config.input_sharing_enabled = not enabled
-                    if not app_config.input_sharing_enabled and app_config.active_device:
-                        # Force deactivate and notify peer if needed
-                        self.transition(False, self.mouse_controller.position)
-                    app_config.save()
-                # Clear mods on release of modifier keys
                 if isinstance(key, kb.Key):
                     if key in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r):
                         pressed_mods.discard('shift')
@@ -315,10 +328,10 @@ class ShareManager:
             except Exception:
                 pass
 
-        listener = keyboard.Listener(on_press=on_press, on_release=on_release, suppress=False)
+        listener = kb.Listener(on_press=on_press, on_release=on_release)
         listener.daemon = True
         listener.start()
-    
+
     def clipboard_sender(self, socket):
         """Send clipboard data"""
         current_clip = self.clipboard_controller.get_clipboard()
