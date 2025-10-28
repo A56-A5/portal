@@ -34,19 +34,19 @@ class MainWindow:
         self.root = root
         self.os_type = platform.system().lower()
         self.on_start_stop = on_start_stop
-
+        
         self.root.title("Portal")
         self.root.withdraw()
         self.setup_icon()
         self.root.geometry("350x550")
         self.root.deiconify()
-
+        
         self.mode = tk.StringVar(value=app_config.mode)
         self.audio_enabled = tk.BooleanVar(value=app_config.audio_enabled)
         self.running = False
         self.invis_process = None
         self.audio_process = None
-
+        
         # Create tabs
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
@@ -56,7 +56,7 @@ class MainWindow:
         self.tab_control.add(self.logs_tab, text='View Logs')
         self.tab_control.add(self.settings_tab, text='Settings')
         self.tab_control.pack(expand=1, fill='both')
-
+        
         # Initialize logging
         with open("logs.log", "w") as f:
             print("")
@@ -66,22 +66,19 @@ class MainWindow:
             filemode="a",
             format="%(levelname)s - %(message)s"
         )
-
+        
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
         self.create_settings_tab()
-
-        # ✅ Start the checkbox monitor after UI loads
-        self.root.after(1000, self.start_state_monitor)
-
+        
         threading.Thread(target=self.check_status, daemon=True).start()
-
+    
     def setup_icon(self):
         """Setup application icon"""
         icon_path = "portal.ico"
         if hasattr(sys, "_MEIPASS"):
             icon_path = os.path.join(sys._MEIPASS, icon_path)
-
+        
         if sys.platform.startswith("win") and os.path.exists(icon_path):
             self.root.iconbitmap(icon_path)
         else:
@@ -90,7 +87,7 @@ class MainWindow:
                 self.root.iconphoto(False, img)
             except Exception as e:
                 print("Failed to set icon:", e)
-
+    
     def on_tab_changed(self, event):
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]
         if selected_tab == "View Logs":
@@ -99,7 +96,7 @@ class MainWindow:
                 self.tab_control.select(self.portal_tab)
             except Exception as e:
                 pass
-
+    
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
         mode_frame.pack(pady=10, padx=10, fill='x')
@@ -124,7 +121,6 @@ class MainWindow:
             finally:
                 s.close()
             return ip
-
         device_ip = get_local_ip()
         ip_label = ttk.Label(server_row, text=f"-  ({device_ip})", font=bold_font)
         ip_label.pack(side='left', padx=10)
@@ -150,11 +146,11 @@ class MainWindow:
             self.client_ip_entry.insert(0, "Enter Server IP")
         else:
             self.client_ip_entry.insert(0, app_config.server_ip)
-
+            
         self.client_ip_entry.bind("<FocusIn>", self.clear_placeholder)
         self.client_ip_entry.bind("<FocusOut>", self.restore_placeholder)
 
-        # Audio radios
+        # Audio radios (no section label)
         self.audio_mode = tk.StringVar(value=app_config.audio_mode)
         self.audio_mode.trace_add("write", self.on_audio_mode_change)
 
@@ -251,10 +247,11 @@ class MainWindow:
         app_config.audio_enabled = self.audio_enabled.get()
         app_config.audio_mode = self.audio_mode.get()
         app_config.save()
-
+    
     def check_status(self):
         while app_config.is_running and not app_config.stop_flag:
             time.sleep(0.5)
+        
         self.status_label.config(text="Portal is not running", foreground="red")
         self.start_stop_button.config(text="Start")
 
@@ -262,16 +259,13 @@ class MainWindow:
         settings_frame = ttk.LabelFrame(self.settings_tab, text="Input Sharing")
         settings_frame.pack(pady=10, padx=10, fill='x')
 
-        # ✅ Master enable/disable toggle for input sharing
+        # Master enable/disable toggle for input sharing
         self.input_sharing_enabled = tk.BooleanVar(value=getattr(app_config, 'input_sharing_enabled', True))
-
         def on_toggle_sharing():
             app_config.input_sharing_enabled = self.input_sharing_enabled.get()
             if not app_config.input_sharing_enabled:
                 app_config.active_device = False
             app_config.save()
-            print(f"[UI] Input sharing manually set to: {self.input_sharing_enabled.get()}")
-
         sharing_cb = ttk.Checkbutton(settings_frame, text="Enable input sharing", variable=self.input_sharing_enabled, command=on_toggle_sharing)
         sharing_cb.pack(anchor='w', padx=10, pady=5)
 
@@ -340,17 +334,3 @@ class MainWindow:
         save_btn = ttk.Button(hotkey_frame, text="Save", command=save_hotkey_text)
         save_btn.pack(anchor='w', padx=10, pady=5)
 
-    # ✅ NEW: sync UI checkbox with app_config continuously
-    def start_state_monitor(self):
-        threading.Thread(target=self.monitor_input_sharing_state, daemon=True).start()
-
-    def monitor_input_sharing_state(self):
-        """Continuously sync checkbox with app_config.input_sharing_enabled"""
-        last_state = None
-        while True:
-            current_state = bool(getattr(app_config, "input_sharing_enabled", True))
-            if current_state != last_state:
-                last_state = current_state
-                print(f"[UI SYNC] Checkbox updated to: {'ON' if current_state else 'OFF'}")
-                self.root.after(0, lambda s=current_state: self.input_sharing_enabled.set(s))
-            time.sleep(0.2)
