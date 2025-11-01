@@ -15,12 +15,44 @@ This project aims to provide a simpler, Python-based alternative with audio shar
 ## 🛠 Features
 
 - **Seamless Input Sharing**: Mouse & keyboard transition across screens
-- **Full Keyboard Support**: All characters including special keys (punctuation, symbols) work in all contexts including password fields and lock screens
+- **Full Keyboard Support**: Works in all contexts including password fields and lock screens
 - **Bidirectional Clipboard**: Text and images sync automatically when switching controls
 - **Audio Streaming**: Share or receive audio between devices
-- **Visual Overlay**: See transitions with screen overlay
 - **Log Viewer**: GUI-based log viewer for debugging
 - **Cross-Platform**: Works on Windows and Linux
+
+## Open Source
+
+**Portal** is fully open-source and community-driven.  
+You’re welcome to explore, modify, and enhance the codebase — whether you want to improve performance, add features, or port it to more platforms.
+
+License: [MIT License](LICENSE)
+
+## 🤝 Contributing
+
+We’d love your help to make Portal even better!  
+Here’s how you can contribute:
+
+1. **Fork** the repository  
+2. **Create a branch** for your feature or bugfix  
+   ```bash
+   git checkout -b feature/amazing-feature
+   ```
+3. **Commit** your changes with clear messages
+    ```bash
+    git commit -m "Add amazing feature"
+    ```
+4. **Push** to your branch
+    ```bash
+    git push origin feature/amazing-feature``
+    ```
+5. Open a **Pull Request** — we’ll review it together!
+
+If you find a bug, open an **issue** describing:
+- Your OS (Windows/Linux)
+- Steps to reproduce the problem
+- Any console/log output
+
 
 ##  Requirements
 
