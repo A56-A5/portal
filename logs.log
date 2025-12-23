@@ -1,14 +1,6 @@
 INFO - [Server] Waiting for Client to connect
 INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 579)
-INFO - [System] Device Deactivated at (1918, 657)
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 559)
-INFO - [System] Device Deactivated at (1918, 366)
-INFO - [System] Device Activated at (2, 452)
-INFO - [System] Device Deactivated at (1918, 553)
-INFO - [Clipboard] Error: [WinError 10054] An existing connection was forcibly closed by the remote host
-INFO - [System] Device Activated at (2, 986)
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Waiting for Client to connect
-INFO - [Server] Waiting for Client to connect
+INFO - [System] Device Activated at (2, 586)
+INFO - [System] Device Deactivated at (1918, 953)
+INFO - [System] Device Activated at (2, 727)
+INFO - [System] Device Deactivated at (1918, 439)
