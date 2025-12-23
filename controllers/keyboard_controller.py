@@ -10,7 +10,16 @@ import ctypes
 from ctypes import wintypes
 from pynput.keyboard import Controller as PynputKeyboardController, Key
 
+
+
 class KeyboardController:
+    shift_chars = {
+    '!': '1', '@': '2', '#': '3', '$': '4', '%': '5',
+    '^': '6', '&': '7', '*': '8', '(': '9', ')': '0',
+    '_': '-', '+': '=', '{': '[', '}': ']', '|': '\\',
+    ':': ';', '"': "'", '<': ',', '>': '.', '?': '/'
+}
+
     def __init__(self):
         self._controller = PynputKeyboardController()
         self.os_type = platform.system().lower()
@@ -67,27 +76,36 @@ class KeyboardController:
             self._controller.release(key)
     
     def tap(self, key):
-        """Tap a key (press and release) - useful for characters"""
+        """Tap a key (press and release) - Linux-compatible"""
         if isinstance(key, str) and len(key) == 1:
-            # Check if it's a special character (not alphanumeric)
-            if key.isalnum():
-                # For alphanumeric, try win32 first (works in secure contexts)
-                if self.use_win32:
+            if self.os_type == "linux":
+                base_key = key
+                need_shift = False
+
+                if key in shift_chars:
+                    base_key = shift_chars[key]
+                    need_shift = True
+
+                if need_shift:
+                    with self._controller.pressed(Key.shift):
+                        self._controller.press(base_key)
+                        self._controller.release(base_key)
+                else:
+                    self._controller.press(base_key)
+                    self._controller.release(base_key)
+            else:
+                # Keep Windows logic
+                if key.isalnum() and self.use_win32:
                     self._win32_tap(key)
                 elif self.use_xdotool:
                     self._xdotool_press(key)
                 else:
                     self._controller.type(key)
-            else:
-                # For special characters, use pynput type (most reliable)
-                self._controller.type(key)
-        elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
-            self._xdotool_press(key)
         else:
             # For Key objects or multi-character strings, use pynput
             self._controller.press(key)
             self._controller.release(key)
-    
+
     def _win32_tap(self, key_str):
         """Tap key using Unicode SendInput for ALL characters - most reliable"""
         try:
