@@ -177,41 +177,20 @@ class KeyboardController:
                     self.win32api.keybd_event(0x10, 0, self.win32con.KEYEVENTF_KEYUP, 0)
         except Exception as e:
             pass
-
+    
     def _xdotool_press(self, key_str):
-        if platform.system().lower() == "linux":
-            from evdev import UInput, ecodes as e, util
-        """Send key reliably on Linux (works everywhere) using uinput"""
-        if not hasattr(self, "ui"):
-            # create virtual keyboard
-            self.ui = UInput(name="virtual-keyboard")
-
-        # Mapping common punctuation and letters to evdev key codes
-        key_map = {
-            ',': e.KEY_COMMA, '.': e.KEY_DOT, '/': e.KEY_SLASH,
-            ';': e.KEY_SEMICOLON, "'": e.KEY_APOSTROPHE,
-            '[': e.KEY_LEFTBRACE, ']': e.KEY_RIGHTBRACE,
-            '\\': e.KEY_BACKSLASH, '`': e.KEY_GRAVE,
-            ' ': e.KEY_SPACE
-        }
-
-        if key_str.isalnum():
-            # letters and numbers
-            ev_key = getattr(e, f"KEY_{key_str.upper()}", None)
-        else:
-            ev_key = key_map.get(key_str)
-
-        if ev_key is None:
-            print(f"[uinput] Unknown key: {key_str}")
-            return
-
-        # Press
-        self.ui.write(e.EV_KEY, ev_key, 1)
-        self.ui.syn()
-        # Release
-        self.ui.write(e.EV_KEY, ev_key, 0)
-        self.ui.syn()
-
+        import subprocess
+    
+        # xdotool type is the ONLY reliable way for punctuation
+        # --clearmodifiers avoids stuck Shift/Ctrl
+        try:
+            subprocess.run(
+                ['xdotool', 'type', '--delay', '0', '--clearmodifiers', key_str],
+                check=True
+            )
+        except Exception as e:
+            print(f"[xdotool] failed: {key_str} -> {e}")
+    
     
     def _key_to_xdotool(self, key_str):
         """Convert key string to xdotool key name"""
