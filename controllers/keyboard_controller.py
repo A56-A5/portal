@@ -172,14 +172,23 @@ class KeyboardController:
             pass
     
     def _xdotool_press(self, key_str):
-        """Press key using xdotool for better Linux support"""
+        """Press key using xdotool for Linux (works in GUI and terminals)"""
         try:
-            key = self._key_to_xdotool(key_str)
-            if key:
-                # xdotool types the key (press+release)
-                self.subprocess.run(['xdotool', 'key', key], capture_output=True)
+            if len(key_str) == 1:
+                # For single characters (including punctuation), use 'type'
+                # --clearmodifiers ensures Shift/Ctrl/Alt don't interfere
+                self.subprocess.run(
+                    ['xdotool', 'type', '--clearmodifiers', key_str],
+                    capture_output=True
+                )
+            else:
+                # For special keys, map them to xdotool key names
+                key = self._key_to_xdotool(key_str)
+                if key:
+                    self.subprocess.run(['xdotool', 'key', key], capture_output=True)
         except Exception as e:
-            pass
+            print(f"[xdotool] Failed to send key {key_str}: {e}")
+    
     
     def _key_to_xdotool(self, key_str):
         """Convert key string to xdotool key name"""
