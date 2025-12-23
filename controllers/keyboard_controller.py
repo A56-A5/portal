@@ -174,18 +174,23 @@ class KeyboardController:
     def _xdotool_press(self, key_str):
         """Press key using xdotool for Linux (works in GUI and terminals)"""
         try:
-            if len(key_str) == 1:
-                # For single characters (including punctuation), use 'type'
-                # --clearmodifiers ensures Shift/Ctrl/Alt don't interfere
-                self.subprocess.run(
-                    ['xdotool', 'type', '--clearmodifiers', key_str],
-                    capture_output=True
-                )
+            punctuation_map = {
+                '-': 'minus', '=': 'equal', ',': 'comma', '.': 'period', '/': 'slash',
+                ';': 'semicolon', "'": 'apostrophe', '[': 'bracketleft', ']': 'bracketright',
+                '\\': 'backslash'
+            }
+    
+            if key_str in punctuation_map:
+                xkey = punctuation_map[key_str]
+                self.subprocess.run(['xdotool', 'key', '--clearmodifiers', xkey], capture_output=True)
+            elif len(key_str) == 1:
+                # For regular letters/numbers
+                self.subprocess.run(['xdotool', 'type', '--clearmodifiers', key_str], capture_output=True)
             else:
-                # For special keys, map them to xdotool key names
+                # For special keys
                 key = self._key_to_xdotool(key_str)
                 if key:
-                    self.subprocess.run(['xdotool', 'key', key], capture_output=True)
+                    self.subprocess.run(['xdotool', 'key', '--clearmodifiers', key], capture_output=True)
         except Exception as e:
             print(f"[xdotool] Failed to send key {key_str}: {e}")
     

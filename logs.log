@@ -1,49 +1,11 @@
 INFO - [Server] Waiting for Client to connect
-INFO - [Connection] Primary connection from: ('192.168.1.77', 34788)
+INFO - [Connection] Primary connection from: ('192.168.1.77', 54334)
 INFO - [Connection] Primary handshake sent
-INFO - [Connection] Secondary connection from: ('192.168.1.77', 49796)
+INFO - [Connection] Secondary connection from: ('192.168.1.77', 39550)
 INFO - [Connection] Secondary ready for keyboard/clipboard
 INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 411)
-INFO - [System] Device Deactivated at (1918, 596)
-INFO - [System] Device Activated at (2, 554)
-INFO - [System] Device Deactivated at (1918, 1001)
+INFO - [System] Device Activated at (2, 615)
+INFO - [System] Device Deactivated at (1918, 707)
 INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 599)
-INFO - [System] Device Deactivated at (1918, 625)
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 464)
-INFO - [System] Device Deactivated at (1918, 667)
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 697)
-INFO - [System] Device Deactivated at (1918, 651)
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 1079)
-INFO - [System] Device Deactivated at (1918, 1077)
-INFO - [System] Device Activated at (2, 568)
-INFO - [System] Device Deactivated at (1918, 581)
-INFO - [System] Device Activated at (2, 685)
-INFO - [System] Device Deactivated at (1918, 603)
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 1063)
-INFO - [System] Device Deactivated at (1918, 631)
-INFO - [System] Device Activated at (2, 572)
-INFO - [Server] Waiting for Client to connect
-INFO - [Connection] Primary connection from: ('192.168.1.77', 51798)
-INFO - [Connection] Primary handshake sent
-INFO - [Connection] Secondary connection from: ('192.168.1.77', 60092)
-INFO - [Connection] Secondary ready for keyboard/clipboard
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 576)
-INFO - [System] Device Deactivated at (1918, 1079)
-INFO - [System] Device Activated at (2, 879)
-INFO - [System] Device Deactivated at (1918, 995)
-INFO - [System] Device Activated at (2, 746)
-INFO - [System] Device Deactivated at (1918, 884)
-INFO - [System] Device Activated at (2, 967)
-INFO - [System] Device Deactivated at (1918, 1079)
-INFO - [System] Device Activated at (2, 480)
-INFO - [System] Device Deactivated at (1918, 426)
-INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 144)
-INFO - [System] Device Deactivated at (1918, 626)
+INFO - [System] Device Activated at (2, 467)
+INFO - [System] Device Deactivated at (1918, 552)
