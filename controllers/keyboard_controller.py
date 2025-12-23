@@ -89,46 +89,53 @@ class KeyboardController:
             self._controller.release(key)
     
     def _win32_tap(self, key_str):
-        """Tap key using Unicode SendInput for ALL characters - most reliable"""
+        """Tap key reliably in ANY context (editors, terminals, etc)"""
         try:
-            # Always use Unicode SendInput for maximum compatibility
-            # INPUT structure for keyboard input
-            class KEYBDINPUT(ctypes.Structure):
-                _fields_ = [
-                    ("wVk", wintypes.WORD),
-                    ("wScan", wintypes.WORD),
-                    ("dwFlags", wintypes.DWORD),
-                    ("time", wintypes.DWORD),
-                    ("dwExtraInfo", wintypes.ULONG_PTR),
-                ]
-            
-            class INPUT(ctypes.Structure):
-                _fields_ = [("type", wintypes.DWORD), ("ki", KEYBDINPUT)]
-            
-            # Constants
-            INPUT_KEYBOARD = 1
-            KEYEVENTF_UNICODE = 0x0004
-            KEYEVENTF_KEYUP = 0x0002
-            
-            # Convert character to UTF-16 code unit
-            ucode = ord(key_str)
-            
-            # Create input structures for press and release
-            press = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(0, ucode, KEYEVENTF_UNICODE, 0, 0))
-            release = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(0, ucode, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, 0))
-            
-            # Send key press
-            ctypes.windll.user32.SendInput(1, ctypes.byref(press), ctypes.sizeof(press))
-            time.sleep(0.01)
-            # Send key release
-            ctypes.windll.user32.SendInput(1, ctypes.byref(release), ctypes.sizeof(release))
+            vk_and_shift = self.win32api.VkKeyScan(ord(key_str))
+            if vk_and_shift == -1:
+                # If key not mappable, fallback to Unicode SendInput
+                ucode = ord(key_str)
+                class KEYBDINPUT(ctypes.Structure):
+                    _fields_ = [
+                        ("wVk", wintypes.WORD),
+                        ("wScan", wintypes.WORD),
+                        ("dwFlags", wintypes.DWORD),
+                        ("time", wintypes.DWORD),
+                        ("dwExtraInfo", wintypes.ULONG_PTR),
+                    ]
+                class INPUT(ctypes.Structure):
+                    _fields_ = [("type", wintypes.DWORD), ("ki", KEYBDINPUT)]
+                INPUT_KEYBOARD = 1
+                KEYEVENTF_UNICODE = 0x0004
+                KEYEVENTF_KEYUP = 0x0002
+                press = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(0, ucode, KEYEVENTF_UNICODE, 0, 0))
+                release = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(0, ucode, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, 0))
+                ctypes.windll.user32.SendInput(1, ctypes.byref(press), ctypes.sizeof(press))
+                time.sleep(0.01)
+                ctypes.windll.user32.SendInput(1, ctypes.byref(release), ctypes.sizeof(release))
+                return
     
-        except Exception as e:
-            try:
-                self._controller.tap(key_str)
-            except Exception as e2:
-                pass
-            
+            vk = vk_and_shift & 0xFF
+            shift_state = (vk_and_shift >> 8) & 0xFF
+    
+            # Press Shift if needed
+            if shift_state & 0x01:
+                self.win32api.keybd_event(0x10, 0, 0, 0)  # press shift
+    
+            # Press the key
+            self.win32api.keybd_event(vk, 0, 0, 0)
+            time.sleep(0.01)
+            # Release the key
+            self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
+    
+            # Release Shift if it was pressed
+            if shift_state & 0x01:
+                self.win32api.keybd_event(0x10, 0, self.win32con.KEYEVENTF_KEYUP, 0)
+    
+        except Exception:
+            # fallback to pynput just in case
+            self._controller.tap(key_str)
+     
     def _win32_press(self, key_str):
         """Press key using win32api for better system-level support"""
         try:
@@ -181,8 +188,6 @@ class KeyboardController:
             subprocess.run(['xvkbd', '-text', key_str], capture_output=True)
         except Exception as e:
             print(f"[xvkbd] Failed to send key {key_str}: {e}")
-
-
     
     def _key_to_xdotool(self, key_str):
         """Convert key string to xdotool key name"""

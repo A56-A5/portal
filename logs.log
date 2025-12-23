@@ -1,13 +1,14 @@
 INFO - [Server] Waiting for Client to connect
-INFO - [Connection] Primary connection from: ('192.168.1.77', 54754)
-INFO - [Connection] Primary handshake sent
-INFO - [Connection] Secondary connection from: ('192.168.1.77', 50058)
-INFO - [Connection] Secondary ready for keyboard/clipboard
-INFO - [Server] Waiting for Client to connect
-INFO - [Connection] Primary connection from: ('192.168.1.77', 35100)
-INFO - [Connection] Primary handshake sent
-INFO - [Connection] Secondary connection from: ('192.168.1.77', 47646)
-INFO - [Connection] Secondary ready for keyboard/clipboard
 INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 512)
-INFO - [System] Device Deactivated at (1918, 501)
+INFO - [System] Device Activated at (2, 579)
+INFO - [System] Device Deactivated at (1918, 657)
+INFO - [Clipboard] Sent clipboard data
+INFO - [System] Device Activated at (2, 559)
+INFO - [System] Device Deactivated at (1918, 366)
+INFO - [System] Device Activated at (2, 452)
+INFO - [System] Device Deactivated at (1918, 553)
+INFO - [Clipboard] Error: [WinError 10054] An existing connection was forcibly closed by the remote host
+INFO - [System] Device Activated at (2, 986)
+INFO - [Server] Waiting for Client to connect
+INFO - [Server] Waiting for Client to connect
+INFO - [Server] Waiting for Client to connect
