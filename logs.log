@@ -1,9 +1,29 @@
 INFO - [Server] Waiting for Client to connect
-INFO - [Server] Waiting for Client to connect
-INFO - [Connection] Primary connection from: ('192.168.1.75', 53568)
+INFO - [Connection] Primary connection from: ('192.168.1.75', 51626)
 INFO - [Connection] Primary handshake sent
-INFO - [Connection] Secondary connection from: ('192.168.1.75', 58846)
+INFO - [Connection] Secondary connection from: ('192.168.1.75', 44684)
 INFO - [Connection] Secondary ready for keyboard/clipboard
 INFO - [Clipboard] Sent clipboard data
-INFO - [System] Device Activated at (2, 673)
-INFO - [System] Device Deactivated at (1918, 963)
+INFO - [System] Device Activated at (2, 732)
+INFO - [Server] Waiting for Client to connect
+INFO - [Connection] Primary connection from: ('192.168.1.75', 48418)
+INFO - [Connection] Primary handshake sent
+INFO - [System] Device Activated at (2, 547)
+INFO - [Connection] Secondary connection from: ('192.168.1.75', 52300)
+INFO - [Connection] Secondary ready for keyboard/clipboard
+INFO - [Server] Waiting for Client to connect
+INFO - [Connection] Primary connection from: ('192.168.1.75', 57260)
+INFO - [Connection] Primary handshake sent
+INFO - [Connection] Secondary connection from: ('192.168.1.75', 54700)
+INFO - [Connection] Secondary ready for keyboard/clipboard
+INFO - [Clipboard] Sent clipboard data
+INFO - [System] Device Activated at (2, 446)
+INFO - [System] Device Deactivated at (1918, 813)
+INFO - [System] Device Activated at (2, 661)
+INFO - [System] Device Deactivated at (1918, 673)
+INFO - [Clipboard] Sent clipboard data
+INFO - [System] Device Activated at (2, 539)
+INFO - [System] Device Deactivated at (1918, 780)
+INFO - [Clipboard] Sent clipboard data
+INFO - [System] Device Activated at (2, 553)
+INFO - [System] Device Deactivated at (1918, 562)

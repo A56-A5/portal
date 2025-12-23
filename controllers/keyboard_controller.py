@@ -69,24 +69,17 @@ class KeyboardController:
     def tap(self, key):
         """Tap a key (press and release) - useful for characters"""
         if isinstance(key, str) and len(key) == 1:
-            # Check if it's a special character (not alphanumeric)
-            if key.isalnum():
-                # For alphanumeric, try win32 first (works in secure contexts)
-                if self.use_win32:
-                    self._win32_tap(key)
-                elif self.use_xdotool:
-                    self._xdotool_press(key)
-                else:
-                    self._controller.type(key)
+            if self.use_win32:
+                self._win32_tap(key)
+            elif self.use_xdotool:
+                self._xdotool_press(key)
             else:
-                # For special characters, use pynput type (most reliable)
                 self._controller.type(key)
-        elif self.use_xdotool and isinstance(key, str) and len(key) == 1:
-            self._xdotool_press(key)
         else:
             # For Key objects or multi-character strings, use pynput
             self._controller.press(key)
             self._controller.release(key)
+
     
     def _win32_tap(self, key_str):
         """Tap key reliably in ANY context (editors, terminals, etc)"""
@@ -180,7 +173,6 @@ class KeyboardController:
     
     def _xdotool_press(self, key_str):
         import subprocess
-        print(key_str)
 
         # xdotool type is the ONLY reliable way for punctuation
         # --clearmodifiers avoids stuck Shift/Ctrl
