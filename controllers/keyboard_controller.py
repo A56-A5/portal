@@ -180,7 +180,8 @@ class KeyboardController:
     
     def _xdotool_press(self, key_str):
         import subprocess
-    
+        print(key_str)
+
         # xdotool type is the ONLY reliable way for punctuation
         # --clearmodifiers avoids stuck Shift/Ctrl
         try:
@@ -190,7 +191,7 @@ class KeyboardController:
             )
         except Exception as e:
             print(f"[xdotool] failed: {key_str} -> {e}")
-    
+
     
     def _key_to_xdotool(self, key_str):
         """Convert key string to xdotool key name"""
