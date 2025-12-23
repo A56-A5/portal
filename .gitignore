@@ -12,7 +12,7 @@ build/
 # Portal specific
 *.log
 logs.log
-clipboard/
+config.json
 temp*.txt
 
 # IDE
