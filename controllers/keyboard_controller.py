@@ -172,28 +172,17 @@ class KeyboardController:
             pass
     
     def _xdotool_press(self, key_str):
-        """Press key using xdotool for Linux (works in GUI and terminals)"""
+        """Send key reliably on Linux (works in editors, terminals, GUI) using xvkbd"""
+        import subprocess
         try:
-            punctuation_map = {
-                '-': 'minus', '=': 'equal', ',': 'comma', '.': 'period', '/': 'slash',
-                ';': 'semicolon', "'": 'apostrophe', '[': 'bracketleft', ']': 'bracketright',
-                '\\': 'backslash'
-            }
-    
-            if key_str in punctuation_map:
-                xkey = punctuation_map[key_str]
-                self.subprocess.run(['xdotool', 'key', '--clearmodifiers', xkey], capture_output=True)
-            elif len(key_str) == 1:
-                # For regular letters/numbers
-                self.subprocess.run(['xdotool', 'type', '--clearmodifiers', key_str], capture_output=True)
-            else:
-                # For special keys
-                key = self._key_to_xdotool(key_str)
-                if key:
-                    self.subprocess.run(['xdotool', 'key', '--clearmodifiers', key], capture_output=True)
+            # Escape backslash for xvkbd
+            if key_str == "\\":
+                key_str = "\\\\"
+            subprocess.run(['xvkbd', '-text', key_str], capture_output=True)
         except Exception as e:
-            print(f"[xdotool] Failed to send key {key_str}: {e}")
-    
+            print(f"[xvkbd] Failed to send key {key_str}: {e}")
+
+
     
     def _key_to_xdotool(self, key_str):
         """Convert key string to xdotool key name"""
