@@ -40,10 +40,6 @@ class KeyboardController:
             except Exception:
                 pass
 
-    # =========================
-    # Public API
-    # =========================
-
     def press(self, key):
         if self.use_xdotool:
             self._xdotool_keydown(key)
@@ -69,12 +65,9 @@ class KeyboardController:
             self._controller.press(key)
             self._controller.release(key)
 
-    # =========================
-    # Linux / xdotool
-    # =========================
-
     def _xdotool_keydown(self, key):
         xkey = self._key_to_xdotool(key)
+        print(xkey)
         if xkey:
             self.subprocess.run(["xdotool", "keydown", xkey], check=False)
 
@@ -137,10 +130,6 @@ class KeyboardController:
             return key
 
         return None
-
-    # =========================
-    # Windows
-    # =========================
 
     def _win32_tap(self, key):
         if isinstance(key, Key):

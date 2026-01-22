@@ -133,6 +133,7 @@ class InputHandler:
     
     def parse_and_execute_keyboard_event(self, event, keyboard_controller, secondary_socket, clipboard_controller):
         """Parse and execute keyboard event from client"""
+        print(f"[DEBUG] Received keyboard event: {event}")  # <-- NEW
         from pynput.keyboard import Key
         
         event_type = event.get("type")
@@ -187,9 +188,13 @@ class InputHandler:
         }
 
         if key_str in KEY_ALIAS:
+            parsed = KEY_ALIAS[key_str]
+            print(f"[DEBUG][parse_key] Alias {key_str} -> {parsed}")
             return KEY_ALIAS[key_str]
 
         if key_str.startswith("Key."):
+            parsed = getattr(Key, key_str.split(".", 1)[1], None)
+            print(f"[DEBUG][parse_key] getattr {key_str} -> {parsed}")
             return getattr(Key, key_str.split(".", 1)[1], None)
 
         return key_str
