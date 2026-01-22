@@ -74,16 +74,19 @@ class InputHandler:
         def keyboard_listener_watcher():
             while app_config.is_running:
                 with self.keyboard_listener_lock:
-                    if app_config.active_device and self.keyboard_listener is None:
-                        self.keyboard_listener = keyboard.Listener(
-                            on_press=on_press, on_release=on_release, suppress=True
-                        )
-                        self.keyboard_listener.start()
-                    
-                    elif not app_config.active_device and self.keyboard_listener is not None:
-                        self.keyboard_listener.stop()
-                        self.keyboard_listener = None
-                time.sleep(0.5)
+                    if app_config.active_device:
+                        if self.keyboard_listener is None:
+                            self.keyboard_listener = keyboard.Listener(
+                                on_press=on_press,
+                                on_release=on_release,
+                                suppress=True
+                            )
+                            self.keyboard_listener.start()
+                    else:
+                        if self.keyboard_listener is not None:
+                            self.keyboard_listener.stop()
+                            self.keyboard_listener = None
+                time.sleep(0.1)
         
         threading.Thread(target=keyboard_listener_watcher, daemon=True).start()
     
@@ -169,14 +172,32 @@ class InputHandler:
                 print("[Clipboard] Updated clipboard content")
     
     def parse_key(self, key_str):
-        """Parse key string to Key object"""
         from pynput.keyboard import Key
-        
+
+        KEY_ALIAS = {
+            "Key.ctrl": Key.ctrl_l,
+            "Key.ctrl_l": Key.ctrl_l,
+            "Key.ctrl_r": Key.ctrl_r,
+
+            "Key.shift": Key.shift_l,
+            "Key.shift_l": Key.shift_l,
+            "Key.shift_r": Key.shift_r,
+
+            "Key.alt": Key.alt_l,
+            "Key.alt_l": Key.alt_l,
+            "Key.alt_r": Key.alt_r,
+
+            "Key.cmd": Key.cmd_l,
+            "Key.cmd_l": Key.cmd_l,
+            "Key.cmd_r": Key.cmd_r,
+        }
+
+        if key_str in KEY_ALIAS:
+            return KEY_ALIAS[key_str]
+
         if key_str.startswith("Key."):
-            try:
-                return getattr(Key, key_str.split(".", 1)[1])
-            except AttributeError:
-                print(f"[Parse] Unknown special key: {key_str}")
-                return None
+            return getattr(Key, key_str.split(".", 1)[1], None)
+
         return key_str
+
 
