@@ -88,29 +88,36 @@ class KeyboardController:
     # ---------------- Public API ----------------
     def press(self, key):
         key_str = self._normalize_key(key)
-        if self.use_win32 and self._key_to_vk(key_str):
+        vk = self._key_to_vk(key_str)
+        print(f"[KeyboardController][PRESS] key={key}, normalized={key_str}, vk={vk}")
+        if self.use_win32 and vk:
             self._win32_press(key_str)
         elif self.use_xdotool:
             self._xdotool_keydown(key_str)
         else:
-            self._controller.press(key)
-
+            self._controller.press(key_str)
+    
     def release(self, key):
         key_str = self._normalize_key(key)
-        if self.use_win32 and self._key_to_vk(key_str):
+        vk = self._key_to_vk(key_str)
+        print(f"[KeyboardController][RELEASE] key={key}, normalized={key_str}, vk={vk}")
+        if self.use_win32 and vk:
             self._win32_release(key_str)
         elif self.use_xdotool:
             self._xdotool_keyup(key_str)
         else:
-            self._controller.release(key)
-
+            self._controller.release(key_str)
+    
     def tap(self, key):
         key_str = self._normalize_key(key)
-        if self.use_win32 and self._key_to_vk(key_str):
+        vk = self._key_to_vk(key_str)
+        print(f"[KeyboardController][TAP] key={key}, normalized={key_str}, vk={vk}")
+        if self.use_win32 and vk:
             self._win32_tap(key_str)
         elif self.use_xdotool:
             self._xdotool_tap(key_str)
         else:
-            self._controller.press(key)
+            self._controller.press(key_str)
             time.sleep(0.01)
-            self._controller.release(key)
+            self._controller.release(key_str)
+    
