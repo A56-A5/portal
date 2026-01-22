@@ -39,14 +39,50 @@ class KeyboardController:
         return key_str.lower()  # Normalize to lowercase for consistency
 
     # ---------------- Linux ----------------
+    def _key_to_xdotool(self, key_str):
+        """Convert pynput key name to xdotool key name"""
+        # xdotool uses different key names than pynput
+        xdotool_map = {
+            "backspace": "BackSpace",
+            "tab": "Tab",
+            "caps_lock": "Caps_Lock",
+            "cmd": "Super_L",  # Windows/Meta key
+            "cmd_l": "Super_L",
+            "cmd_r": "Super_R",
+            "ctrl": "Control_L",
+            "ctrl_l": "Control_L",
+            "ctrl_r": "Control_R",
+            "shift": "Shift_L",
+            "shift_l": "Shift_L",
+            "shift_r": "Shift_R",
+            "alt": "Alt_L",
+            "alt_l": "Alt_L",
+            "alt_r": "Alt_R",
+            "enter": "Return",
+            "space": "space",
+            "esc": "Escape",
+            "delete": "Delete",
+            "up": "Up",
+            "down": "Down",
+            "left": "Left",
+            "right": "Right",
+        }
+        # Convert to lowercase for lookup
+        key_lower = key_str.lower() if isinstance(key_str, str) else str(key_str).lower()
+        # Return xdotool key name if mapped, otherwise return original (for regular characters)
+        return xdotool_map.get(key_lower, key_str)
+
     def _xdotool_keydown(self, key_str):
-        self.subprocess.run(["xdotool", "keydown", key_str], check=False)
+        xdotool_key = self._key_to_xdotool(key_str)
+        self.subprocess.run(["xdotool", "keydown", xdotool_key], check=False)
 
     def _xdotool_keyup(self, key_str):
-        self.subprocess.run(["xdotool", "keyup", key_str], check=False)
+        xdotool_key = self._key_to_xdotool(key_str)
+        self.subprocess.run(["xdotool", "keyup", xdotool_key], check=False)
 
     def _xdotool_tap(self, key_str):
-        self.subprocess.run(["xdotool", "key", key_str], check=False)
+        xdotool_key = self._key_to_xdotool(key_str)
+        self.subprocess.run(["xdotool", "key", xdotool_key], check=False)
 
     # ---------------- Windows ----------------
     def _win32_press(self, key_str):
