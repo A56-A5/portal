@@ -89,35 +89,65 @@ class KeyboardController:
     def press(self, key):
         key_str = self._normalize_key(key)
         vk = self._key_to_vk(key_str)
-        print(f"[KeyboardController][PRESS] key={key}, normalized={key_str}, vk={vk}")
+        py_key = self._to_pynput_key(key_str)
+        print(f"[KeyboardController][PRESS] key={key}, normalized={key_str}, vk={vk}, py_key={py_key}")
         if self.use_win32 and vk:
             self._win32_press(key_str)
         elif self.use_xdotool:
             self._xdotool_keydown(key_str)
         else:
-            self._controller.press(key_str)
-    
+            self._controller.press(py_key)
+
     def release(self, key):
         key_str = self._normalize_key(key)
         vk = self._key_to_vk(key_str)
-        print(f"[KeyboardController][RELEASE] key={key}, normalized={key_str}, vk={vk}")
+        py_key = self._to_pynput_key(key_str)
+        print(f"[KeyboardController][RELEASE] key={key}, normalized={key_str}, vk={vk}, py_key={py_key}")
         if self.use_win32 and vk:
             self._win32_release(key_str)
         elif self.use_xdotool:
             self._xdotool_keyup(key_str)
         else:
-            self._controller.release(key_str)
-    
+            self._controller.release(py_key)
+
     def tap(self, key):
         key_str = self._normalize_key(key)
         vk = self._key_to_vk(key_str)
-        print(f"[KeyboardController][TAP] key={key}, normalized={key_str}, vk={vk}")
+        py_key = self._to_pynput_key(key_str)
+        print(f"[KeyboardController][TAP] key={key}, normalized={key_str}, vk={vk}, py_key={py_key}")
         if self.use_win32 and vk:
             self._win32_tap(key_str)
         elif self.use_xdotool:
             self._xdotool_tap(key_str)
         else:
-            self._controller.press(key_str)
+            self._controller.press(py_key)
             time.sleep(0.01)
-            self._controller.release(key_str)
-    
+            self._controller.release(py_key)
+
+    def _to_pynput_key(self, key_str):
+        """Convert normalized string to Key object if it’s a special key"""
+        special_keys = {
+            "ctrl": Key.ctrl,
+            "ctrl_l": Key.ctrl_l,
+            "ctrl_r": Key.ctrl_r,
+            "shift": Key.shift,
+            "shift_l": Key.shift_l,
+            "shift_r": Key.shift_r,
+            "alt": Key.alt,
+            "alt_l": Key.alt_l,
+            "alt_r": Key.alt_r,
+            "cmd": Key.cmd,
+            "tab": Key.tab,
+            "caps_lock": Key.caps_lock,
+            "backspace": Key.backspace,
+            "enter": Key.enter,
+            "space": Key.space,
+            "esc": Key.esc,
+            "up": Key.up,
+            "down": Key.down,
+            "left": Key.left,
+            "right": Key.right,
+            "delete": Key.delete,
+        }
+        return special_keys.get(key_str.lower(), key_str)  # default: normal character
+
