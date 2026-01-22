@@ -168,26 +168,26 @@ class InputHandler:
     
     def parse_key(self, key_str):
         from pynput.keyboard import Key
-    
+
         # Keys that exist in Key
-        allowed_keys = [
-            'alt', 'alt_l', 'alt_r',
-            'backspace', 'caps_lock', 'cmd', 'ctrl', 'ctrl_l', 'ctrl_r',
-            'delete', 'down', 'end', 'enter', 'esc', 'f1', 'f2', 'f3', 'f4', 'f5',
-            'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12', 'home', 'insert', 'left',
-            'menu', 'num_lock', 'page_down', 'page_up', 'pause', 'print_screen',
-            'right', 'scroll_lock', 'shift', 'shift_l', 'shift_r', 'space', 'tab', 'up'
-        ]
-    
+        supported_keys = {
+        'alt', 'alt_l', 'alt_r',
+        'backspace', 'ctrl', 'ctrl_l', 'ctrl_r',
+        'delete', 'down', 'end', 'enter', 'esc', 'home', 'insert',
+        'left', 'menu', 'num_lock', 'page_down', 'page_up', 'pause',
+        'print_screen', 'right', 'scroll_lock', 'shift', 'shift_l', 'shift_r',
+        'space', 'tab', 'up'
+    }
+
         if key_str.startswith("Key."):
             key_name = key_str.split(".", 1)[1]
-            if key_name in allowed_keys:
+            if key_name in supported_keys:
                 return getattr(Key, key_name)
             else:
                 print(f"[DEBUG][parse_key] Unsupported Key: {key_str}, sending as string")
                 return None  # unsupported special key, ignore
-    
+
         return key_str  # normal character keys like 'a', '1', etc.
-    
+
 
 
