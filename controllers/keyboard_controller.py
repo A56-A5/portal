@@ -59,7 +59,7 @@ class KeyboardController:
         self._win32_release(key_str)
 
     def _key_to_vk(self, key_str):
-        """Simple VK mapping for Windows; everything else uses unicode via pynput"""
+        """Full VK mapping for Windows special keys"""
         vk_map = {
             "enter": 0x0D,
             "tab": 0x09,
@@ -69,10 +69,15 @@ class KeyboardController:
             "delete": 0x2E,
             "caps_lock": 0x14,
             "ctrl": 0x11,
+            "ctrl_l": 0xA2,
+            "ctrl_r": 0xA3,
             "alt": 0x12,
+            "alt_l": 0x12,
+            "alt_r": 0xA5,
             "shift": 0x10,
-            "cmd": 0x5B,       # Left Windows key
-            "alt_gr": 0xA5,    # Right Alt
+            "shift_l": 0xA0,
+            "shift_r": 0xA1,
+            "cmd": 0x5B,  # Left Windows key
             "up": 0x26,
             "down": 0x28,
             "left": 0x25,

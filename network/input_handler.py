@@ -168,27 +168,24 @@ class InputHandler:
     
     def parse_key(self, key_str):
         from pynput.keyboard import Key
-    
+
+        key_str = key_str.lower()
+
         # Keys that exist in Key
-        supported_keys = {
-            'alt', 'alt_l', 'alt_r',
-            'backspace', 'ctrl', 'ctrl_l', 'ctrl_r',
-            'delete', 'down', 'end', 'enter', 'esc', 'home', 'insert',
-            'left', 'menu', 'num_lock', 'page_down', 'page_up', 'pause',
-            'print_screen', 'right', 'scroll_lock', 'shift', 'shift_l', 'shift_r',
-            'space', 'tab', 'up'
+        key_map = {
+            'alt': Key.alt, 'alt_l': Key.alt_l, 'alt_r': Key.alt_r,
+            'backspace': Key.backspace, 'ctrl': Key.ctrl, 'ctrl_l': Key.ctrl_l, 'ctrl_r': Key.ctrl_r,
+            'delete': Key.delete, 'down': Key.down, 'end': Key.end, 'enter': Key.enter, 'esc': Key.esc,
+            'home': Key.home, 'insert': Key.insert, 'left': Key.left, 'menu': Key.menu, 'num_lock': Key.num_lock,
+            'page_down': Key.page_down, 'page_up': Key.page_up, 'pause': Key.pause, 'print_screen': Key.print_screen,
+            'right': Key.right, 'scroll_lock': Key.scroll_lock, 'shift': Key.shift, 'shift_l': Key.shift_l, 'shift_r': Key.shift_r,
+            'space': Key.space, 'tab': Key.tab, 'up': Key.up, 'caps_lock': Key.caps_lock, 'cmd': Key.cmd, 'alt_gr': Key.alt_gr
         }
-    
+
+        # Return special key object if available
         if key_str.startswith("Key."):
             key_name = key_str.split(".", 1)[1]
-            if key_name in supported_keys:
-                return getattr(Key, key_name)
-            else:
-                # unsupported key, send as string for OS-specific handling
-                print(f"[DEBUG][parse_key] Unsupported Key: {key_str}, sending as string")
-                return key_name  # e.g., 'caps_lock', 'cmd', 'alt_gr'
-    
-        return key_str  # normal character keys like 'a', '1', etc.
-    
+            return key_map.get(key_name, key_name)
 
-
+        # Return normal character key
+        return key_str
