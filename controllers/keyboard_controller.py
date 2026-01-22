@@ -59,22 +59,32 @@ class KeyboardController:
             self._controller.press(key)
             self._controller.release(key)
 
+    def _normalize_key(self, key):
+        if isinstance(key, Key):
+            return f"key.{key.name}"
+        return str(key)
+
     def _xdotool_tap(self, key):
-        key = self._key_to_xdotool(str(key))
-        if len(key) == 1:
+        key_norm = self._normalize_key(key)
+        xkey = self._key_to_xdotool(key_norm)
+
+        if len(key_norm) == 1:
             self.subprocess.run(
-                ["xdotool", "type", "--delay", "0", "--clearmodifiers", key]
+                ["xdotool", "type", "--delay", "0", "--clearmodifiers", xkey],
+                check=False
             )
         else:
-            self.subprocess.run(["xdotool", "key", key])
+            self.subprocess.run(["xdotool", "key", xkey], check=False)
 
     def _xdotool_keydown(self, key):
-        key = self._key_to_xdotool(str(key))
-        self.subprocess.run(["xdotool", "keydown", key])
+        key_norm = self._normalize_key(key)
+        xkey = self._key_to_xdotool(key_norm)
+        self.subprocess.run(["xdotool", "keydown", xkey], check=False)
 
     def _xdotool_keyup(self, key):
-        key = self._key_to_xdotool(str(key))
-        self.subprocess.run(["xdotool", "keyup", key])
+        key_norm = self._normalize_key(key)
+        xkey = self._key_to_xdotool(key_norm)
+        self.subprocess.run(["xdotool", "keyup", xkey], check=False)
 
     def _win32_tap(self, key_str):
         vk_and_shift = self.win32api.VkKeyScan(ord(key_str))
@@ -125,23 +135,13 @@ class KeyboardController:
 
     def _win32_press(self, key_str):
         vk = self._key_to_vk(key_str)
-        if vk is None:
-            return
-        vk_and_shift = self.win32api.VkKeyScan(ord(key_str)) if len(key_str) == 1 else 0
-        shift_state = (vk_and_shift >> 8) & 0xFF
-        if shift_state & 0x01:
-            self.win32api.keybd_event(0x10, 0, 0, 0)
-        self.win32api.keybd_event(vk, 0, 0, 0)
+        if vk is not None:
+            self.win32api.keybd_event(vk, 0, 0, 0)
 
     def _win32_release(self, key_str):
         vk = self._key_to_vk(key_str)
-        if vk is None:
-            return
-        self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
-        vk_and_shift = self.win32api.VkKeyScan(ord(key_str)) if len(key_str) == 1 else 0
-        shift_state = (vk_and_shift >> 8) & 0xFF
-        if shift_state & 0x01:
-            self.win32api.keybd_event(0x10, 0, self.win32con.KEYEVENTF_KEYUP, 0)
+        if vk is not None:
+            self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
 
     def _key_to_xdotool(self, key_str):
         key_map = {
@@ -155,6 +155,7 @@ class KeyboardController:
             "key.ctrl_r": "Control_R",
             "key.alt_l": "Alt_L",
             "key.alt_r": "Alt_R",
+            "key.shift": "Shift_L",
             "key.shift_l": "Shift_L",
             "key.shift_r": "Shift_R",
             "key.up": "Up",
@@ -168,9 +169,7 @@ class KeyboardController:
             "alt": "Alt_L",
             "shift": "Shift_L",
         }
-
-        k = key_str.lower()
-        return key_map.get(k, key_str)
+        return key_map.get(key_str.lower(), key_str)
 
     def _key_to_vk(self, key_str):
         key_map = {
@@ -188,18 +187,7 @@ class KeyboardController:
             "left": 0x25,
             "right": 0x27,
         }
-
-        k = key_str.lower()
-        if k in key_map:
-            return key_map[k]
-
-        if len(key_str) == 1:
-            try:
-                return self.win32api.VkKeyScan(ord(key_str)) & 0xFF
-            except:
-                return None
-
-        return None
+        return key_map.get(key_str.lower())
 
     def parse_key(self, key_str):
         if key_str.startswith("Key."):
