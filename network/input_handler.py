@@ -57,18 +57,12 @@ class InputHandler:
         def on_press(key):
             if not app_config.active_device:
                 return
-            try:
-                self.send_json({"type": "key_press", "key": key.char}, client_socket)
-            except AttributeError:
-                self.send_json({"type": "key_press", "key": str(key)}, client_socket)
-        
+            self.send_json({"type": "key_press", "key": key.__class__.__name__ + "." + key.name if isinstance(key, keyboard.Key) else key}, client_socket)
+
         def on_release(key):
             if not app_config.active_device:
                 return
-            try:
-                self.send_json({"type": "key_release", "key": key.char}, client_socket)
-            except AttributeError:
-                self.send_json({"type": "key_release", "key": str(key)}, client_socket)
+            self.send_json({"type": "key_release", "key": key.__class__.__name__ + "." + key.name if isinstance(key, keyboard.Key) else key}, client_socket)
         
         # Keyboard listener handler thread
         def keyboard_listener_watcher():
