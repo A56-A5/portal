@@ -28,9 +28,15 @@ class KeyboardController:
                 pass
 
     def _normalize_key(self, key):
-        if hasattr(key, "name"):
+        """Normalize key to a string representation"""
+        # If it's already a pynput Key object, extract its name
+        if isinstance(key, Key):
             return key.name  # Special keys like shift, ctrl, caps_lock
-        return str(key)      # Normal keys like 'a', '1'
+        # If it's a string, check if it's in "Key.xxx" format
+        key_str = str(key)
+        if key_str.startswith("Key."):
+            return key_str.split(".", 1)[1].lower()
+        return key_str.lower()  # Normalize to lowercase for consistency
 
     # ---------------- Linux ----------------
     def _xdotool_keydown(self, key_str):
@@ -125,7 +131,15 @@ class KeyboardController:
             self._controller.release(py_key)
 
     def _to_pynput_key(self, key_str):
-        """Convert normalized string to Key object if it’s a special key"""
+        """Convert normalized string to Key object if it's a special key"""
+        # If it's already a Key object, return it
+        if isinstance(key_str, Key):
+            return key_str
+        
+        # Normalize to lowercase for lookup
+        key_lower = key_str.lower() if isinstance(key_str, str) else str(key_str).lower()
+        
+        # Map of normalized key names to pynput Key objects
         special_keys = {
             "ctrl": Key.ctrl,
             "ctrl_l": Key.ctrl_l,
@@ -137,6 +151,8 @@ class KeyboardController:
             "alt_l": Key.alt_l,
             "alt_r": Key.alt_r,
             "cmd": Key.cmd,
+            "cmd_l": Key.cmd_l,
+            "cmd_r": Key.cmd_r,
             "tab": Key.tab,
             "caps_lock": Key.caps_lock,
             "backspace": Key.backspace,
@@ -149,5 +165,22 @@ class KeyboardController:
             "right": Key.right,
             "delete": Key.delete,
         }
-        return special_keys.get(key_str.lower(), key_str)  # default: normal character
+        
+        # Try to get the Key object from the mapping
+        pynput_key = special_keys.get(key_lower)
+        if pynput_key is not None:
+            return pynput_key
+        
+        # If not found in special keys, it's either a regular character or invalid
+        # For single characters, return as-is (pynput accepts char strings)
+        # For anything else, try to get it as a Key attribute (handles edge cases)
+        if len(key_lower) == 1:
+            return key_str  # Single character, return original (preserve case for chars)
+        
+        # Try to get it as a Key attribute as a last resort
+        try:
+            return getattr(Key, key_lower)
+        except AttributeError:
+            # If all else fails, return the string and let pynput handle it (or error)
+            return key_str
 

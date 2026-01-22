@@ -580,9 +580,17 @@ class ShareManager:
             if key_str.startswith("Key."):
                 from pynput.keyboard import Key
                 try:
-                    return getattr(Key, key_str.split(".", 1)[1])
+                    # Extract key name and convert to lowercase (pynput Key attributes are lowercase)
+                    key_name = key_str.split(".", 1)[1].lower()
+                    return getattr(Key, key_name)
                 except AttributeError:
-                    return None
+                    # If direct lookup fails, return the normalized string and let KeyboardController handle it
+                    return key_str.split(".", 1)[1].lower()
+            # For regular characters, preserve case (single char) or normalize special strings
+            if isinstance(key_str, str):
+                if len(key_str) == 1:
+                    return key_str  # Preserve case for single characters
+                return key_str.lower()  # Normalize multi-character strings to lowercase
             return key_str
         
         buffer = ""
