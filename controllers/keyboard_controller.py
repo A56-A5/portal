@@ -29,8 +29,8 @@ class KeyboardController:
 
     def _normalize_key(self, key):
         if hasattr(key, "name"):
-            return key.name  # For Key.shift, Key.ctrl, etc.
-        return str(key)
+            return key.name  # Special keys like shift, ctrl, caps_lock
+        return str(key)      # Normal keys like 'a', '1'
 
     # ---------------- Linux ----------------
     def _xdotool_keydown(self, key_str):
@@ -45,12 +45,12 @@ class KeyboardController:
     # ---------------- Windows ----------------
     def _win32_press(self, key_str):
         vk = self._key_to_vk(key_str)
-        if vk is not None:
+        if vk:
             self.win32api.keybd_event(vk, 0, 0, 0)
 
     def _win32_release(self, key_str):
         vk = self._key_to_vk(key_str)
-        if vk is not None:
+        if vk:
             self.win32api.keybd_event(vk, 0, self.win32con.KEYEVENTF_KEYUP, 0)
 
     def _win32_tap(self, key_str):
@@ -59,27 +59,31 @@ class KeyboardController:
         self._win32_release(key_str)
 
     def _key_to_vk(self, key_str):
-        mapping = {
+        """Simple VK mapping for Windows; everything else uses unicode via pynput"""
+        vk_map = {
             "enter": 0x0D,
             "tab": 0x09,
             "space": 0x20,
             "esc": 0x1B,
-            "delete": 0x2E,
             "backspace": 0x08,
+            "delete": 0x2E,
+            "caps_lock": 0x14,
             "ctrl": 0x11,
             "alt": 0x12,
             "shift": 0x10,
+            "cmd": 0x5B,       # Left Windows key
+            "alt_gr": 0xA5,    # Right Alt
             "up": 0x26,
             "down": 0x28,
             "left": 0x25,
             "right": 0x27,
         }
-        return mapping.get(key_str.lower())
+        return vk_map.get(key_str.lower(), None)
 
     # ---------------- Public API ----------------
     def press(self, key):
         key_str = self._normalize_key(key)
-        if self.use_win32:
+        if self.use_win32 and self._key_to_vk(key_str):
             self._win32_press(key_str)
         elif self.use_xdotool:
             self._xdotool_keydown(key_str)
@@ -88,7 +92,7 @@ class KeyboardController:
 
     def release(self, key):
         key_str = self._normalize_key(key)
-        if self.use_win32:
+        if self.use_win32 and self._key_to_vk(key_str):
             self._win32_release(key_str)
         elif self.use_xdotool:
             self._xdotool_keyup(key_str)
@@ -97,7 +101,7 @@ class KeyboardController:
 
     def tap(self, key):
         key_str = self._normalize_key(key)
-        if self.use_win32:
+        if self.use_win32 and self._key_to_vk(key_str):
             self._win32_tap(key_str)
         elif self.use_xdotool:
             self._xdotool_tap(key_str)
