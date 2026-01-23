@@ -102,6 +102,8 @@ class KeyboardController:
             ")": "parenright",  # or "0" with shift
             ":": "colon",  # or "semicolon" with shift
             ";": "semicolon",
+            "`": "grave",
+            "~": "asciitilde",
         }
         # For single characters, check the map directly (case-sensitive for characters)
         if len(key_str) == 1:
