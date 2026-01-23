@@ -172,6 +172,7 @@ class KeyboardController:
             "(": "9",
             ")": "0",
             ":": ";",
+            "`": "~",
         }
         return shift_map.get(key_str, key_str)
 
@@ -269,6 +270,8 @@ class KeyboardController:
             ")": 0x30,  # Same as 0 (shift+0)
             ":": 0xBA,  # VK_OEM_1 (semicolon, shift+;)
             ";": 0xBA,  # VK_OEM_1 (semicolon)
+            "`": 0xC0,  # VK_OEM_3 (grave accent)
+            "~": 0xC0,  # VK_OEM_3 (grave accent, shift+`)
         }
         return vk_map.get(key_str, None)
 
