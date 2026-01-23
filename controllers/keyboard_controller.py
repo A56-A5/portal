@@ -115,7 +115,7 @@ class KeyboardController:
         """Check if a character needs shift modifier"""
         if len(key_str) != 1:
             return False
-        shift_chars = "<>?\"{}_+|!@#$%^&*():"
+        shift_chars = "<>?\"{}_+|!@#$%^&*():~"
         return key_str in shift_chars
 
     def _xdotool_keydown(self, key_str):
@@ -172,7 +172,7 @@ class KeyboardController:
             "(": "9",
             ")": "0",
             ":": ";",
-            "`": "~",
+            "~": "`",
         }
         return shift_map.get(key_str, key_str)
 
