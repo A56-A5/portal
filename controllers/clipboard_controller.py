@@ -32,6 +32,16 @@ class ClipboardController:
         elif self.os_type == "linux":
             self.win32clipboard = None
             self.win32con = None
+            # Check for wl-clipboard or xclip
+            try:
+                subprocess.run(['wl-paste', '--version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                self.linux_tool = 'wl-clipboard'
+            except:
+                try:
+                    subprocess.run(['xclip', '-version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+                    self.linux_tool = 'xclip'
+                except:
+                    self.linux_tool = 'fallback'
         else:
             import pyperclip as pypc
             self._fallback = pypc
@@ -99,6 +109,18 @@ class ClipboardController:
                             print(f"[Clipboard] Error getting image: {e}")
                             pass
                     
+                    # Try to get files (CF_HDROP)
+                    if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_HDROP):
+                        try:
+                            # 15 is CF_HDROP
+                            files = self.win32clipboard.GetClipboardData(self.win32con.CF_HDROP)
+                            self.win32clipboard.CloseClipboard()
+                            if files:
+                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
+                                return f"files:{encoded}"
+                        except Exception:
+                            pass
+
                     # Try text
                     if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_UNICODETEXT):
                         try:
@@ -129,26 +151,61 @@ class ClipboardController:
                     return ""
             
             elif self.os_type == "linux":
-                try:
-                    # Try to get text first
+                if self.linux_tool == 'wl-clipboard':
+                    # Try files first
                     try:
-                        text_data = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'], stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
-                        encoded = base64.b64encode(text_data.encode('utf-8')).decode('utf-8')
-                        return f"text:{encoded}"
-                    except:
-                        pass
+                        uris = subprocess.check_output(['wl-paste', '-t', 'text/uri-list'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+                        if uris:
+                            files = [u.replace('file://', '') for u in uris.splitlines() if u.startswith('file://')]
+                            if files:
+                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
+                                return f"files:{encoded}"
+                    except: pass
                     
-                    # Try image (PNG)
+                    # Try image
                     try:
-                        image_data = subprocess.check_output(['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], stderr=subprocess.DEVNULL)
-                        encoded = base64.b64encode(image_data).decode('utf-8')
+                        img_data = subprocess.check_output(['wl-paste', '-t', 'image/png'], stderr=subprocess.DEVNULL)
+                        encoded = base64.b64encode(img_data).decode('utf-8')
                         return f"image:{encoded}"
-                    except:
-                        pass
+                    except: pass
                     
-                    return ""
-                except Exception:
-                    return ""
+                    # Fallback to text
+                    try:
+                        text = subprocess.check_output(['wl-paste'], stderr=subprocess.DEVNULL).decode('utf-8')
+                        encoded = base64.b64encode(text.encode('utf-8')).decode('utf-8')
+                        return f"text:{encoded}"
+                    except: pass
+                    
+                else: # xclip or fallback
+                    try:
+                        # Try files (selection/target might vary, usually text/uri-list)
+                        try:
+                            uris = subprocess.check_output(['xclip', '-selection', 'clipboard', '-t', 'text/uri-list', '-o'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
+                            files = [u.replace('file://', '') for u in uris.splitlines() if u.startswith('file://')]
+                            if files:
+                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
+                                return f"files:{encoded}"
+                        except: pass
+
+                        # Try text first
+                        try:
+                            text_data = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'], stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
+                            encoded = base64.b64encode(text_data.encode('utf-8')).decode('utf-8')
+                            return f"text:{encoded}"
+                        except:
+                            pass
+                        
+                        # Try image (PNG)
+                        try:
+                            image_data = subprocess.check_output(['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], stderr=subprocess.DEVNULL)
+                            encoded = base64.b64encode(image_data).decode('utf-8')
+                            return f"image:{encoded}"
+                        except:
+                            pass
+                        
+                        return ""
+                    except Exception:
+                        return ""
             
             else:
                 # Fallback for other OS
@@ -226,19 +283,24 @@ class ClipboardController:
                 elif self.os_type == "linux":
                     try:
                         if format_type == "image":
-                            # Set as PNG image
-                            p = subprocess.Popen(
-                                ['xclip', '-selection', 'clipboard', '-t', 'image/png'],
-                                stdin=subprocess.PIPE
-                            )
+                            tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
+                            cmd = [tool, '-t', 'image/png'] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard', '-t', 'image/png']
+                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
                             p.communicate(input=decoded_data)
+                        elif format_type == "files":
+                            # Setting files on Linux is harder, we provide the paths as text/uri-list
+                            files = decoded_data.decode('utf-8').splitlines()
+                            uris = "\n".join([f"file://{f}" for f in files])
+                            tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
+                            cmd = [tool, '-t', 'text/uri-list'] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard', '-t', 'text/uri-list']
+                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                            p.communicate(input=uris.encode('utf-8'))
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')
-                            p = subprocess.Popen(
-                                ['xclip', '-selection', 'clipboard'],
-                                stdin=subprocess.PIPE
-                            )
+                            tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
+                            cmd = [tool] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard']
+                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
                             p.communicate(input=text_data.encode('utf-8'))
                         return True
                     except Exception as e:

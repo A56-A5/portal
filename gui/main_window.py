@@ -72,6 +72,7 @@ class MainWindow:
         self.create_settings_tab()
         
         threading.Thread(target=self.check_status, daemon=True).start()
+        threading.Thread(target=self.check_log_for_status, daemon=True).start()
     
     def setup_icon(self):
         """Setup application icon"""
@@ -168,6 +169,9 @@ class MainWindow:
         self.status_label = ttk.Label(control_frame, text="Portal is not running", foreground="red")
         self.status_label.grid(row=0, column=0, columnspan=2, pady=5)
 
+        self.status_notify_label = ttk.Label(control_frame, text="", foreground="blue")
+        self.status_notify_label.grid(row=2, column=0, columnspan=2, pady=5)
+
         self.reload_button = ttk.Button(control_frame, text="Reload", command=lambda: self.on_start_stop("reload"))
         self.reload_button.grid(row=1, column=0, padx=5)
 
@@ -254,6 +258,32 @@ class MainWindow:
         
         self.status_label.config(text="Portal is not running", foreground="red")
         self.start_stop_button.config(text="Start")
+        self.status_notify_label.config(text="")
+
+    def show_notification(self, message, duration=3):
+        """Show a temporary notification in the UI"""
+        self.status_notify_label.config(text=message)
+        def clear():
+            time.sleep(duration)
+            if self.status_notify_label.cget("text") == message:
+                self.status_notify_label.config(text="")
+        threading.Thread(target=clear, daemon=True).start()
+
+    def check_log_for_status(self):
+        """Watch the log file for status messages (hacky way to communicate between processes)"""
+        try:
+            with open("logs.log", "r") as f:
+                f.seek(0, 2) # Go to end
+                while self.running:
+                    line = f.readline()
+                    if not line:
+                        time.sleep(0.5)
+                        continue
+                    if "[Remote Status]" in line:
+                        msg = line.split("[Remote Status]", 1)[1].strip()
+                        self.root.after(0, lambda m=msg: self.show_notification(m))
+        except:
+            pass
 
     def create_settings_tab(self):
         settings_frame = ttk.LabelFrame(self.settings_tab, text="Input Sharing")

@@ -25,6 +25,7 @@ class ShareManager:
         self.edge_transition_cooldown = False
         self.primary_port = app_config.server_primary_port
         self.secondary_port = app_config.server_secondary_port
+        self.tertiary_port = app_config.server_tertiary_port
         
         # Controllers
         self.mouse_controller = MouseController()
@@ -36,7 +37,10 @@ class ShareManager:
         self.client_socket = None
         self.secondary_server_socket = None
         self.secondary_client_socket = None
+        self.tertiary_server_socket = None
+        self.tertiary_client_socket = None
         self.secondary_server = None
+        self.tertiary_server = None
         
         # Overlay
         self.overlay = None
@@ -95,6 +99,9 @@ class ShareManager:
             if self.secondary_client_socket:
                 self.secondary_client_socket.shutdown(socket.SHUT_RDWR)
                 self.secondary_client_socket.close()
+            if self.tertiary_client_socket:
+                self.tertiary_client_socket.shutdown(socket.SHUT_RDWR)
+                self.tertiary_client_socket.close()
         except Exception as e:
             print(f"[Client] Error closing socket: {e}")
         
@@ -103,6 +110,8 @@ class ShareManager:
                 self.server_socket.close()
             if self.secondary_server_socket:
                 self.secondary_server_socket.close()
+            if self.tertiary_server_socket:
+                self.tertiary_server_socket.close()
         except Exception as e:
             print(f"[Server] Error closing socket: {e}")
         
@@ -214,21 +223,24 @@ class ShareManager:
             except Exception as e:
                 print(f"[Transition] Failed to send active_device state: {e}")
         
+        # Determine socket for clipboard
+        clip_socket = self.tertiary_server if hasattr(self, 'tertiary_server') and self.tertiary_server else self.secondary_server
+
         # Send clipboard on transition to active (server to client)
         if to_active:
             current_clip = self.clipboard_controller.get_clipboard()
             if self.last_send != current_clip:
                 self.last_send = current_clip
-                if hasattr(self, 'secondary_server') and self.secondary_server:
-                    self.clipboard_sender(self.secondary_server)
+                if clip_socket:
+                    self.clipboard_sender(clip_socket)
         
         # Also send clipboard when transitioning FROM active to inactive (bidirectional sync)
         if not to_active and app_config.mode == "server":
             current_clip = self.clipboard_controller.get_clipboard()
             if self.last_send != current_clip:
                 self.last_send = current_clip
-                if hasattr(self, 'secondary_server') and self.secondary_server:
-                    self.clipboard_sender(self.secondary_server)
+                if clip_socket:
+                    self.clipboard_sender(clip_socket)
         
         print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
@@ -333,16 +345,58 @@ class ShareManager:
         listener.start()
 
     def clipboard_sender(self, socket):
-        """Send clipboard data"""
+        """Send clipboard data, handling large files and status notifications"""
         current_clip = self.clipboard_controller.get_clipboard()
+        if not current_clip:
+            return
+            
         try:
+            # Check for files
+            if current_clip.startswith("files:"):
+                # Notify start
+                socket.sendall((json.dumps({"type": "status", "msg": "File transfer starting..."}) + "\n").encode())
+                
+                paths = base64.b64decode(current_clip.split(":", 1)[1]).decode('utf-8').splitlines()
+                all_files_data = []
+                for p in paths:
+                    p = p.strip()
+                    if os.path.isfile(p):
+                        try:
+                            with open(p, "rb") as f:
+                                content = f.read()
+                                name = os.path.basename(p)
+                                encoded_content = base64.b64encode(content).decode('utf-8')
+                                all_files_data.append({"name": name, "data": encoded_content})
+                        except Exception as e:
+                            print(f"[Clipboard] Failed to read {p}: {e}")
+                
+                if all_files_data:
+                    data = {"type": "file_transfer", "files": all_files_data}
+                    # Large data send
+                    payload = (json.dumps(data) + "\n").encode()
+                    socket.sendall(payload)
+                    socket.sendall((json.dumps({"type": "status", "msg": "Files synced!"}) + "\n").encode())
+                return
+
+            # Regular clipboard
+            is_large = len(current_clip) > 100000 # 100KB+
+            if is_large:
+                socket.sendall((json.dumps({"type": "status", "msg": "Syncing large clipboard..."}) + "\n").encode())
+
             data = {"type": "clipboard", "content": current_clip}
             socket.sendall((json.dumps(data) + "\n").encode())
+            
+            if is_large:
+                socket.sendall((json.dumps({"type": "status", "msg": "Clipboard synced!"}) + "\n").encode())
+            
             print("[Clipboard] Sent clipboard data")
             logging.info("[Clipboard] Sent clipboard data")
         except Exception as e:
             print(f"[Clipboard] Error: {e}")
             logging.info(f"[Clipboard] Error: {e}")
+            try:
+                socket.sendall((json.dumps({"type": "status", "msg": "Clipboard sync failed!"}) + "\n").encode())
+            except: pass
     
     def send_mouse_events(self, socket):
         """Send mouse events from server"""
@@ -436,12 +490,18 @@ class ShareManager:
         self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
         self.secondary_server_socket.listen(1)
+
+        self.tertiary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.tertiary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.tertiary_server_socket.bind(("0.0.0.0", self.tertiary_port))
+        self.tertiary_server_socket.listen(1)
         
         print("[Server] Waiting for Client to connect")
         logging.info("[Server] Waiting for Client to connect")
         
         threading.Thread(target=self.accept_primary, daemon=True).start()
         threading.Thread(target=self.accept_secondary, daemon=True).start()
+        threading.Thread(target=self.accept_tertiary, daemon=True).start()
     
     def accept_primary(self):
         """Accept primary connection (mouse)"""
@@ -492,6 +552,77 @@ class ShareManager:
                     break
         
         threading.Thread(target=read_clipboard, daemon=True).start()
+
+    def accept_tertiary(self):
+        """Accept tertiary connection (large data)"""
+        ter_socket, ter_addr = self.tertiary_server_socket.accept()
+        ter_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        print(f"[Server] Tertiary connection from: {ter_addr}")
+        self.tertiary_server = ter_socket
+        
+        def read_large_data():
+            buffer = ""
+            while app_config.is_running:
+                try:
+                    data = self.tertiary_server.recv(4096).decode()
+                    if not data: break
+                    buffer += data
+                    while "\n" in buffer:
+                        line, buffer = buffer.split("\n", 1)
+                        self.handle_incoming_large_event(line, self.tertiary_server)
+                except Exception as e:
+                    print(f"[Tertiary] Error: {e}")
+                    break
+        threading.Thread(target=read_large_data, daemon=True).start()
+
+    def handle_incoming_large_event(self, line, socket_to_reply):
+        try:
+            evt = json.loads(line)
+            if evt["type"] == "clipboard":
+                local_clip = self.clipboard_controller.get_clipboard()
+                if evt["content"] != local_clip:
+                    self.clipboard_controller.set_clipboard(evt["content"])
+                    self.last_send = evt["content"]
+            elif evt["type"] == "file_transfer":
+                self.handle_file_transfer(evt["files"])
+            elif evt["type"] == "status":
+                print(f"[Status] {evt['msg']}")
+                # Trigger a system notification if possible, or just log
+                logging.info(f"[Remote Status] {evt['msg']}")
+        except Exception as e:
+            print(f"[Event Handler] Error: {e}")
+
+    def handle_file_transfer(self, files_list):
+        """Handle incoming files from a transfer"""
+        try:
+            download_path = os.path.join(os.path.expanduser("~"), "Portal", "Downloads")
+            os.makedirs(download_path, exist_ok=True)
+            
+            saved_paths = []
+            for f in files_list:
+                name = f["name"]
+                content = base64.b64decode(f["data"])
+                target = os.path.join(download_path, name)
+                
+                # Handle duplicates
+                base, ext = os.path.splitext(target)
+                counter = 1
+                while os.path.exists(target):
+                    target = f"{base}_{counter}{ext}"
+                    counter += 1
+                
+                with open(target, "wb") as out:
+                    out.write(content)
+                saved_paths.append(target)
+            
+            if saved_paths:
+                # Set clipboard to the newly saved local paths
+                encoded = base64.b64encode("\n".join(saved_paths).encode('utf-8')).decode('utf-8')
+                self.clipboard_controller.set_clipboard(f"files:{encoded}")
+                self.last_send = f"files:{encoded}"
+                print(f"[Files] Saved {len(saved_paths)} files to {download_path}")
+        except Exception as e:
+            print(f"[Files] Receipt failed: {e}")
     
     # Client functions
     def start_client(self):
@@ -501,6 +632,9 @@ class ShareManager:
         
         self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+
+        self.tertiary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.tertiary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
         # Connect primary
         for i in range(10, -1, -1):
@@ -536,9 +670,22 @@ class ShareManager:
         
         print("[Client] Secondary Connected")
         logging.info("[Connection] Secondary Connected")
+
+        # Connect tertiary
+        for i in range(10, -1, -1):
+            try:
+                self.tertiary_client_socket.connect((app_config.server_ip, self.tertiary_port))
+                break
+            except Exception as e:
+                if i == 0:
+                    print(f"[Client] Tertiary connection failed: {e}")
+                time.sleep(1)
+        
+        print("[Client] Tertiary Connected")
         
         threading.Thread(target=self.receive_primary, daemon=True).start()
         threading.Thread(target=self.receive_secondary, daemon=True).start()
+        threading.Thread(target=self.receive_tertiary, daemon=True).start()
     
     def receive_primary(self):
         """Receive mouse events"""
@@ -639,15 +786,34 @@ class ShareManager:
                             current_clip = self.clipboard_controller.get_clipboard()
                             if self.last_send != current_clip:
                                 self.last_send = current_clip
-                                self.clipboard_sender(self.secondary_client_socket)
+                                # Send large stuff over tertiary if available
+                                target = self.tertiary_client_socket if self.tertiary_client_socket else self.secondary_client_socket
+                                self.clipboard_sender(target)
                     elif evt["type"] == "clipboard":
                         current_clip = self.clipboard_controller.get_clipboard()
                         if current_clip != evt["content"]:
                             self.clipboard_controller.set_clipboard(evt["content"])
                             self.last_send = evt["content"]
                             print("[Clipboard] Updated")
+                    elif evt["type"] == "status":
+                        print(f"[Status] {evt['msg']}")
+                        logging.info(f"[Remote Status] {evt['msg']}")
                 except Exception as e:
                     print(f"[Client] Parse error: {e}")
+
+    def receive_tertiary(self):
+        """Receive large data events (images, files)"""
+        buffer = ""
+        while app_config.is_running:
+            try:
+                data = self.tertiary_client_socket.recv(4096).decode()
+                if not data: break
+                buffer += data
+                while "\n" in buffer:
+                    line, buffer = buffer.split("\n", 1)
+                    self.handle_incoming_large_event(line, self.tertiary_client_socket)
+            except Exception:
+                break
     
     def run(self):
         """Run the share manager"""

@@ -29,6 +29,7 @@ class AppConfig:
             #Ports
             "server_primary_port": 50007,
             "server_secondary_port": 50008,
+            "server_tertiary_port": 50010,
             "audio_port": 50009, 
 
             #clipboard
