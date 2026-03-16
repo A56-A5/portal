@@ -251,7 +251,6 @@ class ClipboardController:
                             p.communicate(input=decoded_data)
                         elif format_type == "files":
                             # Setting files on Linux is harder, we provide the paths as text/uri-list
-                            import urllib.parse
                             files = decoded_data.decode('utf-8').splitlines()
                             
                             uri_list = []
