@@ -58,11 +58,15 @@ class MainWindow:
         self.tab_control.pack(expand=1, fill='both')
         
         # Initialize logging
-        with open("logs.log", "w") as f:
-            print("")
+        if getattr(sys, 'frozen', False):
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            base_dir = os.getcwd()
+        log_path = os.path.join(base_dir, "logs.log")
+        
         logging.basicConfig(
             level=logging.INFO,
-            filename="logs.log",
+            filename=log_path,
             filemode="a",
             format="%(levelname)s - %(message)s"
         )
@@ -277,7 +281,13 @@ class MainWindow:
     def check_log_for_status(self):
         """Watch the log file for status messages (hacky way to communicate between processes)"""
         try:
-            with open("logs.log", "r") as f:
+            if getattr(sys, 'frozen', False):
+                base_dir = os.path.dirname(sys.executable)
+            else:
+                base_dir = os.getcwd()
+            log_path = os.path.join(base_dir, "logs.log")
+            
+            with open(log_path, "r") as f:
                 f.seek(0, 2) # Go to end
                 while self.running:
                     line = f.readline()

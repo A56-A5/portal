@@ -24,6 +24,8 @@ from controllers.clipboard_controller import ClipboardController
 class ShareManager:
     def __init__(self):
         self.edge_transition_cooldown = False
+        self._transition_lock = threading.Lock()
+        self.os_type = platform.system().lower()
         self.primary_port = app_config.server_primary_port
         self.secondary_port = app_config.server_secondary_port
         self.tertiary_port = app_config.server_tertiary_port
@@ -172,26 +174,27 @@ class ShareManager:
                 time.sleep(0.05)
                 continue
             x, y = self.mouse_controller.position
+            warp_buffer = 50 # Give the user a runway to prevent accidental bounce-backs
             
             if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
-                    self.transition(True, (margin, y))
+                    self.transition(True, (margin + warp_buffer, y))
                 elif app_config.server_direction == "Left" and x <= margin:
-                    self.transition(True, (self.screen_width - margin, y))
+                    self.transition(True, (self.screen_width - margin - warp_buffer, y))
                 elif app_config.server_direction == "Top" and y <= margin:
-                    self.transition(True, (x, self.screen_height - margin))
+                    self.transition(True, (x, self.screen_height - margin - warp_buffer))
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
-                    self.transition(True, (x, margin))
+                    self.transition(True, (x, margin + warp_buffer))
             
             elif app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x <= margin:
-                    self.transition(False, (self.screen_width - margin, y))
+                    self.transition(False, (self.screen_width - margin - warp_buffer, y))
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
-                    self.transition(False, (margin, y))
+                    self.transition(False, (margin + warp_buffer, y))
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
-                    self.transition(False, (x, margin))
+                    self.transition(False, (x, margin + warp_buffer))
                 elif app_config.server_direction == "Bottom" and y <= margin:
-                    self.transition(False, (x, self.screen_height - margin))
+                    self.transition(False, (x, self.screen_height - margin - warp_buffer))
             
             # Cooldown reset
             if margin < x < self.screen_width - margin and margin < y < self.screen_height - margin:
@@ -200,31 +203,44 @@ class ShareManager:
             time.sleep(0.01)
     
     def transition(self, to_active, new_position):
-        """Handle device transition"""
-        app_config.load()
-        if to_active and not getattr(app_config, 'input_sharing_enabled', True):
-            return
-        app_config.active_device = to_active
-        self.edge_transition_cooldown = True
-        
-        if self.os_type == "windows":
-            self.gui_app.after_idle(self.create_overlay if to_active else self.destroy_overlay)
-            self.mouse_controller.position = new_position
-        else:
-            if to_active:
-                self.create_overlay()
+        """Handle device transition with race protection"""
+        # Ensure only one transition happens at a time
+        self._transition_lock.acquire(blocking=True)
+        try:
+            # Deduplicate state changes
+            if app_config.active_device == to_active:
+                return
+
+            if to_active and not getattr(app_config, 'input_sharing_enabled', True):
+                return
+            
+            # Update state and set cooldown IMMEDIATELY
+            app_config.active_device = to_active
+            self.edge_transition_cooldown = True
+            
+            if self.os_type == "windows":
+                self.gui_app.after_idle(self.create_overlay if to_active else self.destroy_overlay)
+                self.mouse_controller.position = new_position
             else:
-                self.destroy_overlay()
-            self.mouse_controller.position = new_position
-        
-        # Notify client of transition
-        if hasattr(self, 'secondary_server') and self.secondary_server:
-            try:
-                active_msg = {"type": "active_device", "value": to_active}
-                self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
-                print(f"[Transition] Sent active_device={to_active} to client")
-            except Exception as e:
-                print(f"[Transition] Failed to send active_device state: {e}")
+                if to_active:
+                    self.create_overlay()
+                else:
+                    self.destroy_overlay()
+                self.mouse_controller.position = new_position
+            
+            # Notify client of transition
+            if hasattr(self, 'secondary_server') and self.secondary_server:
+                try:
+                    active_msg = {"type": "active_device", "value": to_active}
+                    self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
+                    print(f"[Transition] Sent active_device={to_active} to client")
+                except Exception as e:
+                    print(f"[Transition] Failed to send active_device state: {e}")
+            
+            app_config.save()
+            time.sleep(0.2) # Small sleep to stabilize the hardware cursor
+        finally:
+            self._transition_lock.release()
         
         # Determine socket for clipboard - prioritize tertiary if connected
         clip_socket = None

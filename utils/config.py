@@ -3,7 +3,14 @@ import os
 
 class AppConfig:
     def __init__(self):
-        self.config_path = "config.json"
+        import sys
+        if getattr(sys, 'frozen', False):
+            # Bundled executable
+            base_dir = os.path.dirname(sys.executable)
+        else:
+            # Source script
+            base_dir = os.getcwd()
+        self.config_path = os.path.join(base_dir, "config.json")
         self.set_defaults()
         self.load()
 
