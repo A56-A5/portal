@@ -8,6 +8,7 @@ import os
 import platform
 import subprocess
 import threading
+import urllib.parse
 from typing import Optional, Tuple
 
 class ClipboardController:
@@ -250,12 +251,38 @@ class ClipboardController:
                             p.communicate(input=decoded_data)
                         elif format_type == "files":
                             # Setting files on Linux is harder, we provide the paths as text/uri-list
+                            import urllib.parse
                             files = decoded_data.decode('utf-8').splitlines()
-                            uris = "\n".join([f"file://{f}" for f in files])
+                            
+                            uri_list = []
+                            for f in files:
+                                f = os.path.abspath(f)
+                                # Proper URI escaping for Linux (important for spaces)
+                                url_path = urllib.parse.quote(f)
+                                if not url_path.startswith('/'):
+                                    url_path = '/' + url_path
+                                uri_list.append(f"file://{url_path}")
+                            
+                            # Standard URI list (CRLF separated)
+                            uris = "\r\n".join(uri_list) + "\r\n"
+                            
+                            # GNOME (Nautilus) specifically often wants x-special/gnome-copied-files
+                            gnome_paths = "copy\n" + "\n".join(uri_list)
+                            
                             tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
-                            cmd = [tool, '-t', 'text/uri-list'] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard', '-t', 'text/uri-list']
-                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-                            p.communicate(input=uris.encode('utf-8'))
+                            
+                            def run_copy(mtype, data):
+                                if tool == 'wl-copy':
+                                    cmd = ['wl-copy', '-t', mtype]
+                                else:
+                                    cmd = ['xclip', '-selection', 'clipboard', '-t', mtype]
+                                try:
+                                    p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+                                    p.communicate(input=data.encode('utf-8'))
+                                except: pass
+
+                            run_copy('text/uri-list', uris)
+                            run_copy('x-special/gnome-copied-files', gnome_paths)
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')
