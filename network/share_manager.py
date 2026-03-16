@@ -41,6 +41,7 @@ class ShareManager:
         self.tertiary_client_socket = None
         self.secondary_server = None
         self.tertiary_server = None
+        self.tertiary_connected = False
         
         # Overlay
         self.overlay = None
@@ -223,8 +224,19 @@ class ShareManager:
             except Exception as e:
                 print(f"[Transition] Failed to send active_device state: {e}")
         
-        # Determine socket for clipboard
-        clip_socket = self.tertiary_server if hasattr(self, 'tertiary_server') and self.tertiary_server else self.secondary_server
+        # Determine socket for clipboard - prioritize tertiary if connected
+        clip_socket = None
+        if hasattr(self, 'tertiary_connected') and self.tertiary_connected:
+            if app_config.mode == "server":
+                clip_socket = self.tertiary_server
+            else:
+                clip_socket = self.tertiary_client_socket
+        
+        if not clip_socket:
+            if app_config.mode == "server":
+                clip_socket = self.secondary_server
+            else:
+                clip_socket = self.secondary_client_socket
 
         # Send clipboard on transition to active (server to client)
         if to_active:
@@ -234,8 +246,8 @@ class ShareManager:
                 if clip_socket:
                     self.clipboard_sender(clip_socket)
         
-        # Also send clipboard when transitioning FROM active to inactive (bidirectional sync)
-        if not to_active and app_config.mode == "server":
+        # Also sync back when deactivating (device back to host)
+        if not to_active:
             current_clip = self.clipboard_controller.get_clipboard()
             if self.last_send != current_clip:
                 self.last_send = current_clip
@@ -528,24 +540,25 @@ class ShareManager:
         
         # Read clipboard from client
         def read_clipboard():
-            buffer = ""
+            buffer = b""
             while app_config.is_running:
                 try:
-                    data = self.secondary_server.recv(1024).decode()
+                    data = self.secondary_server.recv(4096)
                     if not data:
                         break
                     
                     buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
+                    while b"\n" in buffer:
+                        line_bytes, buffer = buffer.split(b"\n", 1)
                         try:
+                            line = line_bytes.decode('utf-8')
                             evt = json.loads(line)
                             if evt["type"] == "clipboard":
                                 local_clip = self.clipboard_controller.get_clipboard()
                                 if evt["content"] != local_clip:
                                     self.clipboard_controller.set_clipboard(evt["content"])
                                     self.last_send = evt["content"]
-                        except json.JSONDecodeError:
+                        except (json.JSONDecodeError, UnicodeDecodeError):
                             pass
                 except Exception as e:
                     print(f"[Clipboard] Error: {e}")
@@ -559,17 +572,22 @@ class ShareManager:
         ter_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         print(f"[Server] Tertiary connection from: {ter_addr}")
         self.tertiary_server = ter_socket
+        self.tertiary_connected = True
         
         def read_large_data():
-            buffer = ""
+            buffer = b""
             while app_config.is_running:
                 try:
-                    data = self.tertiary_server.recv(4096).decode()
+                    data = self.tertiary_server.recv(16384)
                     if not data: break
                     buffer += data
-                    while "\n" in buffer:
-                        line, buffer = buffer.split("\n", 1)
-                        self.handle_incoming_large_event(line, self.tertiary_server)
+                    while b"\n" in buffer:
+                        line_bytes, buffer = buffer.split(b"\n", 1)
+                        try:
+                            line = line_bytes.decode('utf-8')
+                            self.handle_incoming_large_event(line, self.tertiary_server)
+                        except UnicodeDecodeError:
+                            pass
                 except Exception as e:
                     print(f"[Tertiary] Error: {e}")
                     break
@@ -682,6 +700,7 @@ class ShareManager:
                 time.sleep(1)
         
         print("[Client] Tertiary Connected")
+        self.tertiary_connected = True
         
         threading.Thread(target=self.receive_primary, daemon=True).start()
         threading.Thread(target=self.receive_secondary, daemon=True).start()
@@ -689,10 +708,10 @@ class ShareManager:
     
     def receive_primary(self):
         """Receive mouse events"""
-        buffer = ""
+        buffer = b""
         while app_config.is_running:
             try:
-                data = self.client_socket.recv(1024).decode()
+                data = self.client_socket.recv(4096)
             except Exception:
                 break
             
@@ -700,9 +719,10 @@ class ShareManager:
                 break
             
             buffer += data
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
+            while b"\n" in buffer:
+                line_bytes, buffer = buffer.split(b"\n", 1)
                 try:
+                    line = line_bytes.decode('utf-8')
                     evt = json.loads(line)
                     if evt["type"] == "move":
                         x = int(evt["x"] * self.screen_width)
@@ -717,9 +737,7 @@ class ShareManager:
                     elif evt["type"] == "scroll":
                         self.mouse_controller.scroll(evt['dx'], evt['dy'])
                 except Exception as e:
-                    print(f"[Client] Parse error: {e}")
-                    logging.info(f"[Client] Parse error: {e}")
-                    logging.info(f"[Client] Parse error: {e}")
+                    pass # Noise
     
     def receive_secondary(self):
         """Receive keyboard events and clipboard"""
@@ -740,10 +758,10 @@ class ShareManager:
                 return key_str.lower()  # Normalize multi-character strings to lowercase
             return key_str
         
-        buffer = ""
+        buffer = b""
         while app_config.is_running:
             try:
-                data = self.secondary_client_socket.recv(1024).decode()
+                data = self.secondary_client_socket.recv(4096)
             except Exception:
                 break
             
@@ -751,9 +769,10 @@ class ShareManager:
                 break
             
             buffer += data
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
+            while b"\n" in buffer:
+                line_bytes, buffer = buffer.split(b"\n", 1)
                 try:
+                    line = line_bytes.decode('utf-8')
                     evt = json.loads(line)
                     if evt["type"] == "key_press":
                         key_str = evt["key"]
@@ -803,15 +822,19 @@ class ShareManager:
 
     def receive_tertiary(self):
         """Receive large data events (images, files)"""
-        buffer = ""
+        buffer = b""
         while app_config.is_running:
             try:
-                data = self.tertiary_client_socket.recv(4096).decode()
+                data = self.tertiary_client_socket.recv(16384)
                 if not data: break
                 buffer += data
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    self.handle_incoming_large_event(line, self.tertiary_client_socket)
+                while b"\n" in buffer:
+                    line_bytes, buffer = buffer.split(b"\n", 1)
+                    try:
+                        line = line_bytes.decode('utf-8')
+                        self.handle_incoming_large_event(line, self.tertiary_client_socket)
+                    except UnicodeDecodeError:
+                        pass
             except Exception:
                 break
     

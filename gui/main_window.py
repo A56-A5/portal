@@ -262,12 +262,17 @@ class MainWindow:
 
     def show_notification(self, message, duration=3):
         """Show a temporary notification in the UI"""
-        self.status_notify_label.config(text=message)
-        def clear():
-            time.sleep(duration)
-            if self.status_notify_label.cget("text") == message:
-                self.status_notify_label.config(text="")
-        threading.Thread(target=clear, daemon=True).start()
+        try:
+            if self.status_notify_label.winfo_exists():
+                self.status_notify_label.config(text=message)
+                def clear():
+                    time.sleep(duration)
+                    try:
+                        if self.status_notify_label.winfo_exists() and self.status_notify_label.cget("text") == message:
+                            self.root.after(0, lambda: self.status_notify_label.config(text=""))
+                    except: pass
+                threading.Thread(target=clear, daemon=True).start()
+        except: pass
 
     def check_log_for_status(self):
         """Watch the log file for status messages (hacky way to communicate between processes)"""
@@ -278,10 +283,18 @@ class MainWindow:
                     line = f.readline()
                     if not line:
                         time.sleep(0.5)
+                        # Check if window still exists
+                        try:
+                            if not self.root.winfo_exists(): break
+                        except: break
                         continue
+                        
                     if "[Remote Status]" in line:
                         msg = line.split("[Remote Status]", 1)[1].strip()
-                        self.root.after(0, lambda m=msg: self.show_notification(m))
+                        try:
+                            if self.root.winfo_exists():
+                                self.root.after(0, lambda m=msg: self.show_notification(m))
+                        except: break
         except:
             pass
 

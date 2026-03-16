@@ -213,6 +213,7 @@ class ClipboardController:
                 try:
                     data = pyperclip.paste()
                     encoded = base64.b64encode(data.encode('utf-8')).decode('utf-8')
+                    print("[Clipboard] Detected plain text via pyperclip")
                     return f"text:{encoded}"
                 except:
                     return ""
@@ -231,6 +232,7 @@ class ClipboardController:
                 
                 # Decode base64
                 decoded_data = base64.b64decode(base64_data)
+                print(f"[Clipboard] Setting clipboard format: {format_type}")
                 
                 if self.os_type == "windows" and self.win32clipboard:
                     try:
@@ -273,7 +275,8 @@ class ClipboardController:
                                 # struct.pack("IIIII", 20, 0, 0, 0, 1)
                                 header = struct.pack("LLLLL", 20, 0, 0, 0, 1)
                                 # Unicode paths separated by \0, terminated by \0\0
-                                files_unicode = "\0".join(files).encode("utf-16-le") + b"\0\0"
+                                # In UTF-16-LE, each \0 is 2 bytes. We need a double wide-char null terminator.
+                                files_unicode = ("\0".join(files) + "\0\0").encode("utf-16-le")
                                 dropfiles_data = header + files_unicode
                                 self.win32clipboard.SetClipboardData(self.win32con.CF_HDROP, dropfiles_data)
                             except Exception as e:
