@@ -265,6 +265,21 @@ class ClipboardController:
                                 print(f"[Clipboard] Image conversion failed: {e}")
                                 # Fallback: try to set raw data as DIB
                                 self.win32clipboard.SetClipboardData(self.win32con.CF_DIB, decoded_data)
+                        elif format_type == "files":
+                            try:
+                                files = decoded_data.decode('utf-8').splitlines()
+                                import struct
+                                # DROPFILES header: pFiles(4), pt.x(4), pt.y(4), fNC(4), fWide(4) = 20 bytes
+                                # struct.pack("IIIII", 20, 0, 0, 0, 1)
+                                header = struct.pack("LLLLL", 20, 0, 0, 0, 1)
+                                # Unicode paths separated by \0, terminated by \0\0
+                                files_unicode = "\0".join(files).encode("utf-16-le") + b"\0\0"
+                                dropfiles_data = header + files_unicode
+                                self.win32clipboard.SetClipboardData(self.win32con.CF_HDROP, dropfiles_data)
+                            except Exception as e:
+                                print(f"[Clipboard] File sync failed: {e}")
+                                # Fallback to text
+                                self.win32clipboard.SetClipboardText(decoded_data.decode('utf-8'))
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')
