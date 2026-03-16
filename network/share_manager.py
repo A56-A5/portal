@@ -10,6 +10,7 @@ import platform
 import subprocess
 import logging
 import os
+import base64
 from datetime import datetime
 from pynput import mouse, keyboard
 from pynput.mouse import Button
@@ -317,40 +318,54 @@ class ShareManager:
 
         def on_press(key):
             try:
-                if isinstance(key, kb.Key):
-                    name = str(key).lower()
-                    if "shift" in name:
-                        pressed_mods.add('shift')
-                    elif "ctrl" in name:
-                        pressed_mods.add('control')
-                    elif "alt" in name:
-                        pressed_mods.add('alt')
-                    elif "cmd" in name or "win" in name or "super" in name:
-                        pressed_mods.add('super')
+                # Get the actual character or name
+                if hasattr(key, 'char') and key.char:
+                    k = key.char.lower()
+                elif hasattr(key, 'name'):
+                    k = key.name.lower()
                 else:
-                    last_key[0] = getattr(key, 'char', None) or str(key).replace('Key.', '')
-        
-                # Check for match instantly
+                    k = str(key).lower()
+                
+                # Check modifiers
+                if 'shift' in k:
+                    pressed_mods.add('shift')
+                elif 'ctrl' in k or 'control' in k:
+                    pressed_mods.add('control')
+                elif 'alt' in k or 'option' in k:
+                    pressed_mods.add('alt')
+                elif 'cmd' in k or 'win' in k or 'super' in k:
+                    pressed_mods.add('super')
+                else:
+                    last_key[0] = k
+                    
                 target_mods, target_key = parse_config_hotkey()
                 if current_matches(target_mods, target_key):
                     toggle_input_sharing()
-        
+                    # Clear last_key to prevent double trigger
+                    last_key[0] = None
             except Exception as e:
-                print(f"[Hotkey ERROR] {e}")
+                pass
         
 
         def on_release(key):
             try:
-                if isinstance(key, kb.Key):
-                    if key in (kb.Key.shift, kb.Key.shift_l, kb.Key.shift_r):
-                        pressed_mods.discard('shift')
-                    elif key in (kb.Key.ctrl, kb.Key.ctrl_l, kb.Key.ctrl_r):
-                        pressed_mods.discard('control')
-                    elif key in (kb.Key.alt, kb.Key.alt_l, kb.Key.alt_r):
-                        pressed_mods.discard('alt')
-                    elif key in (kb.Key.cmd, kb.Key.cmd_l, kb.Key.cmd_r, kb.Key.windows):
-                        pressed_mods.discard('super')
+                if hasattr(key, 'char') and key.char:
+                    k = key.char.lower()
+                elif hasattr(key, 'name'):
+                    k = key.name.lower()
                 else:
+                    k = str(key).lower()
+
+                if 'shift' in k:
+                    pressed_mods.discard('shift')
+                elif 'ctrl' in k or 'control' in k:
+                    pressed_mods.discard('control')
+                elif 'alt' in k or 'option' in k:
+                    pressed_mods.discard('alt')
+                elif 'cmd' in k or 'win' in k or 'super' in k:
+                    pressed_mods.discard('super')
+                
+                if k == last_key[0]:
                     last_key[0] = None
             except Exception:
                 pass
@@ -371,6 +386,7 @@ class ShareManager:
                 # Notify start
                 socket.sendall((json.dumps({"type": "status", "msg": "File transfer starting..."}) + "\n").encode())
                 
+                import shutil
                 paths = base64.b64decode(current_clip.split(":", 1)[1]).decode('utf-8').splitlines()
                 all_files_data = []
                 for p in paths:
@@ -383,7 +399,27 @@ class ShareManager:
                                 encoded_content = base64.b64encode(content).decode('utf-8')
                                 all_files_data.append({"name": name, "data": encoded_content})
                         except Exception as e:
-                            print(f"[Clipboard] Failed to read {p}: {e}")
+                            print(f"[Clipboard] Failed to read file {p}: {e}")
+                    elif os.path.isdir(p):
+                        try:
+                            # Zip directory to temporary file
+                            zip_name = os.path.basename(p) + ".zip"
+                            temp_zip = os.path.join(os.path.expanduser("~"), "Portal", "temp_" + zip_name)
+                            os.makedirs(os.path.dirname(temp_zip), exist_ok=True)
+                            
+                            # Create zip
+                            shutil.make_archive(temp_zip.replace(".zip", ""), 'zip', p)
+                            
+                            with open(temp_zip, "rb") as f:
+                                content = f.read()
+                                encoded_content = base64.b64encode(content).decode('utf-8')
+                                all_files_data.append({"name": zip_name, "data": encoded_content})
+                            
+                            # Cleanup
+                            if os.path.exists(temp_zip):
+                                os.remove(temp_zip)
+                        except Exception as e:
+                            print(f"[Clipboard] Failed to zip directory {p}: {e}")
                 
                 if all_files_data:
                     data = {"type": "file_transfer", "files": all_files_data}
@@ -644,7 +680,10 @@ class ShareManager:
                 encoded = base64.b64encode("\n".join(saved_paths).encode('utf-8')).decode('utf-8')
                 self.clipboard_controller.set_clipboard(f"files:{encoded}")
                 self.last_send = f"files:{encoded}"
-                print(f"[Files] Saved {len(saved_paths)} files to {download_path}")
+                msg = f"Received {len(saved_paths)} files to Portal/Downloads"
+                print(f"[Files] {msg}")
+                logging.info(f"[Remote Status] {msg}")
+                
                 # Notify the sender that we got the files
                 socket_to_notify = self.tertiary_server if app_config.mode == "server" else self.tertiary_client_socket
                 if not socket_to_notify:
@@ -652,7 +691,7 @@ class ShareManager:
                 
                 if socket_to_notify:
                     try:
-                        socket_to_notify.sendall((json.dumps({"type": "status", "msg": f"Target received {len(saved_paths)} files!"}) + "\n").encode())
+                        socket_to_notify.sendall((json.dumps({"type": "status", "msg": f"Success: Target got {len(saved_paths)} files!"}) + "\n").encode())
                     except: pass
         except Exception as e:
             print(f"[Files] Receipt failed: {e}")

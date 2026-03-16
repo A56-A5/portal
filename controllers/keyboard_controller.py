@@ -280,9 +280,7 @@ class KeyboardController:
     # ---------------- Public API ----------------
     def press(self, key):
         key_str = self._normalize_key(key)
-        vk = self._key_to_vk(key_str)
-        
-        print(f"[KeyboardController][PRESS] key={key}, normalized={key_str}, vk={vk}, use_win32={self.use_win32}, use_xdotool={self.use_xdotool}")
+        # vk = self._key_to_vk(key_str)
         
         # On Windows, always prefer win32api if we have a VK mapping (most reliable)
         if self.os_type == "windows" and self.use_win32 and vk:
@@ -308,9 +306,7 @@ class KeyboardController:
 
     def release(self, key):
         key_str = self._normalize_key(key)
-        vk = self._key_to_vk(key_str)
-        
-        print(f"[KeyboardController][RELEASE] key={key}, normalized={key_str}, vk={vk}, use_win32={self.use_win32}, use_xdotool={self.use_xdotool}")
+        # vk = self._key_to_vk(key_str)
         
         # On Windows, always prefer win32api if we have a VK mapping (most reliable)
         if self.os_type == "windows" and self.use_win32 and vk:
@@ -336,9 +332,7 @@ class KeyboardController:
 
     def tap(self, key):
         key_str = self._normalize_key(key)
-        vk = self._key_to_vk(key_str)
-        
-        print(f"[KeyboardController][TAP] key={key}, normalized={key_str}, vk={vk}, use_win32={self.use_win32}, use_xdotool={self.use_xdotool}")
+        # vk = self._key_to_vk(key_str)
         
         # On Windows, always prefer win32api if we have a VK mapping (most reliable)
         if self.os_type == "windows" and self.use_win32 and vk:

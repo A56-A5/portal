@@ -2,11 +2,12 @@
 Clipboard Controller - Handles clipboard operations across different operating systems
 Supports text, images, and other formats using base64 encoding
 """
-import threading
-import platform
-import subprocess
 import base64
 import io
+import os
+import platform
+import subprocess
+import threading
 from typing import Optional, Tuple
 
 class ClipboardController:
@@ -70,7 +71,6 @@ class ClipboardController:
                     # Try to get files (CF_HDROP) first
                     if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_HDROP):
                         try:
-                            # 15 is CF_HDROP
                             files = self.win32clipboard.GetClipboardData(self.win32con.CF_HDROP)
                             if files:
                                 print(f"[Clipboard] Detected {len(files)} files")
@@ -84,28 +84,19 @@ class ClipboardController:
                         try:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_DIB)
                             print("[Clipboard] Detected image (DIB)")
-                            
-                            # Convert DIB to PNG format for cross-platform compatibility
                             try:
                                 from PIL import Image
-                                if len(data) < 40:
-                                    raise Exception("DIB data too short")
-                                
-                                # Reconstruct BMP file
-                                bmp_header = b'BM'
-                                file_size = (len(data) + 54).to_bytes(4, 'little')
-                                data_offset = b'\x36\x00\x00\x00'
-                                bmp_file = bmp_header + file_size + b'\x00\x00\x00\x00' + data_offset + data
-                                
-                                img = Image.open(io.BytesIO(bmp_file))
-                                output = io.BytesIO()
-                                img.save(output, format='PNG')
-                                png_data = output.getvalue()
-                                
-                                encoded = base64.b64encode(png_data).decode('utf-8')
-                                return f"image:{encoded}"
-                            except Exception as e:
-                                print(f"[Clipboard] Image conversion failed: {e}")
+                                if len(data) >= 40:
+                                    bmp_header = b'BM'
+                                    file_size = (len(data) + 54).to_bytes(4, 'little')
+                                    data_offset = b'\x36\x00\x00\x00'
+                                    bmp_file = bmp_header + file_size + b'\x00\x00\x00\x00' + data_offset + data
+                                    img = Image.open(io.BytesIO(bmp_file))
+                                    output = io.BytesIO()
+                                    img.save(output, format='PNG')
+                                    encoded = base64.b64encode(output.getvalue()).decode('utf-8')
+                                    return f"image:{encoded}"
+                            except Exception:
                                 encoded = base64.b64encode(data).decode('utf-8')
                                 return f"image:{encoded}"
                         except Exception as e:
@@ -116,12 +107,10 @@ class ClipboardController:
                         try:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_UNICODETEXT)
                             if data:
-                                print(f"[Clipboard] Detected text ({len(data)} chars)")
                                 encoded = base64.b64encode(data.encode('utf-8')).decode('utf-8')
                                 return f"text:{encoded}"
                         except Exception:
                             pass
-                    
                     return ""
                 finally:
                     try:
@@ -130,70 +119,46 @@ class ClipboardController:
                         pass
             
             elif self.os_type == "linux":
+                import urllib.parse
                 if self.linux_tool == 'wl-clipboard':
-                    # Try files first
+                    # Try files
                     try:
                         uris = subprocess.check_output(['wl-paste', '-t', 'text/uri-list'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
-                        if uris:
-                            files = [u.replace('file://', '') for u in uris.splitlines() if u.startswith('file://')]
-                            if files:
-                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
-                                return f"files:{encoded}"
+                        files = [urllib.parse.unquote(u.replace('file://', '')) for u in uris.splitlines() if u.startswith('file://')]
+                        if files:
+                            encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
+                            return f"files:{encoded}"
                     except: pass
-                    
                     # Try image
                     try:
                         img_data = subprocess.check_output(['wl-paste', '-t', 'image/png'], stderr=subprocess.DEVNULL)
-                        encoded = base64.b64encode(img_data).decode('utf-8')
-                        return f"image:{encoded}"
+                        return f"image:{base64.b64encode(img_data).decode('utf-8')}"
                     except: pass
-                    
-                    # Fallback to text
+                    # Text
                     try:
                         text = subprocess.check_output(['wl-paste'], stderr=subprocess.DEVNULL).decode('utf-8')
-                        encoded = base64.b64encode(text.encode('utf-8')).decode('utf-8')
-                        return f"text:{encoded}"
+                        return f"text:{base64.b64encode(text.encode('utf-8')).decode('utf-8')}"
                     except: pass
-                    
-                else: # xclip or fallback
+                else:
+                    # xclip
                     try:
-                        # Try files (selection/target might vary, usually text/uri-list)
                         try:
                             uris = subprocess.check_output(['xclip', '-selection', 'clipboard', '-t', 'text/uri-list', '-o'], stderr=subprocess.DEVNULL).decode('utf-8').strip()
-                            files = [u.replace('file://', '') for u in uris.splitlines() if u.startswith('file://')]
+                            files = [urllib.parse.unquote(u.replace('file://', '')) for u in uris.splitlines() if u.startswith('file://')]
                             if files:
-                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
-                                return f"files:{encoded}"
+                                return f"files:{base64.b64encode(chr(10).join(files).encode('utf-8')).decode('utf-8')}"
                         except: pass
-
-                        # Try text first
                         try:
-                            text_data = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'], stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
-                            encoded = base64.b64encode(text_data.encode('utf-8')).decode('utf-8')
-                            return f"text:{encoded}"
-                        except:
-                            pass
-                        
-                        # Try image (PNG)
-                        try:
-                            image_data = subprocess.check_output(['xclip', '-selection', 'clipboard', '-t', 'image/png', '-o'], stderr=subprocess.DEVNULL)
-                            encoded = base64.b64encode(image_data).decode('utf-8')
-                            return f"image:{encoded}"
-                        except:
-                            pass
-                        
-                        return ""
-                    except Exception:
-                        return ""
-            
+                            text = subprocess.check_output(['xclip', '-selection', 'clipboard', '-o'], stderr=subprocess.DEVNULL).decode('utf-8', errors='ignore')
+                            return f"text:{base64.b64encode(text.encode('utf-8')).decode('utf-8')}"
+                        except: pass
+                    except: pass
+                return ""
             else:
-                # Fallback for other OS
                 import pyperclip
                 try:
                     data = pyperclip.paste()
-                    encoded = base64.b64encode(data.encode('utf-8')).decode('utf-8')
-                    print("[Clipboard] Detected plain text via pyperclip")
-                    return f"text:{encoded}"
+                    return f"text:{base64.b64encode(data.encode('utf-8')).decode('utf-8')}"
                 except:
                     return ""
     
