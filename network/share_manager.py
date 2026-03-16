@@ -239,7 +239,8 @@ class ShareManager:
             else:
                 clip_socket = self.secondary_client_socket
         
-        print(f"[Clipboard] Using socket: {'Tertiary' if 'tertiary' in str(clip_socket) else 'Secondary'}")
+        # LOGGING instead of printing for noise reduction
+        logging.info(f"[Clipboard] Using socket: {'Tertiary' if 'tertiary' in str(clip_socket) else 'Secondary'}")
 
         # Send clipboard on transition to active (server to client)
         if to_active:
@@ -257,7 +258,6 @@ class ShareManager:
                 if clip_socket:
                     self.clipboard_sender(clip_socket)
         
-        print(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
         time.sleep(0.2)
@@ -396,16 +396,19 @@ class ShareManager:
             # Regular clipboard
             is_large = len(current_clip) > 100000 # 100KB+
             if is_large:
-                socket.sendall((json.dumps({"type": "status", "msg": "Syncing large clipboard..."}) + "\n").encode())
+                try:
+                    socket.sendall((json.dumps({"type": "status", "msg": "Syncing large clipboard..."}) + "\n").encode())
+                except: pass
 
             data = {"type": "clipboard", "content": current_clip}
-            socket.sendall((json.dumps(data) + "\n").encode())
-            
-            if is_large:
-                socket.sendall((json.dumps({"type": "status", "msg": "Clipboard synced!"}) + "\n").encode())
-            
-            print("[Clipboard] Sent clipboard data")
-            logging.info("[Clipboard] Sent clipboard data")
+            try:
+                socket.sendall((json.dumps(data) + "\n").encode())
+                if is_large:
+                    socket.sendall((json.dumps({"type": "status", "msg": "Clipboard synced!"}) + "\n").encode())
+                logging.info("[Clipboard] Sent clipboard data successfully")
+            except Exception as e:
+                logging.error(f"[Clipboard] Send failed: {e}")
+                raise e
         except Exception as e:
             print(f"[Clipboard] Error: {e}")
             logging.info(f"[Clipboard] Error: {e}")

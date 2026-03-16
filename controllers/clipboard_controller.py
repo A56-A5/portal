@@ -32,10 +32,18 @@ class ClipboardController:
         elif self.os_type == "linux":
             self.win32clipboard = None
             self.win32con = None
-            # Check for wl-clipboard or xclip
+            # Check for wl-clipboard or xclip, silting stderr to avoid noise if Wayland is missing
             try:
-                subprocess.run(['wl-paste', '--version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-                self.linux_tool = 'wl-clipboard'
+                # Try to run wl-paste --version and capture output to verify Wayland environment
+                res = subprocess.run(['wl-paste', '--version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                if res.returncode == 0:
+                    # Also check if WAYLAND_DISPLAY is set
+                    if os.environ.get('WAYLAND_DISPLAY') or os.environ.get('XDG_RUNTIME_DIR'):
+                        self.linux_tool = 'wl-clipboard'
+                    else:
+                        raise Exception("Wayland env missing")
+                else:
+                    raise Exception("wl-clipboard missing")
             except:
                 try:
                     subprocess.run(['xclip', '-version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)

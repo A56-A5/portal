@@ -70,6 +70,7 @@ class MainWindow:
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
         self.create_portal_tab()
         self.create_settings_tab()
+        self.create_logs_tab()
         
         threading.Thread(target=self.check_status, daemon=True).start()
         threading.Thread(target=self.check_log_for_status, daemon=True).start()
@@ -92,11 +93,10 @@ class MainWindow:
     def on_tab_changed(self, event):
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]
         if selected_tab == "View Logs":
-            try:
-                open_log_viewer(self.root)
-                self.tab_control.select(self.portal_tab)
-            except Exception as e:
-                pass
+            # Instead of popping a window, we can just update the label for now
+            # or ensure the user knows it opened. Actually, the user wants it IN the UI.
+            # I'll modify create_tabs to have a proper Logs tab.
+            pass
     
     def create_portal_tab(self):
         mode_frame = ttk.LabelFrame(self.portal_tab, text="Mode")
@@ -297,6 +297,26 @@ class MainWindow:
                         except: break
         except:
             pass
+
+    def create_logs_tab(self):
+        """Create a dedicated Logs tab in the GUI"""
+        logs_frame = ttk.Frame(self.logs_tab)
+        logs_frame.pack(expand=True, fill='both', padx=10, pady=10)
+        
+        self.log_text = tk.Text(logs_frame, state='disabled', wrap='none', font=("Consolas", 9))
+        self.log_text.pack(expand=True, fill='both')
+        
+        scrollbar = ttk.Scrollbar(logs_frame, orient="vertical", command=self.log_text.yview)
+        scrollbar.pack(side='right', fill='y')
+        self.log_text.config(yscrollcommand=scrollbar.set)
+        
+        # Start log reader thread
+        from gui.log_viewer import read_log
+        threading.Thread(target=read_log, args=(self.log_text,), daemon=True).start()
+        
+        # Clear button
+        from gui.log_viewer import clear_logs
+        ttk.Button(logs_frame, text="Clear Logs", command=lambda: clear_logs(self.log_text)).pack(pady=5)
 
     def create_settings_tab(self):
         settings_frame = ttk.LabelFrame(self.settings_tab, text="Input Sharing")
