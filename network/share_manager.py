@@ -380,77 +380,80 @@ class ShareManager:
         if not current_clip:
             return
             
-        try:
-            # Check for files
-            if current_clip.startswith("files:"):
-                # Notify start
-                socket.sendall((json.dumps({"type": "status", "msg": "File transfer starting..."}) + "\n").encode())
-                
-                import shutil
-                paths = base64.b64decode(current_clip.split(":", 1)[1]).decode('utf-8').splitlines()
-                all_files_data = []
-                for p in paths:
-                    p = p.strip()
-                    if os.path.isfile(p):
-                        try:
-                            with open(p, "rb") as f:
-                                content = f.read()
-                                name = os.path.basename(p)
-                                encoded_content = base64.b64encode(content).decode('utf-8')
-                                all_files_data.append({"name": name, "data": encoded_content})
-                        except Exception as e:
-                            print(f"[Clipboard] Failed to read file {p}: {e}")
-                    elif os.path.isdir(p):
-                        try:
-                            # Zip directory to temporary file
-                            zip_name = os.path.basename(p) + ".zip"
-                            temp_zip = os.path.join(os.path.expanduser("~"), "Portal", "temp_" + zip_name)
-                            os.makedirs(os.path.dirname(temp_zip), exist_ok=True)
-                            
-                            # Create zip
-                            shutil.make_archive(temp_zip.replace(".zip", ""), 'zip', p)
-                            
-                            with open(temp_zip, "rb") as f:
-                                content = f.read()
-                                encoded_content = base64.b64encode(content).decode('utf-8')
-                                all_files_data.append({"name": zip_name, "data": encoded_content})
-                            
-                            # Cleanup
-                            if os.path.exists(temp_zip):
-                                os.remove(temp_zip)
-                        except Exception as e:
-                            print(f"[Clipboard] Failed to zip directory {p}: {e}")
-                
-                if all_files_data:
-                    data = {"type": "file_transfer", "files": all_files_data}
-                    # Large data send
-                    payload = (json.dumps(data) + "\n").encode()
-                    socket.sendall(payload)
-                    socket.sendall((json.dumps({"type": "status", "msg": "Files synced!"}) + "\n").encode())
-                return
-
-            # Regular clipboard
-            is_large = len(current_clip) > 100000 # 100KB+
-            if is_large:
-                try:
-                    socket.sendall((json.dumps({"type": "status", "msg": "Syncing large clipboard..."}) + "\n").encode())
-                except: pass
-
-            data = {"type": "clipboard", "content": current_clip}
+        def perform_send():
             try:
-                socket.sendall((json.dumps(data) + "\n").encode())
+                # Check for files
+                if current_clip.startswith("files:"):
+                    # Notify start
+                    socket.sendall((json.dumps({"type": "status", "msg": "File transfer starting..."}) + "\n").encode())
+                    
+                    import shutil
+                    paths = base64.b64decode(current_clip.split(":", 1)[1]).decode('utf-8').splitlines()
+                    all_files_data = []
+                    for p in paths:
+                        p = p.strip()
+                        if not os.path.exists(p): continue
+
+                        if os.path.isfile(p):
+                            try:
+                                with open(p, "rb") as f:
+                                    content = f.read()
+                                    name = os.path.basename(p)
+                                    encoded_content = base64.b64encode(content).decode('utf-8')
+                                    all_files_data.append({"name": name, "data": encoded_content})
+                            except Exception as e:
+                                print(f"[Clipboard] Failed to read file {p}: {e}")
+                        elif os.path.isdir(p):
+                            try:
+                                # Zip directory to temporary file
+                                zip_name = os.path.basename(p) + ".zip"
+                                socket.sendall((json.dumps({"type": "status", "msg": f"Zipping {zip_name}..."}) + "\n").encode())
+                                
+                                temp_zip = os.path.join(os.path.expanduser("~"), "Portal", "temp_" + zip_name)
+                                os.makedirs(os.path.dirname(temp_zip), exist_ok=True)
+                                
+                                # Create zip
+                                shutil.make_archive(temp_zip.replace(".zip", ""), 'zip', p)
+                                
+                                with open(temp_zip, "rb") as f:
+                                    content = f.read()
+                                    encoded_content = base64.b64encode(content).decode('utf-8')
+                                    all_files_data.append({"name": zip_name, "data": encoded_content})
+                                
+                                # Cleanup
+                                if os.path.exists(temp_zip):
+                                    os.remove(temp_zip)
+                            except Exception as e:
+                                print(f"[Clipboard] Failed to zip directory {p}: {e}")
+                    
+                    if all_files_data:
+                        data = {"type": "file_transfer", "files": all_files_data}
+                        # Large data send
+                        payload = (json.dumps(data) + "\n").encode()
+                        socket.sendall(payload)
+                        socket.sendall((json.dumps({"type": "status", "msg": "Files synced!"}) + "\n").encode())
+                    return
+
+                # Regular clipboard
+                is_large = len(current_clip) > 100000 # 100KB+
                 if is_large:
-                    socket.sendall((json.dumps({"type": "status", "msg": "Clipboard synced!"}) + "\n").encode())
-                logging.info("[Clipboard] Sent clipboard data successfully")
+                    try:
+                        socket.sendall((json.dumps({"type": "status", "msg": "Syncing large clipboard..."}) + "\n").encode())
+                    except: pass
+
+                data = {"type": "clipboard", "content": current_clip}
+                try:
+                    socket.sendall((json.dumps(data) + "\n").encode())
+                    if is_large:
+                        socket.sendall((json.dumps({"type": "status", "msg": "Clipboard synced!"}) + "\n").encode())
+                    logging.info("[Clipboard] Sent clipboard data successfully")
+                except Exception as e:
+                    logging.error(f"[Clipboard] Send failed: {e}")
             except Exception as e:
-                logging.error(f"[Clipboard] Send failed: {e}")
-                raise e
-        except Exception as e:
-            print(f"[Clipboard] Error: {e}")
-            logging.info(f"[Clipboard] Error: {e}")
-            try:
-                socket.sendall((json.dumps({"type": "status", "msg": "Clipboard sync failed!"}) + "\n").encode())
-            except: pass
+                print(f"[Clipboard Threaded Send] Error: {e}")
+
+        # Always run in a separate thread to prevent blocking transition thread/GUI
+        threading.Thread(target=perform_send, daemon=True).start()
     
     def send_mouse_events(self, socket):
         """Send mouse events from server"""
@@ -656,6 +659,23 @@ class ShareManager:
         """Handle incoming files from a transfer"""
         try:
             download_path = os.path.join(os.path.expanduser("~"), "Portal", "Downloads")
+            
+            # Clear existing files in Downloads folder before each new transfer
+            if os.path.exists(download_path):
+                import shutil
+                try:
+                    for filename in os.listdir(download_path):
+                        file_path = os.path.join(download_path, filename)
+                        try:
+                            if os.path.isfile(file_path) or os.path.islink(file_path):
+                                os.unlink(file_path)
+                            elif os.path.isdir(file_path):
+                                shutil.rmtree(file_path)
+                        except Exception as e:
+                            print(f"[Cleanup] Failed to delete {file_path}: {e}")
+                except Exception as e:
+                    print(f"[Cleanup] Error clearing directory: {e}")
+
             os.makedirs(download_path, exist_ok=True)
             
             saved_paths = []

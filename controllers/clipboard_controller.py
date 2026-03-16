@@ -105,6 +105,7 @@ class ClipboardController:
                         try:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_UNICODETEXT)
                             if data:
+                                # Data is already unicode from win32clipboard for CF_UNICODETEXT
                                 encoded = base64.b64encode(data.encode('utf-8')).decode('utf-8')
                                 return f"text:{encoded}"
                         except Exception:
@@ -226,9 +227,9 @@ class ClipboardController:
                                 # Fallback to text
                                 self.win32clipboard.SetClipboardText(decoded_data.decode('utf-8'))
                         else:
-                            # Set as text
+                            # Set as unicode text to avoid MBCS codec issues
                             text_data = decoded_data.decode('utf-8')
-                            self.win32clipboard.SetClipboardText(text_data)
+                            self.win32clipboard.SetClipboardData(self.win32con.CF_UNICODETEXT, text_data)
                         
                         self.win32clipboard.CloseClipboard()
                         return True
