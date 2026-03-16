@@ -20,19 +20,22 @@ def read_log(text_widget):
     last_mod_time = 0
     while True: 
         try:
+            if not text_widget.winfo_exists():
+                break
             if os.path.exists(LOG_FILE):
                 mod_time = os.path.getmtime(LOG_FILE)
                 if mod_time != last_mod_time:
                     last_mod_time = mod_time
                     with open(LOG_FILE, "r") as f:
                         content = f.read()
-                    text_widget.config(state='normal')
-                    text_widget.delete('1.0', tk.END)
-                    text_widget.insert(tk.END, content)
-                    text_widget.config(state='disabled')
-                    text_widget.see('end')
+                    if text_widget.winfo_exists():
+                        text_widget.config(state='normal')
+                        text_widget.delete('1.0', tk.END)
+                        text_widget.insert(tk.END, content)
+                        text_widget.config(state='disabled')
+                        text_widget.see('end')
         except Exception as e:
-            print(f"Error reading log file: {e}")
+            pass # Silent to avoid spamming terminal
         time.sleep(1)
 
 def clear_logs(text_widget):

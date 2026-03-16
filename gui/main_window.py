@@ -169,8 +169,8 @@ class MainWindow:
         self.status_label = ttk.Label(control_frame, text="Portal is not running", foreground="red")
         self.status_label.grid(row=0, column=0, columnspan=2, pady=5)
 
-        self.status_notify_label = ttk.Label(control_frame, text="", foreground="blue")
-        self.status_notify_label.grid(row=2, column=0, columnspan=2, pady=5)
+        self.status_notify_label = ttk.Label(control_frame, text="", foreground="#007bff", font=("Helvetica", 12, "bold"))
+        self.status_notify_label.grid(row=2, column=0, columnspan=2, pady=10)
 
         self.reload_button = ttk.Button(control_frame, text="Reload", command=lambda: self.on_start_stop("reload"))
         self.reload_button.grid(row=1, column=0, padx=5)

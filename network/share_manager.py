@@ -221,6 +221,7 @@ class ShareManager:
             try:
                 active_msg = {"type": "active_device", "value": to_active}
                 self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
+                print(f"[Transition] Sent active_device={to_active} to client")
             except Exception as e:
                 print(f"[Transition] Failed to send active_device state: {e}")
         
@@ -237,6 +238,8 @@ class ShareManager:
                 clip_socket = self.secondary_server
             else:
                 clip_socket = self.secondary_client_socket
+        
+        print(f"[Clipboard] Using socket: {'Tertiary' if 'tertiary' in str(clip_socket) else 'Secondary'}")
 
         # Send clipboard on transition to active (server to client)
         if to_active:
@@ -639,6 +642,15 @@ class ShareManager:
                 self.clipboard_controller.set_clipboard(f"files:{encoded}")
                 self.last_send = f"files:{encoded}"
                 print(f"[Files] Saved {len(saved_paths)} files to {download_path}")
+                # Notify the sender that we got the files
+                socket_to_notify = self.tertiary_server if app_config.mode == "server" else self.tertiary_client_socket
+                if not socket_to_notify:
+                    socket_to_notify = self.secondary_server if app_config.mode == "server" else self.secondary_client_socket
+                
+                if socket_to_notify:
+                    try:
+                        socket_to_notify.sendall((json.dumps({"type": "status", "msg": f"Target received {len(saved_paths)} files!"}) + "\n").encode())
+                    except: pass
         except Exception as e:
             print(f"[Files] Receipt failed: {e}")
     
@@ -799,6 +811,7 @@ class ShareManager:
                         else:
                             self.keyboard_controller.release(key_str)
                     elif evt["type"] == "active_device":
+                        print(f"[Client] Active device state sync: {evt['value']}")
                         app_config.active_device = evt["value"]
                         app_config.save()
                         if not app_config.active_device:

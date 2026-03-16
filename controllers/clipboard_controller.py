@@ -54,44 +54,41 @@ class ClipboardController:
             if self.os_type == "windows" and self.win32clipboard:
                 try:
                     self.win32clipboard.OpenClipboard()
+                except Exception as e:
+                    print(f"[Clipboard] Failed to open: {e}")
+                    return ""
                     
-                    # Try to get image (bitmap) first
+                try:
+                    # Try to get files (CF_HDROP) first
+                    if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_HDROP):
+                        try:
+                            # 15 is CF_HDROP
+                            files = self.win32clipboard.GetClipboardData(self.win32con.CF_HDROP)
+                            if files:
+                                print(f"[Clipboard] Detected {len(files)} files")
+                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
+                                return f"files:{encoded}"
+                        except Exception as e:
+                            print(f"[Clipboard] Error reading files: {e}")
+                    
+                    # Try to get image (bitmap)
                     if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_DIB):
                         try:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_DIB)
-                            self.win32clipboard.CloseClipboard()
+                            print("[Clipboard] Detected image (DIB)")
                             
                             # Convert DIB to PNG format for cross-platform compatibility
                             try:
                                 from PIL import Image
-                                
-                                # DIB format: First 40 bytes are BITMAPINFOHEADER
-                                # We need to reconstruct the bitmap to load it
                                 if len(data) < 40:
                                     raise Exception("DIB data too short")
                                 
-                                # Read BITMAPINFOHEADER to get dimensions and bit depth
-                                width = int.from_bytes(data[0:4], 'little', signed=True)
-                                height = int.from_bytes(data[4:8], 'little', signed=True)
-                                bits_per_pixel = int.from_bytes(data[14:16], 'little')
-                                
-                                # Convert DIB to image by creating a temporary BMP file
-                                # DIB is essentially a BMP without the 14-byte header
-                                bmp_header = b'BM'  # BMP signature
-                                file_size = (len(data) + 54).to_bytes(4, 'little')
-                                reserved = b'\x00\x00\x00\x00'
-                                data_offset = b'\x36\x00\x00\x00'  # 54 in little-endian
-                                dib_header_size = b'\x28\x00\x00\x00'  # 40 in little-endian
-                                
-                                # Skip the existing BITMAPINFOHEADER and rebuild with proper header
-                                info_header = data[0:40]
-                                pixel_data = data[40:]
-                                
                                 # Reconstruct BMP file
-                                bmp_file = bmp_header + file_size + reserved + data_offset
-                                bmp_file += info_header + pixel_data
+                                bmp_header = b'BM'
+                                file_size = (len(data) + 54).to_bytes(4, 'little')
+                                data_offset = b'\x36\x00\x00\x00'
+                                bmp_file = bmp_header + file_size + b'\x00\x00\x00\x00' + data_offset + data
                                 
-                                # Load and convert to PNG
                                 img = Image.open(io.BytesIO(bmp_file))
                                 output = io.BytesIO()
                                 img.save(output, format='PNG')
@@ -99,56 +96,30 @@ class ClipboardController:
                                 
                                 encoded = base64.b64encode(png_data).decode('utf-8')
                                 return f"image:{encoded}"
-                                
-                            except (ImportError, Exception) as e:
-                                # If conversion fails, just encode the raw DIB data
-                                print(f"[Clipboard] DIB to PNG conversion failed: {e}, using raw DIB")
+                            except Exception as e:
+                                print(f"[Clipboard] Image conversion failed: {e}")
                                 encoded = base64.b64encode(data).decode('utf-8')
                                 return f"image:{encoded}"
                         except Exception as e:
-                            print(f"[Clipboard] Error getting image: {e}")
-                            pass
-                    
-                    # Try to get files (CF_HDROP)
-                    if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_HDROP):
-                        try:
-                            # 15 is CF_HDROP
-                            files = self.win32clipboard.GetClipboardData(self.win32con.CF_HDROP)
-                            self.win32clipboard.CloseClipboard()
-                            if files:
-                                encoded = base64.b64encode("\n".join(files).encode('utf-8')).decode('utf-8')
-                                return f"files:{encoded}"
-                        except Exception:
-                            pass
+                            print(f"[Clipboard] Error getting image data: {e}")
 
                     # Try text
                     if self.win32clipboard.IsClipboardFormatAvailable(self.win32con.CF_UNICODETEXT):
                         try:
                             data = self.win32clipboard.GetClipboardData(self.win32con.CF_UNICODETEXT)
-                            self.win32clipboard.CloseClipboard()
-                            # Encode text to base64 to handle special characters
-                            encoded = base64.b64encode(data.encode('utf-8')).decode('utf-8')
-                            return f"text:{encoded}"
+                            if data:
+                                print(f"[Clipboard] Detected text ({len(data)} chars)")
+                                encoded = base64.b64encode(data.encode('utf-8')).decode('utf-8')
+                                return f"text:{encoded}"
                         except Exception:
                             pass
                     
-                    # Fallback to plain text
-                    try:
-                        data = self.win32clipboard.GetClipboardData()
-                        self.win32clipboard.CloseClipboard()
-                        encoded = base64.b64encode(str(data).encode('utf-8')).decode('utf-8')
-                        return f"text:{encoded}"
-                    except Exception:
-                        pass
-                    
-                    self.win32clipboard.CloseClipboard()
                     return ""
-                except Exception:
+                finally:
                     try:
                         self.win32clipboard.CloseClipboard()
                     except:
                         pass
-                    return ""
             
             elif self.os_type == "linux":
                 if self.linux_tool == 'wl-clipboard':
