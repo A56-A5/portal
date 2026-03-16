@@ -33,18 +33,16 @@ class ClipboardController:
         elif self.os_type == "linux":
             self.win32clipboard = None
             self.win32con = None
-            # Check for wl-clipboard or xclip, silting stderr to avoid noise if Wayland is missing
             try:
-                # Try to run wl-paste --version and capture output to verify Wayland environment
-                res = subprocess.run(['wl-paste', '--version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                if res.returncode == 0:
-                    # Also check if WAYLAND_DISPLAY is set
-                    if os.environ.get('WAYLAND_DISPLAY') or os.environ.get('XDG_RUNTIME_DIR'):
+                # Strictly require WAYLAND_DISPLAY and a successful wl-paste check
+                if os.environ.get('WAYLAND_DISPLAY'):
+                    res = subprocess.run(['wl-paste', '--version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    if res.returncode == 0:
                         self.linux_tool = 'wl-clipboard'
                     else:
-                        raise Exception("Wayland env missing")
+                        raise Exception("wl-clipboard missing or fails")
                 else:
-                    raise Exception("wl-clipboard missing")
+                    raise Exception("Not in Wayland")
             except:
                 try:
                     subprocess.run(['xclip', '-version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
@@ -247,7 +245,7 @@ class ClipboardController:
                         if format_type == "image":
                             tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
                             cmd = [tool, '-t', 'image/png'] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard', '-t', 'image/png']
-                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
                             p.communicate(input=decoded_data)
                         elif format_type == "files":
                             # Setting files on Linux is harder, we provide the paths as text/uri-list
@@ -255,14 +253,14 @@ class ClipboardController:
                             uris = "\n".join([f"file://{f}" for f in files])
                             tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
                             cmd = [tool, '-t', 'text/uri-list'] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard', '-t', 'text/uri-list']
-                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
                             p.communicate(input=uris.encode('utf-8'))
                         else:
                             # Set as text
                             text_data = decoded_data.decode('utf-8')
                             tool = 'wl-copy' if self.linux_tool == 'wl-clipboard' else 'xclip'
                             cmd = [tool] if tool == 'wl-copy' else ['xclip', '-selection', 'clipboard']
-                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+                            p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
                             p.communicate(input=text_data.encode('utf-8'))
                         return True
                     except Exception as e:
