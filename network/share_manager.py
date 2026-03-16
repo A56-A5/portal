@@ -243,21 +243,20 @@ class ShareManager:
         # LOGGING instead of printing for noise reduction
         logging.info(f"[Clipboard] Using socket: {'Tertiary' if 'tertiary' in str(clip_socket) else 'Secondary'}")
 
-        # Send clipboard on transition to active (server to client)
-        if to_active:
-            current_clip = self.clipboard_controller.get_clipboard()
-            if self.last_send != current_clip:
-                self.last_send = current_clip
-                if clip_socket:
-                    self.clipboard_sender(clip_socket)
-        
-        # Also sync back when deactivating (device back to host)
-        if not to_active:
-            current_clip = self.clipboard_controller.get_clipboard()
-            if self.last_send != current_clip:
-                self.last_send = current_clip
-                if clip_socket:
-                    self.clipboard_sender(clip_socket)
+        if clip_socket:
+            # Send clipboard on transition to active (server to client)
+            if to_active:
+                current_clip = self.clipboard_controller.get_clipboard()
+                if self.last_send != current_clip:
+                    self.last_send = current_clip
+                    self.clipboard_sender(clip_socket, current_clip)
+            
+            # Also sync back when deactivating (device back to host)
+            if not to_active:
+                current_clip = self.clipboard_controller.get_clipboard()
+                if self.last_send != current_clip:
+                    self.last_send = current_clip
+                    self.clipboard_sender(clip_socket, current_clip)
         
         logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
         app_config.save()
@@ -374,9 +373,9 @@ class ShareManager:
         listener.daemon = True
         listener.start()
 
-    def clipboard_sender(self, socket):
+    def clipboard_sender(self, socket, clip_data=None):
         """Send clipboard data, handling large files and status notifications"""
-        current_clip = self.clipboard_controller.get_clipboard()
+        current_clip = clip_data if clip_data else self.clipboard_controller.get_clipboard()
         if not current_clip:
             return
             
@@ -597,12 +596,7 @@ class ShareManager:
                         line_bytes, buffer = buffer.split(b"\n", 1)
                         try:
                             line = line_bytes.decode('utf-8')
-                            evt = json.loads(line)
-                            if evt["type"] == "clipboard":
-                                local_clip = self.clipboard_controller.get_clipboard()
-                                if evt["content"] != local_clip:
-                                    self.clipboard_controller.set_clipboard(evt["content"])
-                                    self.last_send = evt["content"]
+                            self.handle_incoming_large_event(line, self.secondary_server)
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass
                 except Exception as e:
@@ -882,16 +876,14 @@ class ShareManager:
                                 self.last_send = current_clip
                                 # Send large stuff over tertiary if available
                                 target = self.tertiary_client_socket if self.tertiary_client_socket else self.secondary_client_socket
-                                self.clipboard_sender(target)
+                                self.clipboard_sender(target, current_clip)
                     elif evt["type"] == "clipboard":
-                        current_clip = self.clipboard_controller.get_clipboard()
-                        if current_clip != evt["content"]:
-                            self.clipboard_controller.set_clipboard(evt["content"])
-                            self.last_send = evt["content"]
-                            print("[Clipboard] Updated")
+                        self.handle_incoming_large_event(line, self.secondary_client_socket)
                     elif evt["type"] == "status":
                         print(f"[Status] {evt['msg']}")
                         logging.info(f"[Remote Status] {evt['msg']}")
+                    elif evt["type"] == "file_transfer":
+                        self.handle_file_transfer(evt["files"])
                 except Exception as e:
                     print(f"[Client] Parse error: {e}")
 
