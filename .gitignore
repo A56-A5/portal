@@ -19,6 +19,7 @@ Portal-v1.0.spec
 # IDE
 .vscode/
 .idea/
+venv/
 *.swp
 *.swo
 *~

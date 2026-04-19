@@ -24,8 +24,8 @@ from controllers.clipboard_controller import ClipboardController
 class ShareManager:
     def __init__(self):
         self.edge_transition_cooldown = False
+        self.last_transition_time = 0
         self._transition_lock = threading.Lock()
-        self.os_type = platform.system().lower()
         self.primary_port = app_config.server_primary_port
         self.secondary_port = app_config.server_secondary_port
         self.tertiary_port = app_config.server_tertiary_port
@@ -53,9 +53,11 @@ class ShareManager:
         self.gui_app = None
         self.last_send = None
         
-        # Keyboard listener
+        # Listeners
         self.keyboard_listener = None
         self.keyboard_listener_lock = threading.Lock()
+        self.gtk_overlay_thread = None
+        self.keyboard_socket = None
         
         self.os_type = platform.system().lower()
         
@@ -88,9 +90,11 @@ class ShareManager:
             self.Qt = Qt
             self.QWidget = QWidget
             self.gui_app = QApplication(sys.argv)
-            screen = self.gui_app.primaryScreen().size()
-            self.screen_width = screen.width()
-            self.screen_height = screen.height()
+            # Get full virtual desktop size (all monitors)
+            desktop = self.gui_app.desktop()
+            geom = desktop.geometry()
+            self.screen_width = geom.width()
+            self.screen_height = geom.height()
     
     def cleanup(self):
         """Clean up all resources"""
@@ -126,10 +130,7 @@ class ShareManager:
         app_config.save()
     
     def create_overlay(self):
-        """Create invisible overlay window"""
-        if not app_config.active_device:
-            return
-        
+        """Create invisible overlay window. Call via _schedule_overlay only."""
         if self.os_type == "windows":
             overlay = self.tk.Toplevel(self.gui_app)
             overlay.overrideredirect(True)
@@ -144,23 +145,96 @@ class ShareManager:
             self.overlay = overlay
         elif self.os_type == "linux":
             overlay = self.QWidget()
-            overlay.setWindowFlags(self.Qt.FramelessWindowHint | self.Qt.WindowStaysOnTopHint | self.Qt.Tool)
-            overlay.setAttribute(self.Qt.WA_TranslucentBackground)
+            # Standard Frameless + TopMost. Removed Qt.Tool as it can make windows click-through.
+            overlay.setWindowFlags(self.Qt.FramelessWindowHint | self.Qt.WindowStaysOnTopHint)
+            # Use stylesheet for transparency instead of WA_TranslucentBackground 
+            # (which can be unreliable for input blocking)
+            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 1);") # Almost 0 alpha but solid to mouse
             overlay.setCursor(self.Qt.BlankCursor)
             overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-            overlay.setWindowOpacity(0.0)
             overlay.show()
             overlay.raise_()
+            overlay.activateWindow()
             self.overlay = overlay
     
     def destroy_overlay(self):
-        """Destroy overlay window"""
+        """Destroy overlay window (must be called from the GUI main thread)."""
         if self.overlay:
             if self.os_type == "windows":
                 self.overlay.destroy()
             elif self.os_type == "linux":
                 self.overlay.close()
             self.overlay = None
+
+    def _schedule_overlay(self, to_active):
+        """Schedule overlay creation/destruction."""
+        if self.os_type == "windows":
+            if self.gui_app:
+                self.gui_app.after_idle(lambda: self.create_overlay() if to_active else self.destroy_overlay())
+        elif self.os_type == "linux":
+            if to_active:
+                # Start GTK overlay in a separate thread
+                if self.gtk_overlay_thread is None or not self.gtk_overlay_thread.is_alive():
+                    self.gtk_overlay_thread = threading.Thread(target=self.create_gtk_overlay, daemon=True)
+                    self.gtk_overlay_thread.start()
+            else:
+                self.destroy_gtk_overlay()
+    
+    def create_gtk_overlay(self):
+        """Native GTK3 Overlay for Linux (Ubuntu Native)"""
+        try:
+            import gi
+            gi.require_version('Gtk', '3.0')
+            from gi.repository import Gtk, Gdk
+            import cairo
+
+            # POPUP type bypasses window managers and grabs top-level priority
+            self.overlay = Gtk.Window(type=Gtk.WindowType.POPUP)
+            self.overlay.set_keep_above(True)
+            self.overlay.set_accept_focus(False) # CRITICAL: Don't steal focus from pynput
+            
+            # Full screen coverage
+            self.overlay.set_default_size(self.screen_width, self.screen_height)
+            self.overlay.move(0, 0)
+
+            # Transparency logic
+            screen = self.overlay.get_screen()
+            visual = screen.get_rgba_visual()
+            if visual:
+                self.overlay.set_visual(visual)
+            
+            self.overlay.set_app_paintable(True)
+            def on_draw(w, cr):
+                cr.set_source_rgba(0, 0, 0, 0.01) # Invisible but solid to clicks
+                cr.set_operator(cairo.OPERATOR_SOURCE)
+                cr.paint()
+                return False
+            self.overlay.connect("draw", on_draw)
+
+            # Show and set blank cursor
+            self.overlay.show_all()
+            
+            # Use X11/Wayland cursor hide
+            win = self.overlay.get_window()
+            if win:
+                cursor = Gdk.Cursor.new_for_display(Gdk.Display.get_default(), Gdk.CursorType.BLANK_CURSOR)
+                win.set_cursor(cursor)
+
+            Gtk.main()
+        except Exception as e:
+            print(f"[GTK Overlay] Error: {e}")
+
+    def destroy_gtk_overlay(self):
+        """Stop GTK overlay"""
+        try:
+            import gi
+            gi.require_version('Gtk', '3.0')
+            from gi.repository import Gtk
+            Gtk.main_quit()
+            if self.overlay:
+                self.overlay.destroy()
+                self.overlay = None
+        except: pass
     
     def monitor_mouse_edges(self):
         """Monitor mouse edges for transitions"""
@@ -174,109 +248,146 @@ class ShareManager:
                 time.sleep(0.05)
                 continue
             x, y = self.mouse_controller.position
-            warp_buffer = 50 # Give the user a runway to prevent accidental bounce-backs
+            warp_buffer = 50 
+            grace_period = 0.2 # Snappy but prevents velocity bounces
             
+            # Skip if we just transitioned (hard bounce protection)
+            if time.time() - self.last_transition_time < grace_period:
+                time.sleep(0.01)
+                continue
+
             if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
                     self.transition(True, (margin + warp_buffer, y))
+                    continue
                 elif app_config.server_direction == "Left" and x <= margin:
                     self.transition(True, (self.screen_width - margin - warp_buffer, y))
+                    continue
                 elif app_config.server_direction == "Top" and y <= margin:
                     self.transition(True, (x, self.screen_height - margin - warp_buffer))
+                    continue
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
                     self.transition(True, (x, margin + warp_buffer))
+                    continue
             
             elif app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x <= margin:
                     self.transition(False, (self.screen_width - margin - warp_buffer, y))
+                    continue
                 elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
                     self.transition(False, (margin + warp_buffer, y))
+                    continue
                 elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
                     self.transition(False, (x, margin + warp_buffer))
+                    continue
                 elif app_config.server_direction == "Bottom" and y <= margin:
                     self.transition(False, (x, self.screen_height - margin - warp_buffer))
+                    continue
             
-            # Cooldown reset
-            if margin < x < self.screen_width - margin and margin < y < self.screen_height - margin:
-                self.edge_transition_cooldown = False
-            
+            # Cooldown reset — Clear when cursor moves away from the trigger axis.
+            if not self._transition_lock.locked():
+                reset_needed = False
+                if app_config.server_direction in ("Right", "Left"):
+                    # Only care about X axis for horizontal setups
+                    if margin + 5 < x < self.screen_width - margin - 5:
+                        reset_needed = True
+                else:
+                    # Only care about Y axis for vertical setups
+                    if margin + 5 < y < self.screen_height - margin - 5:
+                        reset_needed = True
+                
+                if reset_needed:
+                    self.edge_transition_cooldown = False
+
             time.sleep(0.01)
     
     def transition(self, to_active, new_position):
-        """Handle device transition with race protection"""
-        # Ensure only one transition happens at a time
+        """Handle device transition.
+
+        Guards against rapid back-and-forth triggering with a mutex so
+        only one transition can run at a time.  The disk reload that used
+        to sit at the top of this method has been removed: reading
+        config.json here would overwrite in-memory state with whatever the
+        client process last wrote, corrupting the server's view of
+        active_device mid-transition.
+        """
+        # Block until any in-progress transition finishes, then run.
+        # Using blocking=True so transitions queue up rather than being silently
+        # dropped — dropping caused the server to get stuck in the wrong state.
         self._transition_lock.acquire(blocking=True)
         try:
-            # Deduplicate state changes
+            # Set cooldown and grace period IMMEDIATELY
+            self.edge_transition_cooldown = True
+            self.last_transition_time = time.time()
+
+            # Re-check sharing gate
+            if to_active and not getattr(app_config, 'input_sharing_enabled', True):
+                return
+
+            # PRIORITY 1: Instant Keyboard Suppression (Before anything else)
+            with self.keyboard_listener_lock:
+                if self.keyboard_listener:
+                    try: self.keyboard_listener.stop()
+                    except: pass
+                    self.keyboard_listener = None
+                    time.sleep(0.05) # Give X11 a moment to release the grab
+                
+                if to_active:
+                    from pynput import keyboard
+                    self.keyboard_listener = keyboard.Listener(
+                        on_press=self._on_press,
+                        on_release=self._on_release,
+                        suppress=True
+                    )
+                    self.keyboard_listener.start()
+
+            # Deduplicate
             if app_config.active_device == to_active:
                 return
 
-            if to_active and not getattr(app_config, 'input_sharing_enabled', True):
-                return
-            
-            # Update state and set cooldown IMMEDIATELY
             app_config.active_device = to_active
-            self.edge_transition_cooldown = True
-            
-            if self.os_type == "windows":
-                self.gui_app.after_idle(self.create_overlay if to_active else self.destroy_overlay)
-                self.mouse_controller.position = new_position
-            else:
-                if to_active:
-                    self.create_overlay()
-                else:
-                    self.destroy_overlay()
-                self.mouse_controller.position = new_position
-            
-            # Notify client of transition
-            if hasattr(self, 'secondary_server') and self.secondary_server:
-                try:
-                    active_msg = {"type": "active_device", "value": to_active}
-                    self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
-                    print(f"[Transition] Sent active_device={to_active} to client")
-                except Exception as e:
-                    print(f"[Transition] Failed to send active_device state: {e}")
-            
             app_config.save()
-            time.sleep(0.2) # Small sleep to stabilize the hardware cursor
+
+            self._schedule_overlay(to_active)
+            self.mouse_controller.position = new_position
+
+            def send_active_state():
+                if hasattr(self, 'secondary_server') and self.secondary_server:
+                    try:
+                        active_msg = {"type": "active_device", "value": to_active}
+                        self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
+                    except Exception as e:
+                        print(f"[Transition] Failed to send active_device state: {e}")
+            
+            # Run network send in background so the local mouse warp is instant and non-blocking
+            threading.Thread(target=send_active_state, daemon=True).start()
+
+            clip_socket = None
+            if hasattr(self, 'tertiary_connected') and self.tertiary_connected:
+                if app_config.mode == "server":
+                    clip_socket = self.tertiary_server
+                else:
+                    clip_socket = self.tertiary_client_socket
+
+            if not clip_socket:
+                if app_config.mode == "server":
+                    clip_socket = self.secondary_server
+                else:
+                    clip_socket = self.secondary_client_socket
+
+            logging.info(f"[Clipboard] Using socket: {'Tertiary' if 'tertiary' in str(clip_socket) else 'Secondary'}")
+
+            if clip_socket:
+                current_clip = self.clipboard_controller.get_clipboard()
+                if self.last_send != current_clip:
+                    self.last_send = current_clip
+                    self.clipboard_sender(clip_socket, current_clip)
+
+            logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
+            app_config.save()
+            time.sleep(0.2)
         finally:
             self._transition_lock.release()
-        
-        # Determine socket for clipboard - prioritize tertiary if connected
-        clip_socket = None
-        if hasattr(self, 'tertiary_connected') and self.tertiary_connected:
-            if app_config.mode == "server":
-                clip_socket = self.tertiary_server
-            else:
-                clip_socket = self.tertiary_client_socket
-        
-        if not clip_socket:
-            if app_config.mode == "server":
-                clip_socket = self.secondary_server
-            else:
-                clip_socket = self.secondary_client_socket
-        
-        # LOGGING instead of printing for noise reduction
-        logging.info(f"[Clipboard] Using socket: {'Tertiary' if 'tertiary' in str(clip_socket) else 'Secondary'}")
-
-        if clip_socket:
-            # Send clipboard on transition to active (server to client)
-            if to_active:
-                current_clip = self.clipboard_controller.get_clipboard()
-                if self.last_send != current_clip:
-                    self.last_send = current_clip
-                    self.clipboard_sender(clip_socket, current_clip)
-            
-            # Also sync back when deactivating (device back to host)
-            if not to_active:
-                current_clip = self.clipboard_controller.get_clipboard()
-                if self.last_send != current_clip:
-                    self.last_send = current_clip
-                    self.clipboard_sender(clip_socket, current_clip)
-        
-        logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
-        app_config.save()
-        time.sleep(0.2)
 
     def start_hotkey_listener(self):
         """Start a global listener for the user-defined sharing hotkey.
@@ -287,7 +398,9 @@ class ShareManager:
         last_key = [None]
 
         def parse_config_hotkey():
-            app_config.load()
+            # Do NOT call app_config.load() here — it runs on every keypress
+            # and would overwrite active_device in memory with the stale disk
+            # value, breaking transitions. The hotkey doesn't change at runtime.
             hot = getattr(app_config, 'sharing_hotkey', '') or ''
             parts = [p.strip() for p in hot.split('+') if p.strip()]
             mods = set()
@@ -490,7 +603,8 @@ class ShareManager:
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
                 return
-            send_json({"type": "click", "button": button.name, "pressed": pressed})
+            btn_name = button.name if hasattr(button, 'name') else str(button)
+            send_json({"type": "click", "button": btn_name, "pressed": pressed})
         
         def on_scroll(x, y, dx, dy):
             if not app_config.active_device:
@@ -499,56 +613,30 @@ class ShareManager:
         
         mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
     
+    def _on_press(self, key):
+        if not app_config.active_device or not self.keyboard_socket:
+            return
+        try:
+            if hasattr(key, 'char') and key.char is not None:
+                val = key.char
+            else:
+                val = str(key)
+            msg = json.dumps({"type": "key_press", "key": val}) + "\n"
+            self.keyboard_socket.sendall(msg.encode())
+        except: pass
+
+    def _on_release(self, key):
+        if not app_config.active_device or not self.keyboard_socket:
+            return
+        try:
+            val = key.char if hasattr(key, 'char') and key.char else str(key)
+            msg = json.dumps({"type": "key_release", "key": val}) + "\n"
+            self.keyboard_socket.sendall(msg.encode())
+        except: pass
+
     def send_keyboard_events(self, socket):
-        """Send keyboard events from server"""
-        def send_json(data):
-            try:
-                socket.sendall((json.dumps(data) + "\n").encode())
-            except Exception as e:
-                app_config.is_running = False
-                app_config.save()
-                print(f"[Server] Send failed: {e}")
-        
-        def on_press(key):
-            if not app_config.active_device:
-                return
-            try:
-                # Always try to get the character representation
-                if hasattr(key, 'char') and key.char is not None:
-                    key_char = key.char
-                    # Send character directly
-                    send_json({"type": "key_press", "key": key_char})
-                elif hasattr(key, 'name'):
-                    # For special keys without char attribute
-                    send_json({"type": "key_press", "key": str(key)})
-                else:
-                    send_json({"type": "key_press", "key": str(key)})
-            except Exception as e:
-                print(f"[Keyboard] Error sending key press: {e}")
-                send_json({"type": "key_press", "key": str(key)})
-        
-        def on_release(key):
-            if not app_config.active_device:
-                return
-            try:
-                send_json({"type": "key_release", "key": key.char})
-            except AttributeError:
-                send_json({"type": "key_release", "key": str(key)})
-        
-        def keyboard_listener_watcher():
-            while app_config.is_running:
-                with self.keyboard_listener_lock:
-                    if app_config.active_device and self.keyboard_listener is None:
-                        self.keyboard_listener = keyboard.Listener(
-                            on_press=on_press, on_release=on_release, suppress=True
-                        )
-                        self.keyboard_listener.start()
-                    elif not app_config.active_device and self.keyboard_listener is not None:
-                        self.keyboard_listener.stop()
-                        self.keyboard_listener = None
-                time.sleep(0.5)
-        
-        threading.Thread(target=keyboard_listener_watcher, daemon=True).start()
+        """Save socket for the instant handlers"""
+        self.keyboard_socket = socket
     
     # Server functions
     def start_server(self):
@@ -591,6 +679,7 @@ class ShareManager:
         """Accept secondary connection (keyboard, clipboard)"""
         sec_socket, sec_addr = self.secondary_server_socket.accept()
         sec_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        sec_socket.settimeout(1.0) # Prevent transition hangs
         print(f"[Server] Secondary connection from: {sec_addr}")
         logging.info(f"[Connection] Secondary connection from: {sec_addr}")
         self.secondary_server = sec_socket
@@ -615,6 +704,8 @@ class ShareManager:
                             self.handle_incoming_large_event(line, self.secondary_server)
                         except (json.JSONDecodeError, UnicodeDecodeError):
                             pass
+                except socket.timeout:
+                    continue
                 except Exception as e:
                     print(f"[Clipboard] Error: {e}")
                     break
@@ -625,6 +716,7 @@ class ShareManager:
         """Accept tertiary connection (large data)"""
         ter_socket, ter_addr = self.tertiary_server_socket.accept()
         ter_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        ter_socket.settimeout(1.0) # Prevent transition hangs
         print(f"[Server] Tertiary connection from: {ter_addr}")
         self.tertiary_server = ter_socket
         self.tertiary_connected = True
