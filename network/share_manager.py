@@ -644,20 +644,40 @@ class ShareManager:
     # Server functions
     def start_server(self):
         """Start server mode"""
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.server_socket.bind(("0.0.0.0", self.primary_port))
-        self.server_socket.listen(1)
-        
-        self.secondary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
-        self.secondary_server_socket.listen(1)
+        try:
+            self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try: self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except Exception: pass
+            self.server_socket.bind(("0.0.0.0", self.primary_port))
+            self.server_socket.listen(1)
+            
+            self.secondary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try: self.secondary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except Exception: pass
+            self.secondary_server_socket.bind(("0.0.0.0", self.secondary_port))
+            self.secondary_server_socket.listen(1)
 
-        self.tertiary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tertiary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self.tertiary_server_socket.bind(("0.0.0.0", self.tertiary_port))
-        self.tertiary_server_socket.listen(1)
+            self.tertiary_server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.tertiary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            if hasattr(socket, "SO_REUSEPORT"):
+                try: self.tertiary_server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                except Exception: pass
+            self.tertiary_server_socket.bind(("0.0.0.0", self.tertiary_port))
+            self.tertiary_server_socket.listen(1)
+        except OSError as e:
+            if getattr(e, 'errno', 0) in (98, 48) or "address already in use" in str(e).lower():
+                msg = f"Port conflict: Server ports ({self.primary_port}/{self.secondary_port}/{self.tertiary_port}) are already in use. Please close any running Portal instance."
+            else:
+                msg = f"Failed to start Server: {e}"
+            print(f"[Server] {msg}")
+            logging.warning(f"[Remote Status] {msg}")
+            app_config.is_running = False
+            self.cleanup()
+            return
         
         msg = "Server running - Waiting for Client to connect..."
         print(f"[Server] {msg}")
