@@ -122,13 +122,19 @@ class ConnectionHandler:
             from PyQt5.QtCore import Qt
             
             overlay = QWidget()
+            overlay.setWindowTitle("portal-overlay")
             overlay.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-            overlay.setAttribute(Qt.WA_TranslucentBackground)
+            overlay.setAttribute(Qt.WA_TranslucentBackground, True)
+            overlay.setStyleSheet("background: rgba(0, 0, 0, 1);")
             overlay.setCursor(Qt.BlankCursor)
-            overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-            overlay.setWindowOpacity(0.0)
             overlay.show()
             overlay.raise_()
+            overlay.activateWindow()
+            try:
+                overlay.grabMouse()
+                overlay.grabKeyboard()
+            except Exception:
+                pass
             self.overlay = overlay
     
     def destroy_overlay(self):
@@ -137,6 +143,11 @@ class ConnectionHandler:
             if self.os_type == "windows" and hasattr(self.overlay, 'destroy'):
                 self.overlay.destroy()
             elif self.os_type == "linux" and hasattr(self.overlay, 'close'):
+                try:
+                    self.overlay.releaseMouse()
+                    self.overlay.releaseKeyboard()
+                except Exception:
+                    pass
                 self.overlay.close()
             self.overlay = None
     

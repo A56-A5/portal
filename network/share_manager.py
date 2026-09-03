@@ -204,7 +204,91 @@ class ShareManager:
             overlay.update_idletasks()
             self.overlay = overlay
         elif self.os_type == "linux":
-            # Overlay window skipped on Linux as requested by user to avoid tiling WM issues.
+            overlay = self.QWidget()
+            overlay.setWindowTitle("portal-overlay")
+
+            overlay.setWindowFlags(
+                self.Qt.FramelessWindowHint
+                | self.Qt.WindowStaysOnTopHint
+                | self.Qt.Tool
+            )
+            overlay.setAttribute(self.Qt.WA_TranslucentBackground, True)
+            overlay.setStyleSheet("background: rgba(0, 0, 0, 1);")
+            overlay.setCursor(self.Qt.BlankCursor)
+
+            # Configure WM rules (Hyprland, Sway, i3) before mapping
+            self._configure_wm_rules_sync()
+
+            overlay.show()
+            overlay.raise_()
+            overlay.activateWindow()
+
+            try:
+                overlay.grabMouse()
+                overlay.grabKeyboard()
+            except Exception:
+                pass
+
+            self.overlay = overlay
+
+    def _configure_wm_rules_sync(self):
+        """Synchronously register WM-specific float+fullscreen+pin rules for the
+        overlay window (matched by title 'portal-overlay') before it maps."""
+        try:
+            # ── Hyprland ──────────────────────────────────────────────────
+            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+                new_rules = [
+                    "float 1, match:title portal-overlay",
+                    "fullscreen 1, match:title portal-overlay",
+                    "pin 1, match:title portal-overlay",
+                    "noanim 1, match:title portal-overlay",
+                    "noborder 1, match:title portal-overlay",
+                    "stayfocused 1, match:title portal-overlay",
+                ]
+                old_rules = [
+                    "float,title:^portal-overlay$",
+                    "fullscreen,title:^portal-overlay$",
+                    "pin,title:^portal-overlay$",
+                    "noanim,title:^portal-overlay$",
+                    "noborder,title:^portal-overlay$",
+                    "stayfocused,title:^portal-overlay$",
+                ]
+                for rule in new_rules:
+                    subprocess.run(
+                        ["hyprctl", "keyword", "windowrule", rule],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                for rule in old_rules:
+                    subprocess.run(
+                        ["hyprctl", "keyword", "windowrulev2", rule],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                return
+
+            # ── Sway / wlroots ────────────────────────────────────────────
+            if os.environ.get("SWAYSOCK"):
+                subprocess.run(
+                    ["swaymsg",
+                     'for_window [title="portal-overlay"] '
+                     'floating enable, sticky enable, fullscreen enable'],
+                    check=False, timeout=2,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                return
+
+            # ── i3 ────────────────────────────────────────────────────────
+            if os.environ.get("I3SOCK"):
+                subprocess.run(
+                    ["i3-msg",
+                     '[title="portal-overlay"] floating enable; '
+                     '[title="portal-overlay"] sticky enable; '
+                     '[title="portal-overlay"] fullscreen enable'],
+                    check=False, timeout=2,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+        except Exception:
             pass
 
     def destroy_overlay(self):
@@ -213,7 +297,12 @@ class ShareManager:
             if self.os_type == "windows":
                 self.overlay.destroy()
             elif self.os_type == "linux":
-                pass
+                try:
+                    self.overlay.releaseMouse()
+                    self.overlay.releaseKeyboard()
+                except Exception:
+                    pass
+                self.overlay.close()
             self.overlay = None
 
     def _schedule_overlay(self, to_active):
