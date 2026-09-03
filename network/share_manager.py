@@ -60,12 +60,6 @@ class ShareManager:
         self.keyboard_listener_lock = threading.Lock()
         self.keyboard_socket = None
         self._mouse_send_json = None        # set by _setup_mouse_sender()
-
-        # evdev kernel-level keyboard grab (bypasses Wayland compositor, grabs
-        # Super+key and all other keys before the compositor sees them).
-        # Only used on Linux.  Populated lazily in _evdev_grab().
-        self._evdev_grab_fds = []           # list of open file descriptors
-        self._evdev_grab_lock = threading.Lock()
         
         self.os_type = platform.system().lower()
         
@@ -158,14 +152,6 @@ class ShareManager:
                 try: self.mouse_listener.stop()
                 except Exception: pass
                 self.mouse_listener = None
-
-        # Release any evdev kernel grabs and reset WM submap so normal keybinds resume
-        if self.os_type == "linux":
-            try:
-                self._evdev_release()
-                self._set_wm_submap(False)
-            except Exception:
-                pass
 
         try:
             if getattr(self, 'client_socket', None):
@@ -360,15 +346,6 @@ class ShareManager:
                     )
                     self.keyboard_listener.start()
 
-                # evdev EVIOCGRAB: kernel-level exclusive grab so that ALL
-                # keyboard events (including Super+key compositor shortcuts)
-                # are intercepted before Wayland or X11 sees them.
-                # Requires the user to be in the 'input' group.
-                if self.os_type == "linux":
-                    threading.Thread(
-                        target=self._evdev_grab, daemon=True
-                    ).start()
-
                 # Mouse: suppress=True issues XGrabPointer so local apps
                 # never see clicks or scrolls while input is being shared.
                 # Only needed on the server side (where _mouse_send_json is set).
@@ -376,12 +353,6 @@ class ShareManager:
                     with self.mouse_listener_lock:
                         self.mouse_listener = self._make_mouse_listener(suppress=True)
                         self.mouse_listener.start()
-
-            else:
-                # Deactivating: release the evdev kernel grab so normal
-                # input routing resumes.
-                if self.os_type == "linux":
-                    self._evdev_release()
 
             # Deduplicate
             if app_config.active_device == to_active:
@@ -391,7 +362,6 @@ class ShareManager:
             app_config.save()
 
             self._schedule_overlay(to_active)
-            self._set_wm_submap(to_active)
             self.mouse_controller.position = new_position
 
             def send_active_state():
@@ -626,86 +596,6 @@ class ShareManager:
         # Always run in a separate thread to prevent blocking transition thread/GUI
         threading.Thread(target=perform_send, daemon=True).start()
     
-    def _set_wm_submap(self, active):
-        """Switch WM keybind submap to disable compositor shortcuts when input sharing is active."""
-        if self.os_type != "linux":
-            return
-        try:
-            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-                cmd = ["hyprctl", "keyword", "submap", "portal" if active else "reset"]
-                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            elif os.environ.get("SWAYSOCK"):
-                cmd = ["swaymsg", "mode", "portal" if active else "default"]
-                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            elif os.environ.get("I3SOCK"):
-                cmd = ["i3-msg", "mode", "portal" if active else "default"]
-                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except Exception:
-            pass
-
-    def _evdev_find_keyboards(self):
-        """Return a list of /dev/input/event* paths that have EV_KEY."""
-        import glob
-        import fcntl
-        EV_KEY = 0x01
-        EVIOCGBIT_0 = 0x80204520  # ioctl to read supported event types
-        devices = []
-        for path in sorted(glob.glob("/dev/input/event*")):
-            try:
-                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-                buf = bytearray(32)
-                fcntl.ioctl(fd, EVIOCGBIT_0, buf)
-                os.close(fd)
-                if buf[EV_KEY // 8] & (1 << (EV_KEY % 8)):
-                    devices.append(path)
-            except Exception:
-                pass
-        return devices
-
-    def _evdev_grab(self):
-        """Open keyboard devices and issue EVIOCGRAB to take exclusive ownership."""
-        import fcntl
-        import struct
-        EVIOCGRAB = 0x40044590  # _IOW('E', 0x90, int)
-        new_fds = []
-        for path in self._evdev_find_keyboards():
-            try:
-                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-                fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 1))
-                new_fds.append(fd)
-            except Exception:
-                try:
-                    os.close(fd)
-                except Exception:
-                    pass
-        with self._evdev_grab_lock:
-            for fd in self._evdev_grab_fds:
-                try:
-                    fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
-                    os.close(fd)
-                except Exception:
-                    pass
-            self._evdev_grab_fds = new_fds
-        if new_fds:
-            logging.info(f"[evdev] Grabbed {len(new_fds)} keyboard device(s)")
-        else:
-            logging.info("[evdev] Keyboard grab bypassed (WM submap active)")
-
-    def _evdev_release(self):
-        """Release all evdev keyboard grabs so normal input routing resumes."""
-        import fcntl
-        import struct
-        EVIOCGRAB = 0x40044590
-        with self._evdev_grab_lock:
-            for fd in self._evdev_grab_fds:
-                try:
-                    fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
-                    os.close(fd)
-                except Exception:
-                    pass
-            self._evdev_grab_fds = []
-        logging.info("[evdev] Released keyboard grabs")
-
     def _setup_mouse_sender(self, sock):
         """Store the send callback for mouse events.
 
