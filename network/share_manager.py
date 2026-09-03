@@ -91,9 +91,11 @@ class ShareManager:
             self.Qt = Qt
             self.QWidget = QWidget
             self.gui_app = QApplication(sys.argv)
-            # Get full virtual desktop size (all monitors)
-            desktop = self.gui_app.desktop()
-            geom = desktop.geometry()
+            # Use primary screen only — the full virtual desktop spans all
+            # monitors combined, which makes normalization wrong when server
+            # and client have different multi-monitor layouts.
+            primary = self.gui_app.primaryScreen()
+            geom = primary.geometry()
             self.screen_width = geom.width()
             self.screen_height = geom.height()
 
@@ -188,33 +190,26 @@ class ShareManager:
             self.overlay = overlay
         elif self.os_type == "linux":
             overlay = self.QWidget()
-            # Frameless + TopMost, no Qt.Tool (it can make the window
-            # click-through, defeating the whole point of this overlay).
-            overlay.setWindowFlags(self.Qt.FramelessWindowHint | self.Qt.WindowStaysOnTopHint)
-            if getattr(self, "_compositor_available", True):
-                # Solid alpha in the stylesheet (not WA_TranslucentBackground,
-                # which can be unreliable for click-blocking) - with a
-                # compositor running, this blends to near-invisible while
-                # staying solid to clicks.
-                overlay.setStyleSheet("background-color: rgba(0, 0, 0, 1);")
-            else:
-                # No compositor: true per-pixel transparency isn't
-                # available, and would otherwise render as an
-                # unpredictable solid block. Use an intentional, visibly
-                # dim fallback instead, and only log the reason once.
-                overlay.setStyleSheet("background-color: rgba(10, 10, 20, 235);")
-                if not self._compositor_warned:
-                    self._compositor_warned = True
-                    msg = ("No compositor detected - the overlay will be dim instead of "
-                           "invisible while input is shared. Enable compositing (e.g. "
-                           "in your desktop's display settings) for a fully invisible overlay.")
-                    logging.info(f"[Remote Status] {msg}")
-                    print(f"[Overlay] {msg}")
+            # X11BypassWindowManagerHint: skip the WM entirely so the overlay
+            # is guaranteed to stay on top and actually intercept input.
+            # WindowStaysOnTopHint alone is a hint the WM can ignore.
+            overlay.setWindowFlags(
+                self.Qt.FramelessWindowHint
+                | self.Qt.WindowStaysOnTopHint
+                | self.Qt.X11BypassWindowManagerHint
+            )
+            # Solid opaque black — Qt stylesheet rgba() alpha is 0-255.
+            # The old value rgba(0,0,0,1) had alpha=1/255 ≈ transparent,
+            # which meant the overlay showed nothing and captured no clicks.
+            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 255);")
             overlay.setCursor(self.Qt.BlankCursor)
             overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
             overlay.show()
             overlay.raise_()
             overlay.activateWindow()
+            # grabMouse ensures all mouse events go to this widget even if
+            # the cursor briefly leaves it during fast movements.
+            overlay.grabMouse()
             self.overlay = overlay
     
     def destroy_overlay(self):
@@ -223,6 +218,10 @@ class ShareManager:
             if self.os_type == "windows":
                 self.overlay.destroy()
             elif self.os_type == "linux":
+                try:
+                    self.overlay.releaseMouse()
+                except Exception:
+                    pass
                 self.overlay.close()
             self.overlay = None
 
@@ -587,7 +586,13 @@ class ShareManager:
         threading.Thread(target=perform_send, daemon=True).start()
     
     def send_mouse_events(self, socket):
-        """Send mouse events from server"""
+        """Send mouse events from server using relative deltas.
+
+        Absolute normalized coordinates (x/screen_width) were unreliable:
+        - Multi-monitor virtual desktop makes screen_width wrong
+        - Server and client with different resolutions cause cursor drift
+        Relative deltas are screen-agnostic and feel 1:1.
+        """
         def send_json(data):
             try:
                 socket.sendall((json.dumps(data) + "\n").encode())
@@ -596,12 +601,20 @@ class ShareManager:
                 app_config.save()
                 print(f"[Server] Send failed: {e}")
         
+        last_pos = [None]  # [x, y] of previous event, or None on first
+
         def on_move(x, y):
             if not app_config.active_device:
+                last_pos[0] = None  # reset so next activation starts clean
                 return
-            norm_x = x / self.screen_width
-            norm_y = y / self.screen_height
-            send_json({"type": "move", "x": norm_x, "y": norm_y})
+            if last_pos[0] is None:
+                last_pos[0] = (x, y)
+                return
+            dx = x - last_pos[0][0]
+            dy = y - last_pos[0][1]
+            last_pos[0] = (x, y)
+            if dx != 0 or dy != 0:
+                send_json({"type": "move", "dx": dx, "dy": dy})
         
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
@@ -759,6 +772,10 @@ class ShareManager:
                             self.handle_incoming_large_event(line, self.tertiary_server)
                         except UnicodeDecodeError:
                             pass
+                except socket.timeout:
+                    # settimeout(1.0) is intentional to prevent blocking
+                    # forever on transition — just keep looping.
+                    continue
                 except Exception as e:
                     print(f"[Tertiary] Error: {e}")
                     break
@@ -958,7 +975,7 @@ class ShareManager:
             threading.Thread(target=self.receive_tertiary, daemon=True).start()
 
     def receive_primary(self):
-        """Receive mouse events"""
+        """Receive mouse events (relative deltas from server)."""
         buffer = b""
         while app_config.is_running:
             try:
@@ -976,9 +993,12 @@ class ShareManager:
                     line = line_bytes.decode('utf-8')
                     evt = json.loads(line)
                     if evt["type"] == "move":
-                        x = int(evt["x"] * self.screen_width)
-                        y = int(evt["y"] * self.screen_height)
-                        self.mouse_controller.position = (x, y)
+                        # Server now sends relative deltas; apply them to
+                        # wherever the cursor currently is on THIS screen.
+                        cx, cy = self.mouse_controller.position
+                        nx = max(0, min(self.screen_width - 1,  cx + int(evt["dx"])))
+                        ny = max(0, min(self.screen_height - 1, cy + int(evt["dy"])))
+                        self.mouse_controller.position = (nx, ny)
                     elif evt["type"] == "click":
                         btn = getattr(Button, evt['button'])
                         if evt['pressed']:
@@ -1085,6 +1105,8 @@ class ShareManager:
                         self.handle_incoming_large_event(line, self.tertiary_client_socket)
                     except UnicodeDecodeError:
                         pass
+            except socket.timeout:
+                continue
             except Exception:
                 break
     
