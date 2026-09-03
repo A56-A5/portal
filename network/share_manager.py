@@ -205,28 +205,131 @@ class ShareManager:
             self.overlay = overlay
         elif self.os_type == "linux":
             overlay = self.QWidget()
-            # X11BypassWindowManagerHint: skip the WM entirely so the overlay
-            # is guaranteed to stay on top and actually intercept input.
-            # WindowStaysOnTopHint alone is a hint the WM can ignore.
+            # Set a unique title BEFORE show() — WM rule matchers read it
+            # at map time, so the rules must already be registered.
+            overlay.setWindowTitle("portal-overlay")
+
+            # Register compositor-level float/fullscreen rules so the WM
+            # never tiles this window.  Must be synchronous and must run
+            # before show() so the rules are active when the window maps.
+            self._configure_wm_rules_sync()
+
+            # Qt.Tool: float hint (most tiling WMs skip Tool windows).
+            # X11BypassWindowManagerHint: bypass WM on X11/XWayland.
+            # WindowStaysOnTopHint: advisory on-top hint.
             overlay.setWindowFlags(
                 self.Qt.FramelessWindowHint
                 | self.Qt.WindowStaysOnTopHint
                 | self.Qt.X11BypassWindowManagerHint
+                | self.Qt.Tool
             )
-            # Solid opaque black — Qt stylesheet rgba() alpha is 0-255.
-            # The old value rgba(0,0,0,1) had alpha=1/255 ≈ transparent,
-            # which meant the overlay showed nothing and captured no clicks.
-            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 255);")
+            overlay.setAttribute(self.Qt.WA_TranslucentBackground, False)
+            overlay.setStyleSheet("background-color: rgb(0, 0, 0);")
             overlay.setCursor(self.Qt.BlankCursor)
-            overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-            overlay.show()
+            # showFullScreen() triggers EWMH _NET_WM_STATE_FULLSCREEN on
+            # X11/XWayland and xdg_toplevel.set_fullscreen on Wayland Qt.
+            overlay.showFullScreen()
             overlay.raise_()
             overlay.activateWindow()
-            # grabMouse ensures all mouse events go to this widget even if
-            # the cursor briefly leaves it during fast movements.
+            # Belt-and-suspenders: stamp EWMH atoms via xprop too.
+            self._set_ewmh_fullscreen(overlay)
+            # grabMouse ensures all mouse events go to this widget.
             overlay.grabMouse()
             self.overlay = overlay
     
+    def _configure_wm_rules_sync(self):
+        """Synchronously register WM-specific float+fullscreen rules for the
+        overlay window, matched by title 'portal-overlay'.  Must complete
+        before the window is shown so the WM applies rules at map time.
+
+        NOTE on Super-key / compositor shortcuts: Wayland compositor-level
+        bindings (Super+key etc.) are dispatched BEFORE XWayland sees any
+        events.  They cannot be suppressed by an XWayland/pynput grab.
+        This is a Wayland protocol limitation; suppressing them would
+        require implementing zwlr_input_inhibit_manager_v1.
+        """
+        try:
+            # ── Hyprland ──────────────────────────────────────────────────
+            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+                rules = [
+                    "float,title:^portal-overlay$",
+                    "fullscreen,title:^portal-overlay$",
+                    "pin,title:^portal-overlay$",       # visible on all workspaces
+                    "noanim,title:^portal-overlay$",    # no slide-in animation
+                    "noborder,title:^portal-overlay$",
+                    "noshadow,title:^portal-overlay$",
+                ]
+                for rule in rules:
+                    subprocess.run(
+                        ["hyprctl", "keyword", "windowrulev2", rule],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                return
+
+            # ── Sway / wlroots ────────────────────────────────────────────
+            if os.environ.get("SWAYSOCK"):
+                subprocess.run(
+                    ["swaymsg",
+                     'for_window [title="portal-overlay"] '
+                     'floating enable, fullscreen enable'],
+                    check=False, timeout=2,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+                return
+
+            # ── i3 ────────────────────────────────────────────────────────
+            if os.environ.get("I3SOCK"):
+                subprocess.run(
+                    ["i3-msg",
+                     '[title="portal-overlay"] floating enable; '
+                     '[title="portal-overlay"] fullscreen enable'],
+                    check=False, timeout=2,
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+        except Exception:
+            pass
+
+    def _set_ewmh_fullscreen(self, widget):
+        """Best-effort: stamp _NET_WM_STATE_FULLSCREEN + _NET_WM_STATE_ABOVE
+        on the overlay via xprop so that tiling WMs that ignore Qt's own
+        fullscreen request still honour the EWMH atoms.  Runs on a daemon
+        thread so it never blocks the GUI main thread.  Silently no-ops if
+        xprop is not installed or the window ID is unavailable."""
+        try:
+            wid = int(widget.winId())
+            if not wid:
+                return
+
+            def _apply():
+                try:
+                    subprocess.run(
+                        [
+                            "xprop", "-id", str(wid),
+                            "-f", "_NET_WM_STATE", "32a",
+                            "-set", "_NET_WM_STATE",
+                            "_NET_WM_STATE_FULLSCREEN,_NET_WM_STATE_ABOVE",
+                        ],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                    subprocess.run(
+                        [
+                            "xprop", "-id", str(wid),
+                            "-f", "_NET_WM_WINDOW_TYPE", "32a",
+                            "-set", "_NET_WM_WINDOW_TYPE",
+                            "_NET_WM_WINDOW_TYPE_SPLASH",
+                        ],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                except Exception:
+                    pass
+
+            threading.Thread(target=_apply, daemon=True).start()
+        except Exception:
+            pass
+
     def destroy_overlay(self):
         """Destroy overlay window (must be called from the GUI main thread)."""
         if self.overlay:
