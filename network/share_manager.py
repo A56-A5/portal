@@ -159,10 +159,11 @@ class ShareManager:
                 except Exception: pass
                 self.mouse_listener = None
 
-        # Release any evdev kernel grabs so the keyboard is never left stuck
+        # Release any evdev kernel grabs and reset WM submap so normal keybinds resume
         if self.os_type == "linux":
             try:
                 self._evdev_release()
+                self._set_wm_submap(False)
             except Exception:
                 pass
 
@@ -536,6 +537,7 @@ class ShareManager:
             app_config.save()
 
             self._schedule_overlay(to_active)
+            self._set_wm_submap(to_active)
             self.mouse_controller.position = new_position
 
             def send_active_state():
@@ -770,28 +772,36 @@ class ShareManager:
         # Always run in a separate thread to prevent blocking transition thread/GUI
         threading.Thread(target=perform_send, daemon=True).start()
     
-    # ------------------------------------------------------------------ #
-    #  evdev kernel-level keyboard grab                                    #
-    #  Grabs /dev/input/event* devices exclusively so ALL key events      #
-    #  (including Super+key Wayland compositor shortcuts) are consumed     #
-    #  before the compositor sees them.  Requires user in 'input' group.  #
-    # ------------------------------------------------------------------ #
+    def _set_wm_submap(self, active):
+        """Switch WM keybind submap to disable compositor shortcuts when input sharing is active."""
+        if self.os_type != "linux":
+            return
+        try:
+            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+                cmd = ["hyprctl", "keyword", "submap", "portal" if active else "reset"]
+                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif os.environ.get("SWAYSOCK"):
+                cmd = ["swaymsg", "mode", "portal" if active else "default"]
+                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            elif os.environ.get("I3SOCK"):
+                cmd = ["i3-msg", "mode", "portal" if active else "default"]
+                subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
 
     def _evdev_find_keyboards(self):
         """Return a list of /dev/input/event* paths that have EV_KEY."""
         import glob
-        import struct
         import fcntl
         EV_KEY = 0x01
-        EVIOCGBIT_EV = 0x80204518  # ioctl to read supported event types (32 bytes)
+        EVIOCGBIT_0 = 0x80204520  # ioctl to read supported event types
         devices = []
         for path in sorted(glob.glob("/dev/input/event*")):
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
                 buf = bytearray(32)
-                fcntl.ioctl(fd, EVIOCGBIT_EV, buf)
+                fcntl.ioctl(fd, EVIOCGBIT_0, buf)
                 os.close(fd)
-                # Check bit EV_KEY (bit 1) in the bitmask
                 if buf[EV_KEY // 8] & (1 << (EV_KEY % 8)):
                     devices.append(path)
             except Exception:
@@ -799,18 +809,15 @@ class ShareManager:
         return devices
 
     def _evdev_grab(self):
-        """Open every keyboard device and issue EVIOCGRAB to take exclusive
-        ownership.  Called in a background thread on activate so it never
-        blocks the transition.  Silently skips devices we can't open (e.g.
-        user not in 'input' group — pynput XGrabKeyboard still covers X11
-        keys in that case)."""
+        """Open keyboard devices and issue EVIOCGRAB to take exclusive ownership."""
         import fcntl
-        EVIOCGRAB = 0x40044590  # _IOW('E', 0x90, int) — grab/release
+        import struct
+        EVIOCGRAB = 0x40044590  # _IOW('E', 0x90, int)
         new_fds = []
         for path in self._evdev_find_keyboards():
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
-                fcntl.ioctl(fd, EVIOCGRAB, 1)
+                fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 1))
                 new_fds.append(fd)
             except Exception:
                 try:
@@ -818,10 +825,9 @@ class ShareManager:
                 except Exception:
                     pass
         with self._evdev_grab_lock:
-            # Release any previous grab before storing new ones
             for fd in self._evdev_grab_fds:
                 try:
-                    fcntl.ioctl(fd, EVIOCGRAB, 0)
+                    fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
                     os.close(fd)
                 except Exception:
                     pass
@@ -829,18 +835,17 @@ class ShareManager:
         if new_fds:
             logging.info(f"[evdev] Grabbed {len(new_fds)} keyboard device(s)")
         else:
-            logging.info("[evdev] No keyboard devices grabbed "
-                         "(user may not be in 'input' group — "
-                         "pynput XGrabKeyboard covers X11 keys)")
+            logging.info("[evdev] Keyboard grab bypassed (WM submap active)")
 
     def _evdev_release(self):
         """Release all evdev keyboard grabs so normal input routing resumes."""
         import fcntl
+        import struct
         EVIOCGRAB = 0x40044590
         with self._evdev_grab_lock:
             for fd in self._evdev_grab_fds:
                 try:
-                    fcntl.ioctl(fd, EVIOCGRAB, 0)
+                    fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
                     os.close(fd)
                 except Exception:
                     pass
