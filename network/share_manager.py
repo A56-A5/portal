@@ -61,6 +61,9 @@ class ShareManager:
         self.keyboard_socket = None
         self._mouse_send_json = None        # set by _setup_mouse_sender()
         
+        self._evdev_grab_fds = []
+        self._evdev_grab_lock = threading.Lock()
+        
         self.os_type = platform.system().lower()
         
         logging.basicConfig(
@@ -153,6 +156,12 @@ class ShareManager:
                 except Exception: pass
                 self.mouse_listener = None
 
+        if self.os_type == "linux":
+            try:
+                self._evdev_release()
+            except Exception:
+                pass
+
         try:
             if getattr(self, 'client_socket', None):
                 try: self.client_socket.shutdown(socket.SHUT_RDWR)
@@ -213,13 +222,16 @@ class ShareManager:
                 | self.Qt.Tool
             )
             overlay.setAttribute(self.Qt.WA_TranslucentBackground, True)
-            overlay.setStyleSheet("background: rgba(0, 0, 0, 1);")
+            overlay.setAttribute(self.Qt.WA_NoSystemBackground, True)
+            overlay.setStyleSheet("background: transparent;")
             overlay.setCursor(self.Qt.BlankCursor)
+            if self.screen_width and self.screen_height:
+                overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
 
             # Configure WM rules (Hyprland, Sway, i3) before mapping
             self._configure_wm_rules_sync()
 
-            overlay.show()
+            overlay.showFullScreen()
             overlay.raise_()
             overlay.activateWindow()
 
@@ -237,31 +249,15 @@ class ShareManager:
         try:
             # ── Hyprland ──────────────────────────────────────────────────
             if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-                new_rules = [
+                rules = [
                     "float 1, match:title portal-overlay",
                     "fullscreen 1, match:title portal-overlay",
                     "pin 1, match:title portal-overlay",
-                    "noanim 1, match:title portal-overlay",
-                    "noborder 1, match:title portal-overlay",
-                    "stayfocused 1, match:title portal-overlay",
+                    "opacity 0.0 override 0.0 override, match:title portal-overlay",
                 ]
-                old_rules = [
-                    "float,title:^portal-overlay$",
-                    "fullscreen,title:^portal-overlay$",
-                    "pin,title:^portal-overlay$",
-                    "noanim,title:^portal-overlay$",
-                    "noborder,title:^portal-overlay$",
-                    "stayfocused,title:^portal-overlay$",
-                ]
-                for rule in new_rules:
+                for rule in rules:
                     subprocess.run(
                         ["hyprctl", "keyword", "windowrule", rule],
-                        check=False, timeout=2,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                for rule in old_rules:
-                    subprocess.run(
-                        ["hyprctl", "keyword", "windowrulev2", rule],
                         check=False, timeout=2,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     )
@@ -435,6 +431,9 @@ class ShareManager:
                     )
                     self.keyboard_listener.start()
 
+                if self.os_type == "linux":
+                    threading.Thread(target=self._evdev_grab, daemon=True).start()
+
                 # Mouse: suppress=True issues XGrabPointer so local apps
                 # never see clicks or scrolls while input is being shared.
                 # Only needed on the server side (where _mouse_send_json is set).
@@ -442,6 +441,9 @@ class ShareManager:
                     with self.mouse_listener_lock:
                         self.mouse_listener = self._make_mouse_listener(suppress=True)
                         self.mouse_listener.start()
+            else:
+                if self.os_type == "linux":
+                    self._evdev_release()
 
             # Deduplicate
             if app_config.active_device == to_active:
@@ -839,6 +841,74 @@ class ShareManager:
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         self._setup_mouse_sender(client)  # register send callback; listener started by transition()
     
+    # ------------------------------------------------------------------ #
+    #  evdev kernel-level keyboard grab                                    #
+    #  Grabs /dev/input/event* devices exclusively so ALL key events      #
+    #  (including Super+key Wayland compositor shortcuts) are consumed     #
+    #  before the compositor sees them.  Requires user in 'input' group.  #
+    # ------------------------------------------------------------------ #
+
+    def _evdev_find_keyboards(self):
+        """Return a list of /dev/input/event* paths that have EV_KEY."""
+        import glob
+        import fcntl
+        EV_KEY = 0x01
+        EVIOCGBIT_0 = 0x80204520
+        devices = []
+        for path in sorted(glob.glob("/dev/input/event*")):
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                buf = bytearray(32)
+                fcntl.ioctl(fd, EVIOCGBIT_0, buf)
+                os.close(fd)
+                if buf[EV_KEY // 8] & (1 << (EV_KEY % 8)):
+                    devices.append(path)
+            except Exception:
+                pass
+        return devices
+
+    def _evdev_grab(self):
+        """Open keyboard devices and issue EVIOCGRAB to take exclusive ownership."""
+        import fcntl
+        import struct
+        EVIOCGRAB = 0x40044590
+        new_fds = []
+        for path in self._evdev_find_keyboards():
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 1))
+                new_fds.append(fd)
+            except Exception:
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+        with self._evdev_grab_lock:
+            for fd in self._evdev_grab_fds:
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
+                    os.close(fd)
+                except Exception:
+                    pass
+            self._evdev_grab_fds = new_fds
+        if new_fds:
+            logging.info(f"[evdev] Grabbed {len(new_fds)} keyboard device(s)")
+
+    def _evdev_release(self):
+        """Release all evdev keyboard grabs so normal input routing resumes."""
+        import fcntl
+        import struct
+        EVIOCGRAB = 0x40044590
+        with self._evdev_grab_lock:
+            for fd in self._evdev_grab_fds:
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
+                    os.close(fd)
+                except Exception:
+                    pass
+            self._evdev_grab_fds = []
+        logging.info("[evdev] Released keyboard grabs")
+
     def accept_secondary(self):
         """Accept secondary connection (keyboard, clipboard)"""
         sec_socket, sec_addr = self.secondary_server_socket.accept()
