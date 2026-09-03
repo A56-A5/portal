@@ -55,8 +55,11 @@ class ShareManager:
         
         # Listeners
         self.keyboard_listener = None
+        self.mouse_listener = None          # suppress=True listener, started on activate
+        self.mouse_listener_lock = threading.Lock()  # shared with keyboard_listener_lock logic
         self.keyboard_listener_lock = threading.Lock()
         self.keyboard_socket = None
+        self._mouse_send_json = None        # set by _setup_mouse_sender()
         
         self.os_type = platform.system().lower()
         
@@ -137,6 +140,18 @@ class ShareManager:
     def cleanup(self):
         """Clean up all resources"""
         print("[System] Cleaning up sockets and resources...")
+        
+        # Stop input listeners first
+        with self.keyboard_listener_lock:
+            if self.keyboard_listener:
+                try: self.keyboard_listener.stop()
+                except Exception: pass
+                self.keyboard_listener = None
+        with self.mouse_listener_lock:
+            if self.mouse_listener:
+                try: self.mouse_listener.stop()
+                except Exception: pass
+                self.mouse_listener = None
         
         try:
             if getattr(self, 'client_socket', None):
@@ -326,22 +341,42 @@ class ShareManager:
             if to_active and not getattr(app_config, 'input_sharing_enabled', True):
                 return
 
-            # PRIORITY 1: Instant Keyboard Suppression (Before anything else)
+            # PRIORITY 1: Instant Input Suppression — keyboard AND mouse.
+            # Both listeners are stopped first (releasing any existing X11
+            # grab), then restarted with suppress=True when activating.
+            # The sleep gives X11 a moment to process the ungrab before
+            # we issue a new grab, preventing "already grabbed" errors.
             with self.keyboard_listener_lock:
                 if self.keyboard_listener:
                     try: self.keyboard_listener.stop()
                     except: pass
                     self.keyboard_listener = None
-                    time.sleep(0.05) # Give X11 a moment to release the grab
-                
-                if to_active:
-                    from pynput import keyboard
+
+            with self.mouse_listener_lock:
+                if self.mouse_listener:
+                    try: self.mouse_listener.stop()
+                    except: pass
+                    self.mouse_listener = None
+
+            time.sleep(0.05)  # Give X11 a moment to release grabs
+
+            if to_active:
+                from pynput import keyboard
+                with self.keyboard_listener_lock:
                     self.keyboard_listener = keyboard.Listener(
                         on_press=self._on_press,
                         on_release=self._on_release,
                         suppress=True
                     )
                     self.keyboard_listener.start()
+
+                # Mouse: suppress=True issues XGrabPointer so local apps
+                # never see clicks or scrolls while input is being shared.
+                # Only needed on the server side (where _mouse_send_json is set).
+                if self._mouse_send_json is not None:
+                    with self.mouse_listener_lock:
+                        self.mouse_listener = self._make_mouse_listener(suppress=True)
+                        self.mouse_listener.start()
 
             # Deduplicate
             if app_config.active_device == to_active:
@@ -585,23 +620,37 @@ class ShareManager:
         # Always run in a separate thread to prevent blocking transition thread/GUI
         threading.Thread(target=perform_send, daemon=True).start()
     
-    def send_mouse_events(self, socket):
-        """Send mouse events from server using relative deltas.
+    def _setup_mouse_sender(self, sock):
+        """Store the send callback for mouse events.
 
-        Absolute normalized coordinates (x/screen_width) were unreliable:
-        - Multi-monitor virtual desktop makes screen_width wrong
-        - Server and client with different resolutions cause cursor drift
-        Relative deltas are screen-agnostic and feel 1:1.
+        The mouse listener itself is managed by transition(): started with
+        suppress=True when the device activates and stopped on deactivate.
+        This avoids having a permanently running non-suppress listener that
+        lets clicks/scrolls pass through to local apps while sharing.
         """
         def send_json(data):
             try:
-                socket.sendall((json.dumps(data) + "\n").encode())
+                sock.sendall((json.dumps(data) + "\n").encode())
             except Exception as e:
                 app_config.is_running = False
                 app_config.save()
-                print(f"[Server] Send failed: {e}")
-        
-        last_pos = [None]  # [x, y] of previous event, or None on first
+                print(f"[Server] Mouse send failed: {e}")
+        self._mouse_send_json = send_json
+
+    def _make_mouse_listener(self, suppress=False):
+        """Build a mouse.Listener that sends relative deltas.
+
+        suppress=True issues XGrabPointer so local apps never see the
+        events (clicks, scrolls, movement) while input is shared.
+
+        Rate is capped at 125 Hz: at high DPI a fast sweep generates
+        1000+ events/second which floods the TCP channel and causes the
+        client receive loop to fall behind (perceived as lag). 8 ms
+        batching is imperceptible to humans but keeps the pipe clear.
+        """
+        last_pos    = [None]   # (x, y) of previous move sample
+        last_t      = [0.0]   # monotonic timestamp of last sent move
+        MIN_INTERVAL = 1.0 / 125  # 125 Hz cap
 
         def on_move(x, y):
             if not app_config.active_device:
@@ -610,24 +659,41 @@ class ShareManager:
             if last_pos[0] is None:
                 last_pos[0] = (x, y)
                 return
+            now = time.monotonic()
+            if now - last_t[0] < MIN_INTERVAL:
+                # Still accumulate position so the next sent delta is correct
+                last_pos[0] = (x, y)
+                return
             dx = x - last_pos[0][0]
             dy = y - last_pos[0][1]
             last_pos[0] = (x, y)
-            if dx != 0 or dy != 0:
-                send_json({"type": "move", "dx": dx, "dy": dy})
-        
+            last_t[0]   = now
+            if (dx or dy) and hasattr(self, '_mouse_send_json'):
+                self._mouse_send_json({"type": "move", "dx": dx, "dy": dy})
+
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
                 return
             btn_name = button.name if hasattr(button, 'name') else str(button)
-            send_json({"type": "click", "button": btn_name, "pressed": pressed})
-        
+            if hasattr(self, '_mouse_send_json'):
+                self._mouse_send_json({"type": "click", "button": btn_name, "pressed": pressed})
+
         def on_scroll(x, y, dx, dy):
             if not app_config.active_device:
                 return
-            send_json({"type": "scroll", "dx": dx, "dy": dy})
-        
-        mouse.Listener(on_move=on_move, on_click=on_click, on_scroll=on_scroll).start()
+            if hasattr(self, '_mouse_send_json'):
+                self._mouse_send_json({"type": "scroll", "dx": dx, "dy": dy})
+
+        return mouse.Listener(
+            on_move=on_move,
+            on_click=on_click,
+            on_scroll=on_scroll,
+            suppress=suppress,
+        )
+
+    def send_keyboard_events(self, socket):
+        """Save socket for the instant handlers"""
+        self.keyboard_socket = socket
     
     def _on_press(self, key):
         if not app_config.active_device or not self.keyboard_socket:
@@ -650,10 +716,6 @@ class ShareManager:
             self.keyboard_socket.sendall(msg.encode())
         except: pass
 
-    def send_keyboard_events(self, socket):
-        """Save socket for the instant handlers"""
-        self.keyboard_socket = socket
-    
     # Server functions
     def start_server(self):
         """Start server mode"""
@@ -710,7 +772,7 @@ class ShareManager:
         print("[Server] Primary handshake sent")
         logging.info("[Connection] Primary handshake sent")
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
-        threading.Thread(target=lambda: self.send_mouse_events(client), daemon=True).start()
+        self._setup_mouse_sender(client)  # register send callback; listener started by transition()
     
     def accept_secondary(self):
         """Accept secondary connection (keyboard, clipboard)"""
