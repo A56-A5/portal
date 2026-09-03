@@ -60,6 +60,12 @@ class ShareManager:
         self.keyboard_listener_lock = threading.Lock()
         self.keyboard_socket = None
         self._mouse_send_json = None        # set by _setup_mouse_sender()
+
+        # evdev kernel-level keyboard grab (bypasses Wayland compositor, grabs
+        # Super+key and all other keys before the compositor sees them).
+        # Only used on Linux.  Populated lazily in _evdev_grab().
+        self._evdev_grab_fds = []           # list of open file descriptors
+        self._evdev_grab_lock = threading.Lock()
         
         self.os_type = platform.system().lower()
         
@@ -152,7 +158,14 @@ class ShareManager:
                 try: self.mouse_listener.stop()
                 except Exception: pass
                 self.mouse_listener = None
-        
+
+        # Release any evdev kernel grabs so the keyboard is never left stuck
+        if self.os_type == "linux":
+            try:
+                self._evdev_release()
+            except Exception:
+                pass
+
         try:
             if getattr(self, 'client_socket', None):
                 try: self.client_socket.shutdown(socket.SHUT_RDWR)
@@ -205,63 +218,114 @@ class ShareManager:
             self.overlay = overlay
         elif self.os_type == "linux":
             overlay = self.QWidget()
-            # Set a unique title BEFORE show() — WM rule matchers read it
-            # at map time, so the rules must already be registered.
-            overlay.setWindowTitle("portal-overlay")
 
-            # Register compositor-level float/fullscreen rules so the WM
-            # never tiles this window.  Must be synchronous and must run
-            # before show() so the rules are active when the window maps.
-            self._configure_wm_rules_sync()
-
-            # Qt.Tool: float hint (most tiling WMs skip Tool windows).
-            # X11BypassWindowManagerHint: bypass WM on X11/XWayland.
-            # WindowStaysOnTopHint: advisory on-top hint.
+            # ----------------------------------------------------------------
+            # CRITICAL: Do NOT set X11BypassWindowManagerHint.
+            # That flag sets override_redirect on the X11 window.  Hyprland
+            # (and all wlroots compositors) treat override_redirect windows as
+            # unmanaged and skip windowrulev2/windowrule matching for them
+            # entirely.  The window ends up with arbitrary size/position and
+            # EWMH state changes are silently ignored.
+            # ----------------------------------------------------------------
             overlay.setWindowFlags(
                 self.Qt.FramelessWindowHint
                 | self.Qt.WindowStaysOnTopHint
-                | self.Qt.X11BypassWindowManagerHint
-                | self.Qt.Tool
+                | self.Qt.Tool           # float hint: tiling WMs skip Tool windows
             )
             overlay.setAttribute(self.Qt.WA_TranslucentBackground, False)
             overlay.setStyleSheet("background-color: rgb(0, 0, 0);")
             overlay.setCursor(self.Qt.BlankCursor)
-            # showFullScreen() triggers EWMH _NET_WM_STATE_FULLSCREEN on
-            # X11/XWayland and xdg_toplevel.set_fullscreen on Wayland Qt.
+            overlay.setWindowTitle("portal-overlay")  # matched by WM rules below
+
+            # Register WM rules BEFORE the window is mapped so the compositor
+            # applies them at map time.  Also stamp EWMH atoms on the unmapped
+            # X11 window (via winId()) — WMs read these at map time too.
+            self._configure_wm_rules_sync()
+            self._stamp_ewmh_before_show(overlay)
+
+            # showFullScreen() sends the proper EWMH client message AND
+            # (on a Wayland-native Qt session) calls xdg_toplevel.set_fullscreen.
             overlay.showFullScreen()
             overlay.raise_()
             overlay.activateWindow()
-            # Belt-and-suspenders: stamp EWMH atoms via xprop too.
-            self._set_ewmh_fullscreen(overlay)
-            # grabMouse ensures all mouse events go to this widget.
+
+            # After the window is mapped the WM can be poked via IPC to
+            # force true fullscreen in case rules weren't enough.
+            self._dispatch_wm_fullscreen_async()
+
+            # grabMouse issues XGrabPointer so mouse events always reach us.
             overlay.grabMouse()
             self.overlay = overlay
     
+    def _stamp_ewmh_before_show(self, widget):
+        """Stamp _NET_WM_WINDOW_TYPE and _NET_WM_STATE on the X11 window
+        BEFORE it is mapped (shown).  WMs read these properties at map
+        time, so pre-setting them is what makes the rules actually stick
+        on first show rather than requiring a post-map correction.
+
+        winId() forces Qt to create the underlying X11 window without
+        mapping it, giving us the window ID we need for xprop."""
+        try:
+            wid = str(int(widget.winId()))
+            if not wid or wid == "0":
+                return
+            # SPLASH → auto-float on virtually all WMs without needing rules
+            subprocess.run(
+                ["xprop", "-id", wid,
+                 "-f", "_NET_WM_WINDOW_TYPE", "32a",
+                 "-set", "_NET_WM_WINDOW_TYPE",
+                 "_NET_WM_WINDOW_TYPE_SPLASH"],
+                check=False, timeout=2,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            # Pre-request FULLSCREEN + ABOVE so the WM applies them at map
+            subprocess.run(
+                ["xprop", "-id", wid,
+                 "-f", "_NET_WM_STATE", "32a",
+                 "-set", "_NET_WM_STATE",
+                 "_NET_WM_STATE_FULLSCREEN,_NET_WM_STATE_ABOVE"],
+                check=False, timeout=2,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        except Exception:
+            pass
+
     def _configure_wm_rules_sync(self):
         """Synchronously register WM-specific float+fullscreen rules for the
-        overlay window, matched by title 'portal-overlay'.  Must complete
-        before the window is shown so the WM applies rules at map time.
-
-        NOTE on Super-key / compositor shortcuts: Wayland compositor-level
-        bindings (Super+key etc.) are dispatched BEFORE XWayland sees any
-        events.  They cannot be suppressed by an XWayland/pynput grab.
-        This is a Wayland protocol limitation; suppressing them would
-        require implementing zwlr_input_inhibit_manager_v1.
-        """
+        overlay window (matched by title 'portal-overlay') before it maps.
+        Covers Hyprland (old windowrulev2 + new windowrule syntax since
+        0.53), Sway, and i3."""
         try:
             # ── Hyprland ──────────────────────────────────────────────────
             if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-                rules = [
+                # Rules common to both old (<0.53) and new (>=0.53) syntax;
+                # we emit both so the right one sticks regardless of version.
+                old_rules = [
                     "float,title:^portal-overlay$",
                     "fullscreen,title:^portal-overlay$",
-                    "pin,title:^portal-overlay$",       # visible on all workspaces
-                    "noanim,title:^portal-overlay$",    # no slide-in animation
+                    "pin,title:^portal-overlay$",
+                    "noanim,title:^portal-overlay$",
                     "noborder,title:^portal-overlay$",
                     "noshadow,title:^portal-overlay$",
+                    "suppressevent maximize, title:^portal-overlay$",
                 ]
-                for rule in rules:
+                # New syntax (Hyprland >= 0.53): windowrule = rule, match:prop val
+                new_rules = [
+                    "float 1, match:title portal-overlay",
+                    "fullscreen 1, match:title portal-overlay",
+                    "pin 1, match:title portal-overlay",
+                    "noanim 1, match:title portal-overlay",
+                    "noborder 1, match:title portal-overlay",
+                ]
+                for rule in old_rules:
                     subprocess.run(
                         ["hyprctl", "keyword", "windowrulev2", rule],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                for rule in new_rules:
+                    subprocess.run(
+                        ["hyprctl", "keyword", "windowrule", rule],
                         check=False, timeout=2,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     )
@@ -290,36 +354,57 @@ class ShareManager:
         except Exception:
             pass
 
-    def _set_ewmh_fullscreen(self, widget):
-        """Best-effort: stamp _NET_WM_STATE_FULLSCREEN + _NET_WM_STATE_ABOVE
-        on the overlay via xprop so that tiling WMs that ignore Qt's own
-        fullscreen request still honour the EWMH atoms.  Runs on a daemon
-        thread so it never blocks the GUI main thread.  Silently no-ops if
-        xprop is not installed or the window ID is unavailable."""
-        try:
-            wid = int(widget.winId())
-            if not wid:
-                return
-
-            def _apply():
-                try:
+    def _dispatch_wm_fullscreen_async(self):
+        """After the overlay is mapped, poke the WM via IPC to force true
+        fullscreen in case the pre-map rules weren't enough.  Runs in a
+        background thread with a short delay to let the window appear in
+        the compositor's client list."""
+        def _apply():
+            time.sleep(0.15)  # let the window map + appear in WM client list
+            try:
+                if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+                    # focuswindow → fullscreen 0 (real fullscreen, no gaps)
                     subprocess.run(
-                        [
-                            "xprop", "-id", str(wid),
-                            "-f", "_NET_WM_STATE", "32a",
-                            "-set", "_NET_WM_STATE",
-                            "_NET_WM_STATE_FULLSCREEN,_NET_WM_STATE_ABOVE",
-                        ],
+                        ["hyprctl", "dispatch", "focuswindow",
+                         "title:portal-overlay"],
                         check=False, timeout=2,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     )
                     subprocess.run(
-                        [
-                            "xprop", "-id", str(wid),
-                            "-f", "_NET_WM_WINDOW_TYPE", "32a",
-                            "-set", "_NET_WM_WINDOW_TYPE",
-                            "_NET_WM_WINDOW_TYPE_SPLASH",
-                        ],
+                        ["hyprctl", "dispatch", "fullscreen", "0"],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                elif os.environ.get("SWAYSOCK"):
+                    subprocess.run(
+                        ["swaymsg",
+                         '[title="portal-overlay"] fullscreen enable'],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+            except Exception:
+                pass
+        threading.Thread(target=_apply, daemon=True).start()
+
+    # _set_ewmh_fullscreen kept as a post-map belt-and-suspenders call
+    # (called indirectly — no longer the primary mechanism).
+    def _set_ewmh_fullscreen(self, widget):
+        """Post-map xprop: re-assert FULLSCREEN + ABOVE after the window is
+        already shown, for compositors that need the atoms refreshed after
+        mapping.  Runs in a daemon thread."""
+        try:
+            wid = str(int(widget.winId()))
+            if not wid or wid == "0":
+                return
+
+            def _apply():
+                time.sleep(0.05)
+                try:
+                    subprocess.run(
+                        ["xprop", "-id", wid,
+                         "-f", "_NET_WM_STATE", "32a",
+                         "-set", "_NET_WM_STATE",
+                         "_NET_WM_STATE_FULLSCREEN,_NET_WM_STATE_ABOVE"],
                         check=False, timeout=2,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     )
@@ -473,6 +558,15 @@ class ShareManager:
                     )
                     self.keyboard_listener.start()
 
+                # evdev EVIOCGRAB: kernel-level exclusive grab so that ALL
+                # keyboard events (including Super+key compositor shortcuts)
+                # are intercepted before Wayland or X11 sees them.
+                # Requires the user to be in the 'input' group.
+                if self.os_type == "linux":
+                    threading.Thread(
+                        target=self._evdev_grab, daemon=True
+                    ).start()
+
                 # Mouse: suppress=True issues XGrabPointer so local apps
                 # never see clicks or scrolls while input is being shared.
                 # Only needed on the server side (where _mouse_send_json is set).
@@ -480,6 +574,12 @@ class ShareManager:
                     with self.mouse_listener_lock:
                         self.mouse_listener = self._make_mouse_listener(suppress=True)
                         self.mouse_listener.start()
+
+            else:
+                # Deactivating: release the evdev kernel grab so normal
+                # input routing resumes.
+                if self.os_type == "linux":
+                    self._evdev_release()
 
             # Deduplicate
             if app_config.active_device == to_active:
@@ -723,6 +823,83 @@ class ShareManager:
         # Always run in a separate thread to prevent blocking transition thread/GUI
         threading.Thread(target=perform_send, daemon=True).start()
     
+    # ------------------------------------------------------------------ #
+    #  evdev kernel-level keyboard grab                                    #
+    #  Grabs /dev/input/event* devices exclusively so ALL key events      #
+    #  (including Super+key Wayland compositor shortcuts) are consumed     #
+    #  before the compositor sees them.  Requires user in 'input' group.  #
+    # ------------------------------------------------------------------ #
+
+    def _evdev_find_keyboards(self):
+        """Return a list of /dev/input/event* paths that have EV_KEY."""
+        import glob
+        import struct
+        import fcntl
+        EV_KEY = 0x01
+        EVIOCGBIT_EV = 0x80204518  # ioctl to read supported event types (32 bytes)
+        devices = []
+        for path in sorted(glob.glob("/dev/input/event*")):
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                buf = bytearray(32)
+                fcntl.ioctl(fd, EVIOCGBIT_EV, buf)
+                os.close(fd)
+                # Check bit EV_KEY (bit 1) in the bitmask
+                if buf[EV_KEY // 8] & (1 << (EV_KEY % 8)):
+                    devices.append(path)
+            except Exception:
+                pass
+        return devices
+
+    def _evdev_grab(self):
+        """Open every keyboard device and issue EVIOCGRAB to take exclusive
+        ownership.  Called in a background thread on activate so it never
+        blocks the transition.  Silently skips devices we can't open (e.g.
+        user not in 'input' group — pynput XGrabKeyboard still covers X11
+        keys in that case)."""
+        import fcntl
+        EVIOCGRAB = 0x40044590  # _IOW('E', 0x90, int) — grab/release
+        new_fds = []
+        for path in self._evdev_find_keyboards():
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                fcntl.ioctl(fd, EVIOCGRAB, 1)
+                new_fds.append(fd)
+            except Exception:
+                try:
+                    os.close(fd)
+                except Exception:
+                    pass
+        with self._evdev_grab_lock:
+            # Release any previous grab before storing new ones
+            for fd in self._evdev_grab_fds:
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, 0)
+                    os.close(fd)
+                except Exception:
+                    pass
+            self._evdev_grab_fds = new_fds
+        if new_fds:
+            logging.info(f"[evdev] Grabbed {len(new_fds)} keyboard device(s)")
+        else:
+            logging.info("[evdev] No keyboard devices grabbed "
+                         "(user may not be in 'input' group — "
+                         "pynput XGrabKeyboard covers X11 keys)")
+
+    def _evdev_release(self):
+        """Release all evdev keyboard grabs so normal input routing resumes."""
+        import fcntl
+        EVIOCGRAB = 0x40044590
+        with self._evdev_grab_lock:
+            for fd in self._evdev_grab_fds:
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, 0)
+                    os.close(fd)
+                except Exception:
+                    pass
+            self._evdev_grab_fds = []
+        logging.info("[evdev] Released keyboard grabs")
+
     def _setup_mouse_sender(self, sock):
         """Store the send callback for mouse events.
 
