@@ -858,20 +858,17 @@ class ShareManager:
         print(f"[Client] {msg}")
         logging.info(f"[Remote Status] {msg}")
 
-        self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        
-        self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-
-        self.tertiary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tertiary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        
         # Connect primary
+        # NOTE: We create a fresh socket on every retry attempt.
+        # Once connect() is called on a socket — even if it times out — the OS
+        # marks it as "connection in progress". Re-calling connect() on the same
+        # socket then raises errno 114 (EINPROGRESS / Operation already in progress).
         primary_connected = False
         last_error = None
         for i in range(10):
             try:
+                self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 self.client_socket.settimeout(3.0)
                 self.client_socket.connect((server_ip, self.primary_port))
                 handshake = self.client_socket.recv(1024)
@@ -883,6 +880,11 @@ class ShareManager:
             except Exception as e:
                 last_error = e
                 print(f"[Client] Primary connection attempt {i+1}/10 failed: {e}")
+                try:
+                    self.client_socket.close()
+                except Exception:
+                    pass
+                self.client_socket = None
                 if i < 9:
                     logging.info(f"[Remote Status] Connecting to {server_ip}... (Attempt {i+2}/10)")
                     time.sleep(1)
@@ -897,10 +899,12 @@ class ShareManager:
 
         print("[Client] Primary Connected")
         
-        # Connect secondary
+        # Connect secondary (fresh socket on each retry to avoid errno 114)
         secondary_connected = False
         for i in range(5):
             try:
+                self.secondary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.secondary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 self.secondary_client_socket.settimeout(3.0)
                 self.secondary_client_socket.connect((server_ip, self.secondary_port))
                 self.secondary_client_socket.settimeout(None)
@@ -908,6 +912,11 @@ class ShareManager:
                 break
             except Exception as e:
                 last_error = e
+                try:
+                    self.secondary_client_socket.close()
+                except Exception:
+                    pass
+                self.secondary_client_socket = None
                 time.sleep(1)
 
         if not secondary_connected:
@@ -920,9 +929,11 @@ class ShareManager:
         
         print("[Client] Secondary Connected")
 
-        # Connect tertiary (optional / best-effort)
+        # Connect tertiary (optional / best-effort; fresh socket on each retry)
         for i in range(3):
             try:
+                self.tertiary_client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.tertiary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 self.tertiary_client_socket.settimeout(3.0)
                 self.tertiary_client_socket.connect((server_ip, self.tertiary_port))
                 self.tertiary_client_socket.settimeout(None)
@@ -930,6 +941,11 @@ class ShareManager:
                 print("[Client] Tertiary Connected")
                 break
             except Exception:
+                try:
+                    self.tertiary_client_socket.close()
+                except Exception:
+                    pass
+                self.tertiary_client_socket = None
                 time.sleep(0.5)
         
         msg = f"Successfully connected to Server at {server_ip}!"
