@@ -299,7 +299,12 @@ class MainWindow:
             
             with open(log_path, "r") as f:
                 f.seek(0, 2) # Go to end
-                while self.running:
+                while True:
+                    try:
+                        if not self.root.winfo_exists():
+                            break
+                    except Exception:
+                        break
                     line = f.readline()
                     if not line:
                         time.sleep(0.5)
