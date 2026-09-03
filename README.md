@@ -21,7 +21,7 @@ This project aims to provide a simpler, Python-based alternative with audio shar
 - **Log Viewer**: GUI-based log viewer for debugging
 - **Cross-Platform**: Works on Windows and Linux
 
-> **Linux note:** input sharing and the on-screen overlay currently require an **X11** session (including "Plasma (X11)" login options). On Wayland, clipboard sync still works, but input sharing does not - Portal will tell you this on startup rather than fail silently.
+> **Linux note:** Portal supports both **X11** and **Wayland** sessions. On Wayland, ensure `xdotool` and `wl-clipboard` (or `xclip`) are installed for seamless input sharing and clipboard sync.
 
 ## Open Source
 

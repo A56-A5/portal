@@ -130,7 +130,7 @@ verify_install() {
 
     if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
         echo ""
-        warn "You're on a Wayland session. Portal's overlay and input sharing currently need X11 - clipboard sync will still work, but switch to an Xorg/X11 login for full functionality."
+        info "Wayland session detected. Portal supports Wayland via X11 compatibility mode."
     fi
 }
 

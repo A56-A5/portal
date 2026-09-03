@@ -197,11 +197,7 @@ class ConnectionHandler:
             else:
                 self.destroy_overlay()
             
-            import win32api
-            try:
-                win32api.SetCursorPos(new_position)
-            except (NameError, ImportError):
-                self.mouse_controller.position = new_position
+            self.mouse_controller.position = new_position
         
         if hasattr(self, 'secondary_server') and self.secondary_server:
             try:

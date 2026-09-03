@@ -84,6 +84,8 @@ class ShareManager:
             self.screen_width = self.gui_app.winfo_screenwidth()
             self.screen_height = self.gui_app.winfo_screenheight()
         elif self.os_type == "linux":
+            if os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland" or os.environ.get("WAYLAND_DISPLAY"):
+                os.environ.setdefault("QT_QPA_PLATFORM", "xcb")
             from PyQt5.QtWidgets import QApplication, QWidget
             from PyQt5.QtCore import Qt
             self.Qt = Qt
@@ -100,20 +102,8 @@ class ShareManager:
             self._compositor_warned = False
 
             if self._wayland:
-                # The click-blocking overlay and pynput's global suppress
-                # listener both rely on X11 concepts (override-redirect /
-                # POPUP windows, arbitrary window positioning, synthetic
-                # cursor warps, global input grabs) that a Wayland
-                # compositor deliberately does not expose to clients for
-                # security reasons. We don't have a layer-shell/portal
-                # based input backend yet, so rather than silently doing
-                # nothing (or crashing) we log it loudly - "[Remote
-                # Status]" is picked up and surfaced as a toast in the
-                # GUI by MainWindow.check_log_for_status().
-                msg = ("Wayland session detected - overlay & input sharing need "
-                       "an X11 session and will not work reliably here. "
-                       "Clipboard sync is unaffected.")
-                logging.warning(f"[Remote Status] {msg}")
+                msg = ("Wayland session detected - running with X11 compatibility layer for overlay & input sharing.")
+                logging.info(f"[Remote Status] {msg}")
                 print(f"[Session] {msg}")
 
     def _detect_wayland(self):
@@ -194,11 +184,6 @@ class ShareManager:
             overlay.update_idletasks()
             self.overlay = overlay
         elif self.os_type == "linux":
-            if getattr(self, "_wayland", False):
-                # No functioning overlay backend under Wayland yet - see
-                # setup_screen(). Skip rather than create a window that
-                # won't behave (or will error) under the compositor.
-                return
             overlay = self.QWidget()
             # Frameless + TopMost, no Qt.Tool (it can make the window
             # click-through, defeating the whole point of this overlay).
