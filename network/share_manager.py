@@ -218,112 +218,56 @@ class ShareManager:
             self.overlay = overlay
         elif self.os_type == "linux":
             overlay = self.QWidget()
+            overlay.setWindowTitle("PortalOverlay")
 
-            # ----------------------------------------------------------------
-            # CRITICAL: Do NOT set X11BypassWindowManagerHint.
-            # That flag sets override_redirect on the X11 window.  Hyprland
-            # (and all wlroots compositors) treat override_redirect windows as
-            # unmanaged and skip windowrulev2/windowrule matching for them
-            # entirely.  The window ends up with arbitrary size/position and
-            # EWMH state changes are silently ignored.
-            # ----------------------------------------------------------------
+            # Qt.Popup is critical on Wayland because Qt Wayland plugin only
+            # allows input grabs (mouse & keyboard) for popup windows.
+            # Combined with WindowStaysOnTopHint and FramelessWindowHint,
+            # this makes it a pinned, popped overlay.
             overlay.setWindowFlags(
-                self.Qt.FramelessWindowHint
+                self.Qt.Window
+                | self.Qt.FramelessWindowHint
                 | self.Qt.WindowStaysOnTopHint
-                | self.Qt.Tool           # float hint: tiling WMs skip Tool windows
+                | self.Qt.Popup
             )
             overlay.setAttribute(self.Qt.WA_TranslucentBackground, False)
             overlay.setStyleSheet("background-color: rgb(0, 0, 0);")
             overlay.setCursor(self.Qt.BlankCursor)
-            overlay.setWindowTitle("portal-overlay")  # matched by WM rules below
 
-            # Register WM rules BEFORE the window is mapped so the compositor
-            # applies them at map time.  Also stamp EWMH atoms on the unmapped
-            # X11 window (via winId()) — WMs read these at map time too.
+            # Match exact screen geometry (100% width and height starting at 0,0)
+            primary = self.gui_app.primaryScreen()
+            geom = primary.geometry()
+            overlay.setGeometry(0, 0, geom.width(), geom.height())
+
+            # Configure WM rules (Hyprland, Sway, i3) before mapping
             self._configure_wm_rules_sync()
-            self._stamp_ewmh_before_show(overlay)
 
-            # showFullScreen() sends the proper EWMH client message AND
-            # (on a Wayland-native Qt session) calls xdg_toplevel.set_fullscreen.
-            overlay.showFullScreen()
+            overlay.show()
             overlay.raise_()
             overlay.activateWindow()
 
-            # After the window is mapped the WM can be poked via IPC to
-            # force true fullscreen in case rules weren't enough.
-            self._dispatch_wm_fullscreen_async()
+            try:
+                overlay.grabMouse()
+                overlay.grabKeyboard()
+            except Exception:
+                pass
 
-            # grabMouse issues XGrabPointer so mouse events always reach us.
-            overlay.grabMouse()
             self.overlay = overlay
-    
-    def _stamp_ewmh_before_show(self, widget):
-        """Stamp _NET_WM_WINDOW_TYPE and _NET_WM_STATE on the X11 window
-        BEFORE it is mapped (shown).  WMs read these properties at map
-        time, so pre-setting them is what makes the rules actually stick
-        on first show rather than requiring a post-map correction.
-
-        winId() forces Qt to create the underlying X11 window without
-        mapping it, giving us the window ID we need for xprop."""
-        try:
-            wid = str(int(widget.winId()))
-            if not wid or wid == "0":
-                return
-            # SPLASH → auto-float on virtually all WMs without needing rules
-            subprocess.run(
-                ["xprop", "-id", wid,
-                 "-f", "_NET_WM_WINDOW_TYPE", "32a",
-                 "-set", "_NET_WM_WINDOW_TYPE",
-                 "_NET_WM_WINDOW_TYPE_SPLASH"],
-                check=False, timeout=2,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-            # Pre-request FULLSCREEN + ABOVE so the WM applies them at map
-            subprocess.run(
-                ["xprop", "-id", wid,
-                 "-f", "_NET_WM_STATE", "32a",
-                 "-set", "_NET_WM_STATE",
-                 "_NET_WM_STATE_FULLSCREEN,_NET_WM_STATE_ABOVE"],
-                check=False, timeout=2,
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        except Exception:
-            pass
 
     def _configure_wm_rules_sync(self):
-        """Synchronously register WM-specific float+fullscreen rules for the
-        overlay window (matched by title 'portal-overlay') before it maps.
-        Covers Hyprland (old windowrulev2 + new windowrule syntax since
-        0.53), Sway, and i3."""
+        """Synchronously register WM-specific float+pin+size rules for the
+        overlay window (matched by title 'PortalOverlay') before it maps."""
         try:
             # ── Hyprland ──────────────────────────────────────────────────
             if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
-                # Rules common to both old (<0.53) and new (>=0.53) syntax;
-                # we emit both so the right one sticks regardless of version.
-                old_rules = [
-                    "float,title:^portal-overlay$",
-                    "fullscreen,title:^portal-overlay$",
-                    "pin,title:^portal-overlay$",
-                    "noanim,title:^portal-overlay$",
-                    "noborder,title:^portal-overlay$",
-                    "noshadow,title:^portal-overlay$",
-                    "suppressevent maximize, title:^portal-overlay$",
+                rules = [
+                    "float 1, match:title ^PortalOverlay$",
+                    "pin 1, match:title ^PortalOverlay$",
+                    "move 0 0, match:title ^PortalOverlay$",
+                    "size 100% 100%, match:title ^PortalOverlay$",
+                    "stayfocused 1, match:title ^PortalOverlay$",
                 ]
-                # New syntax (Hyprland >= 0.53): windowrule = rule, match:prop val
-                new_rules = [
-                    "float 1, match:title portal-overlay",
-                    "fullscreen 1, match:title portal-overlay",
-                    "pin 1, match:title portal-overlay",
-                    "noanim 1, match:title portal-overlay",
-                    "noborder 1, match:title portal-overlay",
-                ]
-                for rule in old_rules:
-                    subprocess.run(
-                        ["hyprctl", "keyword", "windowrulev2", rule],
-                        check=False, timeout=2,
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                for rule in new_rules:
+                for rule in rules:
                     subprocess.run(
                         ["hyprctl", "keyword", "windowrule", rule],
                         check=False, timeout=2,
@@ -335,8 +279,8 @@ class ShareManager:
             if os.environ.get("SWAYSOCK"):
                 subprocess.run(
                     ["swaymsg",
-                     'for_window [title="portal-overlay"] '
-                     'floating enable, fullscreen enable'],
+                     'for_window [title="PortalOverlay"] '
+                     'floating enable, sticky enable, move position 0 0, resize set 100 ppt 100 ppt'],
                     check=False, timeout=2,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
@@ -346,8 +290,10 @@ class ShareManager:
             if os.environ.get("I3SOCK"):
                 subprocess.run(
                     ["i3-msg",
-                     '[title="portal-overlay"] floating enable; '
-                     '[title="portal-overlay"] fullscreen enable'],
+                     '[title="PortalOverlay"] floating enable; '
+                     '[title="PortalOverlay"] sticky enable; '
+                     '[title="PortalOverlay"] move position 0 0; '
+                     '[title="PortalOverlay"] resize set 100 ppt 100 ppt'],
                     check=False, timeout=2,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
@@ -423,6 +369,7 @@ class ShareManager:
             elif self.os_type == "linux":
                 try:
                     self.overlay.releaseMouse()
+                    self.overlay.releaseKeyboard()
                 except Exception:
                     pass
                 self.overlay.close()
