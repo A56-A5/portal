@@ -56,7 +56,6 @@ class ShareManager:
         # Listeners
         self.keyboard_listener = None
         self.keyboard_listener_lock = threading.Lock()
-        self.gtk_overlay_thread = None
         self.keyboard_socket = None
         
         self.os_type = platform.system().lower()
@@ -95,6 +94,53 @@ class ShareManager:
             geom = desktop.geometry()
             self.screen_width = geom.width()
             self.screen_height = geom.height()
+
+            self._wayland = self._detect_wayland()
+            self._compositor_available = self._detect_compositor()
+            self._compositor_warned = False
+
+            if self._wayland:
+                # The click-blocking overlay and pynput's global suppress
+                # listener both rely on X11 concepts (override-redirect /
+                # POPUP windows, arbitrary window positioning, synthetic
+                # cursor warps, global input grabs) that a Wayland
+                # compositor deliberately does not expose to clients for
+                # security reasons. We don't have a layer-shell/portal
+                # based input backend yet, so rather than silently doing
+                # nothing (or crashing) we log it loudly - "[Remote
+                # Status]" is picked up and surfaced as a toast in the
+                # GUI by MainWindow.check_log_for_status().
+                msg = ("Wayland session detected - overlay & input sharing need "
+                       "an X11 session and will not work reliably here. "
+                       "Clipboard sync is unaffected.")
+                logging.warning(f"[Remote Status] {msg}")
+                print(f"[Session] {msg}")
+
+    def _detect_wayland(self):
+        return (
+            os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
+            or bool(os.environ.get("WAYLAND_DISPLAY"))
+        )
+
+    def _detect_compositor(self):
+        """Best-effort check for a running X11 compositing manager.
+
+        The overlay's "invisible but still blocks clicks" trick needs a
+        compositor to actually blend a near-zero-alpha window with what's
+        behind it; without one, X11 just renders it opaque, i.e. the
+        screen appears to go solid black instead of invisible. That's not
+        a crash, but it looks like one to a user - detecting it lets us
+        pick an intentional, documented fallback color instead of an
+        unpredictable one, and warn once instead of confusing anyone.
+        Defaults to True (assume a compositor is present) on any failure
+        to detect, since that's the common case and we'd rather try the
+        normal path than degrade unnecessarily.
+        """
+        try:
+            from PyQt5.QtX11Extras import QX11Info
+            return QX11Info.isCompositingManagerRunning()
+        except Exception:
+            return True
     
     def cleanup(self):
         """Clean up all resources"""
@@ -130,7 +176,11 @@ class ShareManager:
         app_config.save()
     
     def create_overlay(self):
-        """Create invisible overlay window. Call via _schedule_overlay only."""
+        """Create invisible overlay window. Call via _schedule_overlay only
+        - it must run on the GUI toolkit's own thread (Tk's mainloop
+        thread on Windows, Qt's main thread on Linux). Building a Qt/Tk
+        widget from any other thread is undefined behaviour and was the
+        root cause of the old GTK-overlay-in-a-background-thread crashes."""
         if self.os_type == "windows":
             overlay = self.tk.Toplevel(self.gui_app)
             overlay.overrideredirect(True)
@@ -144,12 +194,34 @@ class ShareManager:
             overlay.update_idletasks()
             self.overlay = overlay
         elif self.os_type == "linux":
+            if getattr(self, "_wayland", False):
+                # No functioning overlay backend under Wayland yet - see
+                # setup_screen(). Skip rather than create a window that
+                # won't behave (or will error) under the compositor.
+                return
             overlay = self.QWidget()
-            # Standard Frameless + TopMost. Removed Qt.Tool as it can make windows click-through.
+            # Frameless + TopMost, no Qt.Tool (it can make the window
+            # click-through, defeating the whole point of this overlay).
             overlay.setWindowFlags(self.Qt.FramelessWindowHint | self.Qt.WindowStaysOnTopHint)
-            # Use stylesheet for transparency instead of WA_TranslucentBackground 
-            # (which can be unreliable for input blocking)
-            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 1);") # Almost 0 alpha but solid to mouse
+            if getattr(self, "_compositor_available", True):
+                # Solid alpha in the stylesheet (not WA_TranslucentBackground,
+                # which can be unreliable for click-blocking) - with a
+                # compositor running, this blends to near-invisible while
+                # staying solid to clicks.
+                overlay.setStyleSheet("background-color: rgba(0, 0, 0, 1);")
+            else:
+                # No compositor: true per-pixel transparency isn't
+                # available, and would otherwise render as an
+                # unpredictable solid block. Use an intentional, visibly
+                # dim fallback instead, and only log the reason once.
+                overlay.setStyleSheet("background-color: rgba(10, 10, 20, 235);")
+                if not self._compositor_warned:
+                    self._compositor_warned = True
+                    msg = ("No compositor detected - the overlay will be dim instead of "
+                           "invisible while input is shared. Enable compositing (e.g. "
+                           "in your desktop's display settings) for a fully invisible overlay.")
+                    logging.info(f"[Remote Status] {msg}")
+                    print(f"[Overlay] {msg}")
             overlay.setCursor(self.Qt.BlankCursor)
             overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
             overlay.show()
@@ -167,74 +239,17 @@ class ShareManager:
             self.overlay = None
 
     def _schedule_overlay(self, to_active):
-        """Schedule overlay creation/destruction."""
+        """Schedule overlay creation/destruction on the GUI toolkit's own
+        thread. Both Tk and Qt widgets must only ever be touched from the
+        thread that owns their event loop - this is what makes that safe
+        to call from monitor_mouse_edges()'s background thread."""
+        if not self.gui_app:
+            return
         if self.os_type == "windows":
-            if self.gui_app:
-                self.gui_app.after_idle(lambda: self.create_overlay() if to_active else self.destroy_overlay())
+            self.gui_app.after_idle(lambda: self.create_overlay() if to_active else self.destroy_overlay())
         elif self.os_type == "linux":
-            if to_active:
-                # Start GTK overlay in a separate thread
-                if self.gtk_overlay_thread is None or not self.gtk_overlay_thread.is_alive():
-                    self.gtk_overlay_thread = threading.Thread(target=self.create_gtk_overlay, daemon=True)
-                    self.gtk_overlay_thread.start()
-            else:
-                self.destroy_gtk_overlay()
-    
-    def create_gtk_overlay(self):
-        """Native GTK3 Overlay for Linux (Ubuntu Native)"""
-        try:
-            import gi
-            gi.require_version('Gtk', '3.0')
-            from gi.repository import Gtk, Gdk
-            import cairo
-
-            # POPUP type bypasses window managers and grabs top-level priority
-            self.overlay = Gtk.Window(type=Gtk.WindowType.POPUP)
-            self.overlay.set_keep_above(True)
-            self.overlay.set_accept_focus(False) # CRITICAL: Don't steal focus from pynput
-            
-            # Full screen coverage
-            self.overlay.set_default_size(self.screen_width, self.screen_height)
-            self.overlay.move(0, 0)
-
-            # Transparency logic
-            screen = self.overlay.get_screen()
-            visual = screen.get_rgba_visual()
-            if visual:
-                self.overlay.set_visual(visual)
-            
-            self.overlay.set_app_paintable(True)
-            def on_draw(w, cr):
-                cr.set_source_rgba(0, 0, 0, 0.01) # Invisible but solid to clicks
-                cr.set_operator(cairo.OPERATOR_SOURCE)
-                cr.paint()
-                return False
-            self.overlay.connect("draw", on_draw)
-
-            # Show and set blank cursor
-            self.overlay.show_all()
-            
-            # Use X11/Wayland cursor hide
-            win = self.overlay.get_window()
-            if win:
-                cursor = Gdk.Cursor.new_for_display(Gdk.Display.get_default(), Gdk.CursorType.BLANK_CURSOR)
-                win.set_cursor(cursor)
-
-            Gtk.main()
-        except Exception as e:
-            print(f"[GTK Overlay] Error: {e}")
-
-    def destroy_gtk_overlay(self):
-        """Stop GTK overlay"""
-        try:
-            import gi
-            gi.require_version('Gtk', '3.0')
-            from gi.repository import Gtk
-            Gtk.main_quit()
-            if self.overlay:
-                self.overlay.destroy()
-                self.overlay = None
-        except: pass
+            from PyQt5.QtCore import QTimer
+            QTimer.singleShot(0, lambda: self.create_overlay() if to_active else self.destroy_overlay())
     
     def monitor_mouse_edges(self):
         """Monitor mouse edges for transitions"""
@@ -1023,7 +1038,16 @@ class ShareManager:
             self.start_client()
         
         def monitor_stop():
-            while app_config.is_running and not app_config.stop_flag:
+            # NOTE: app_config.stop_flag starts out stale here - this process
+            # loaded config.json once at startup and never touches the full
+            # config again (see comments in transition() / the hotkey
+            # listener for why a full reload is unsafe). refresh_control_flags()
+            # re-reads *only* stop_flag from disk each tick, which is what
+            # lets the GUI process's "Stop" button actually reach this loop.
+            while app_config.is_running:
+                app_config.refresh_control_flags()
+                if app_config.stop_flag:
+                    break
                 time.sleep(0.5)
             self.cleanup()
             if self.gui_app:

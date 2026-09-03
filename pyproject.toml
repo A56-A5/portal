@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portal-kvm"
+version = "1.1.0"
+description = "Cross-platform software KVM: share mouse, keyboard, and clipboard between two computers over the network."
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "sounddevice",
+    "pynput",
+    "pyperclip",
+    "Pillow",
+    "psutil",
+    "pywin32; sys_platform == 'win32'",
+    "PyQt5; sys_platform == 'linux'",
+]
+
+[project.scripts]
+# `pip install .` (or `pipx install .`) then gives you a `portal` command
+# on your PATH on both Windows and Linux - this is what actually wires
+# main.py's main() up to a console entry point; a bare `if __name__ ==
+# "__main__"` block, which is all main.py had before, can't be referenced
+# by [project.scripts] because it isn't a callable.
+portal = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+
+[tool.setuptools.packages.find]
+include = ["controllers*", "network*", "gui*", "utils*"]

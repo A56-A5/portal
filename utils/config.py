@@ -52,6 +52,32 @@ class AppConfig:
             except Exception as e:
                 print(f"[Config] Failed to load config: {e}")
 
+    def refresh_control_flags(self):
+        """Re-read ONLY the cross-process control flags from disk.
+
+        A full load() overwrites the entire in-memory config, which is
+        unsafe to call from a polling loop in a worker process: the GUI
+        process and the worker each treat certain keys (active_device,
+        server_direction, etc.) as owned by themselves, and clobbering
+        them with whatever the other process last wrote mid-transition
+        causes state corruption (see the comment in ShareManager.transition).
+
+        This method exists so a worker can cheaply notice "the GUI asked
+        me to stop" without that risk - it only ever touches stop_flag.
+        Safe to call frequently (e.g. every 0.5s) from a monitor loop.
+        """
+        if not os.path.exists(self.config_path):
+            return
+        try:
+            with open(self.config_path, "r") as f:
+                data = json.load(f)
+            if "stop_flag" in data:
+                self.config["stop_flag"] = data["stop_flag"]
+        except Exception:
+            # Don't let a transient read/parse race (the GUI process is
+            # mid-write) take down the monitor loop.
+            pass
+
     def save(self):
         try:
             with open(self.config_path, "w") as f:

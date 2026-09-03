@@ -91,38 +91,101 @@ class PortalApp:
                     print(f"Failed to launch audio: {e}")
         
         elif self.running and mode != "reload":
-            app_config.stop_flag = True
-            self.running = False
-            app_config.is_running = False
-            self.main_window.status_label.config(text="Portal is not running", foreground="red")
-            self.main_window.start_stop_button.config(text="Start")
-            
-            # Terminate processes
-            if self.invis_process:
-                try:
-                    self.invis_process.terminate()
-                    self.invis_process.wait()
-                except Exception as e:
-                    print(f"Failed to terminate share_manager: {e}")
-            
-            if self.audio_process:
-                try:
-                    self.audio_process.terminate()
-                    self.audio_process.wait()
-                except Exception as e:
-                    print(f"Failed to terminate audio: {e}")
-        
+            self._begin_stop(then_restart=False)
+
         elif self.running and mode == "reload":
-            self.on_start_stop("stop")
-            time.sleep(0.5)
-            self.on_start_stop("start")
+            self._begin_stop(then_restart=True)
+
+    def _begin_stop(self, then_restart):
+        """Signal children to stop and update the UI immediately; the
+        actual wait/force-kill happens on a background thread (see
+        _shutdown_processes) so a slow-to-exit child can never freeze the
+        window. then_restart=True is used for Reload - it's important
+        this actually waits for the old share_manager/audio processes to
+        be gone (not just "probably gone after a fixed sleep") before
+        starting new ones, or the new process can fail to bind a port the
+        old one hasn't released yet."""
+        app_config.stop_flag = True
+        self.running = False
+        app_config.is_running = False
+        app_config.save()
+        self.main_window.status_label.config(text="Portal is not running", foreground="red")
+        self.main_window.start_stop_button.config(text="Start")
+
+        pending = [p for p in (self.invis_process, self.audio_process) if p]
+        self.invis_process = None
+        self.audio_process = None
+        threading.Thread(target=self._shutdown_processes, args=(pending, then_restart), daemon=True).start()
+
+    def _shutdown_processes(self, procs, then_restart=False, graceful_timeout=3.0):
+        """Wait briefly for each child to exit on its own (having noticed
+        stop_flag and run cleanup()); force-kill the whole process tree
+        for any that don't, so a hung child can never block Stop and
+        grandchild processes (ffmpeg/ffplay) can't be left orphaned."""
+        for proc in procs:
+            try:
+                proc.wait(timeout=graceful_timeout)
+                continue  # exited cleanly on its own
+            except subprocess.TimeoutExpired:
+                pass
+            except Exception as e:
+                print(f"[Shutdown] Error waiting for pid {getattr(proc, 'pid', '?')}: {e}")
+                continue
+
+            print(f"[Shutdown] pid {proc.pid} did not exit within {graceful_timeout}s, forcing termination")
+            self._kill_process_tree(proc)
+
+        if then_restart:
+            # Widgets must only be touched from the Tk main thread - route
+            # the restart back through it rather than calling on_start_stop
+            # directly from this background thread.
+            self.root.after(0, lambda: self.on_start_stop("start"))
+
+    def _kill_process_tree(self, proc):
+        """Best-effort recursive kill of proc and all its descendants
+        (e.g. an audio child's ffmpeg/ffplay grandchild), falling back to
+        killing just the direct child if psutil isn't available."""
+        try:
+            import psutil
+            try:
+                parent = psutil.Process(proc.pid)
+                children = parent.children(recursive=True)
+                for child in children:
+                    try:
+                        child.terminate()
+                    except Exception:
+                        pass
+                _, alive = psutil.wait_procs(children, timeout=2)
+                for child in alive:
+                    try:
+                        child.kill()
+                    except Exception:
+                        pass
+            except psutil.NoSuchProcess:
+                pass
+        except ImportError:
+            print("[Shutdown] psutil not installed - only the direct child will be killed, "
+                  "any ffmpeg/ffplay grandchild may be orphaned")
+
+        try:
+            proc.terminate()
+            proc.wait(timeout=2)
+        except subprocess.TimeoutExpired:
+            try:
+                proc.kill()
+            except Exception as e:
+                print(f"[Shutdown] Failed to kill pid {proc.pid}: {e}")
+        except Exception as e:
+            print(f"[Shutdown] Failed to terminate pid {proc.pid}: {e}")
     
     def run(self):
         """Run the application"""
         self.root.mainloop()
 
 
-if __name__ == "__main__":
+def main():
+    """Entry point - used both by `python main.py` and by the `portal`
+    console script installed via pyproject.toml (`pip install .`)."""
     # Configure logging early and consistently for both parent and child roles
     try:
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
@@ -146,4 +209,8 @@ if __name__ == "__main__":
 
     app = PortalApp()
     app.run()
+
+
+if __name__ == "__main__":
+    main()
 
