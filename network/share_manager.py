@@ -137,29 +137,32 @@ class ShareManager:
         print("[System] Cleaning up sockets and resources...")
         
         try:
-            if self.client_socket:
-                self.client_socket.shutdown(socket.SHUT_RDWR)
+            if getattr(self, 'client_socket', None):
+                try: self.client_socket.shutdown(socket.SHUT_RDWR)
+                except Exception: pass
                 self.client_socket.close()
-            if self.secondary_client_socket:
-                self.secondary_client_socket.shutdown(socket.SHUT_RDWR)
+            if getattr(self, 'secondary_client_socket', None):
+                try: self.secondary_client_socket.shutdown(socket.SHUT_RDWR)
+                except Exception: pass
                 self.secondary_client_socket.close()
-            if self.tertiary_client_socket:
-                self.tertiary_client_socket.shutdown(socket.SHUT_RDWR)
+            if getattr(self, 'tertiary_client_socket', None):
+                try: self.tertiary_client_socket.shutdown(socket.SHUT_RDWR)
+                except Exception: pass
                 self.tertiary_client_socket.close()
         except Exception as e:
             print(f"[Client] Error closing socket: {e}")
         
         try:
-            if self.server_socket:
+            if getattr(self, 'server_socket', None):
                 self.server_socket.close()
-            if self.secondary_server_socket:
+            if getattr(self, 'secondary_server_socket', None):
                 self.secondary_server_socket.close()
-            if self.tertiary_server_socket:
+            if getattr(self, 'tertiary_server_socket', None):
                 self.tertiary_server_socket.close()
         except Exception as e:
             print(f"[Server] Error closing socket: {e}")
         
-        if self.overlay:
+        if getattr(self, 'overlay', None):
             self.destroy_overlay()
         
         app_config.is_running = False
@@ -656,8 +659,9 @@ class ShareManager:
         self.tertiary_server_socket.bind(("0.0.0.0", self.tertiary_port))
         self.tertiary_server_socket.listen(1)
         
-        print("[Server] Waiting for Client to connect")
-        logging.info("[Server] Waiting for Client to connect")
+        msg = "Server running - Waiting for Client to connect..."
+        print(f"[Server] {msg}")
+        logging.info(f"[Remote Status] {msg}")
         
         threading.Thread(target=self.accept_primary, daemon=True).start()
         threading.Thread(target=self.accept_secondary, daemon=True).start()
@@ -821,6 +825,19 @@ class ShareManager:
     # Client functions
     def start_client(self):
         """Start client mode"""
+        server_ip = (app_config.server_ip or "").strip()
+        if not server_ip or server_ip == "Enter Server IP":
+            msg = "Invalid Server IP. Please enter a valid Server IP address in Client mode."
+            print(f"[Client] {msg}")
+            logging.warning(f"[Remote Status] {msg}")
+            app_config.is_running = False
+            self.cleanup()
+            return
+
+        msg = f"Connecting to Server at {server_ip}..."
+        print(f"[Client] {msg}")
+        logging.info(f"[Remote Status] {msg}")
+
         self.client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
@@ -831,57 +848,79 @@ class ShareManager:
         self.tertiary_client_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         
         # Connect primary
-        for i in range(10, -1, -1):
+        primary_connected = False
+        last_error = None
+        for i in range(10):
             try:
-                self.client_socket.connect((app_config.server_ip, self.primary_port))
-                if self.client_socket.recv(1024) != b'CONNECTED\n':
+                self.client_socket.settimeout(3.0)
+                self.client_socket.connect((server_ip, self.primary_port))
+                handshake = self.client_socket.recv(1024)
+                if handshake != b'CONNECTED\n':
                     raise Exception("Handshake failed")
+                self.client_socket.settimeout(None)
+                primary_connected = True
                 break
             except Exception as e:
-                print(f"Retrying connection (primary) Attempt: {i}")
-                if i == 0:
-                    print(f"[Client] Connection failed: {e}")
-                    app_config.is_running = False
-                    self.cleanup()
-                    return
-                time.sleep(1)
-        
+                last_error = e
+                print(f"[Client] Primary connection attempt {i+1}/10 failed: {e}")
+                if i < 9:
+                    logging.info(f"[Remote Status] Connecting to {server_ip}... (Attempt {i+2}/10)")
+                    time.sleep(1)
+
+        if not primary_connected:
+            msg = f"Failed to connect to {server_ip}: {last_error}"
+            print(f"[Client] {msg}")
+            logging.warning(f"[Remote Status] {msg}")
+            app_config.is_running = False
+            self.cleanup()
+            return
+
         print("[Client] Primary Connected")
-        logging.info("[Connection] Primary Connected")
         
         # Connect secondary
-        for i in range(10, -1, -1):
+        secondary_connected = False
+        for i in range(5):
             try:
-                self.secondary_client_socket.connect((app_config.server_ip, self.secondary_port))
+                self.secondary_client_socket.settimeout(3.0)
+                self.secondary_client_socket.connect((server_ip, self.secondary_port))
+                self.secondary_client_socket.settimeout(None)
+                secondary_connected = True
                 break
             except Exception as e:
-                if i == 0:
-                    print(f"[Client] Connection failed: {e}")
-                    app_config.is_running = False
-                    self.cleanup()
-                    return
+                last_error = e
                 time.sleep(1)
+
+        if not secondary_connected:
+            msg = f"Secondary connection failed: {last_error}"
+            print(f"[Client] {msg}")
+            logging.warning(f"[Remote Status] {msg}")
+            app_config.is_running = False
+            self.cleanup()
+            return
         
         print("[Client] Secondary Connected")
-        logging.info("[Connection] Secondary Connected")
 
-        # Connect tertiary
-        for i in range(10, -1, -1):
+        # Connect tertiary (optional / best-effort)
+        for i in range(3):
             try:
-                self.tertiary_client_socket.connect((app_config.server_ip, self.tertiary_port))
+                self.tertiary_client_socket.settimeout(3.0)
+                self.tertiary_client_socket.connect((server_ip, self.tertiary_port))
+                self.tertiary_client_socket.settimeout(None)
+                self.tertiary_connected = True
+                print("[Client] Tertiary Connected")
                 break
-            except Exception as e:
-                if i == 0:
-                    print(f"[Client] Tertiary connection failed: {e}")
-                time.sleep(1)
+            except Exception:
+                time.sleep(0.5)
         
-        print("[Client] Tertiary Connected")
-        self.tertiary_connected = True
-        
+        msg = f"Successfully connected to Server at {server_ip}!"
+        print(f"[Client] {msg}")
+        logging.info(f"[Remote Status] {msg}")
+
         threading.Thread(target=self.receive_primary, daemon=True).start()
         threading.Thread(target=self.receive_secondary, daemon=True).start()
-        threading.Thread(target=self.receive_tertiary, daemon=True).start()
-    
+        if self.tertiary_connected:
+            threading.Thread(target=self.receive_tertiary, daemon=True).start()
+
     def receive_primary(self):
         """Receive mouse events"""
         buffer = b""

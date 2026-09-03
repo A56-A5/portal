@@ -69,8 +69,11 @@ class PortalApp:
             
             # Update configuration from UI
             app_config.server_direction = self.main_window.server_direction.get()
-            if self.main_window.client_ip_entry.get() != "Enter Server IP":
-                app_config.server_ip = self.main_window.client_ip_entry.get()
+            ip_val = self.main_window.client_ip_entry.get().strip()
+            if ip_val and ip_val != "Enter Server IP":
+                app_config.server_ip = ip_val
+            else:
+                app_config.server_ip = ""
             
             app_config.mode = self.main_window.mode.get()
             app_config.audio_enabled = self.main_window.audio_enabled.get()
