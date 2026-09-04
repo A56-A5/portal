@@ -980,26 +980,28 @@ class ShareManager:
     def _start_hypr_mouse_poller(self):
         """Poll hyprctl cursorpos while active and send relative deltas.
 
-        pynput under Wayland often receives no global pointer events, so
-        input sharing would appear completely dead. This poller is the
-        reliable path on Hyprland.
-
-        Loop is controlled ONLY by the stop event (and is_running). Do not
-        gate on active_device here — that caused an immediate exit when the
-        poller was started before active_device was set to True.
+        Loop is controlled by a local Event reference so _stop can clear
+        self._hypr_poller_stop without crashing the running thread.
+        First sample after start is used only as baseline (no huge jump
+        from pre-warp position).
         """
-        self._hypr_poller_stop = threading.Event()
+        stop_event = threading.Event()
+        self._hypr_poller_stop = stop_event
 
-        def poll_loop():
+        def poll_loop(stop=stop_event):
             last = None
             moves_sent = 0
             print("[Input] Hyprland mouse poller started")
-            while not self._hypr_poller_stop.is_set() and app_config.is_running:
+            while not stop.is_set() and app_config.is_running:
                 try:
                     pos = self.mouse_controller.position
                     if last is not None and self._mouse_send_json is not None:
                         dx = int(pos[0] - last[0])
                         dy = int(pos[1] - last[1])
+                        # Ignore absurd jumps (warp / monitor switch)
+                        if abs(dx) > 400 or abs(dy) > 400:
+                            last = pos
+                            continue
                         if dx or dy:
                             self._mouse_send_json({"type": "move", "dx": dx, "dy": dy})
                             moves_sent += 1
@@ -1017,11 +1019,15 @@ class ShareManager:
     def _stop_hypr_mouse_poller(self):
         stop = getattr(self, '_hypr_poller_stop', None)
         if stop is not None:
-            stop.set()
-        self._hypr_poller_stop = None
+            try:
+                stop.set()
+            except Exception:
+                pass
         t = getattr(self, '_hypr_poller_thread', None)
         if t is not None and t.is_alive():
-            t.join(timeout=0.5)
+            t.join(timeout=0.6)
+        # Clear refs only after thread has exited (or timed out)
+        self._hypr_poller_stop = None
         self._hypr_poller_thread = None
 
     def _setup_mouse_sender(self, sock):
