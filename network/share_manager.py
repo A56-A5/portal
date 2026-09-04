@@ -98,17 +98,20 @@ class ShareManager:
             self.QWidget = QWidget
             self.gui_app = QApplication(sys.argv)
 
-            # Prefer Hyprland monitor size so it matches hyprctl cursorpos coordinates
-            hypr_size = self.mouse_controller.get_primary_size_hypr()
-            if hypr_size:
-                self.screen_width, self.screen_height = hypr_size
-                print(f"[Screen] Hyprland primary monitor: {self.screen_width}x{self.screen_height}")
+            # CRITICAL: screen size MUST use the same coordinate space as
+            # mouse_controller.position. Qt often reports physical 1920x1080
+            # while xdotool/pynput under XWayland with 1.5x scale live in
+            # 1280x720 space — that mismatch made the right edge unreachable.
+            matched = self.mouse_controller.get_display_size_matching_position()
+            if matched:
+                self.screen_width, self.screen_height = matched
+                print(f"[Screen] Matched to cursor coordinate space: {self.screen_width}x{self.screen_height}")
             else:
                 primary = self.gui_app.primaryScreen()
                 geom = primary.geometry()
                 self.screen_width = geom.width()
                 self.screen_height = geom.height()
-                print(f"[Screen] Qt primary geometry: {self.screen_width}x{self.screen_height}")
+                print(f"[Screen] Qt primary geometry (fallback): {self.screen_width}x{self.screen_height}")
 
             self._wayland = self._detect_wayland()
             self._compositor_available = self._detect_compositor()
@@ -423,6 +426,14 @@ class ShareManager:
         # Wider margin so high-DPI / slight coordinate mismatch still triggers
         margin = 8
         last_debug = 0.0
+        # Runtime calibration for scale mismatch (Qt 1920 vs real 1280 coords).
+        # Only shrink when the cursor has been *stuck* at the same max X for a
+        # while — that means the user is pressed against the physical edge.
+        observed_max_x = 0
+        observed_max_y = 0
+        stuck_count = 0
+        last_stuck_x = -1
+        calibrated = False
         
         while app_config.is_running:
             # If input sharing is disabled, ensure inactive and skip transitions
@@ -434,6 +445,35 @@ class ShareManager:
             x, y = self.mouse_controller.position
             warp_buffer = 50 
             grace_period = 0.25  # prevent bounce after transition
+
+            if x > observed_max_x:
+                observed_max_x = x
+                stuck_count = 0
+            if y > observed_max_y:
+                observed_max_y = y
+
+            # Detect "jammed against right edge": same high X for many ticks
+            if not calibrated and x >= observed_max_x and observed_max_x > 200:
+                if x == last_stuck_x:
+                    stuck_count += 1
+                else:
+                    stuck_count = 1
+                    last_stuck_x = x
+                # ~0.5s of being stuck at a max that is far below reported width
+                if stuck_count >= 40 and observed_max_x < self.screen_width - 40:
+                    new_w = observed_max_x + 1
+                    # Keep aspect roughly; prefer observed y max if sensible
+                    if observed_max_y > 200:
+                        new_h = observed_max_y + 1
+                    else:
+                        new_h = int(round(new_w * self.screen_height / max(self.screen_width, 1)))
+                    print(f"[Screen] Auto-calibrated size {self.screen_width}x{self.screen_height} "
+                          f"-> {new_w}x{new_h} (cursor stuck at max {observed_max_x},{observed_max_y})")
+                    self.screen_width = new_w
+                    self.screen_height = new_h
+                    calibrated = True
+            else:
+                stuck_count = 0
             
             # Throttled debug so you can see whether position is actually updating
             now = time.time()

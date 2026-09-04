@@ -122,9 +122,60 @@ class MouseController:
                     break
             m = focused or (monitors[0] if monitors else None)
             if m:
-                return int(m["width"]), int(m["height"])
+                # Prefer layout/transformed size if present; else width/height
+                w = int(m.get("width", 0))
+                h = int(m.get("height", 0))
+                # Some hyprctl builds expose scale; cursorpos is usually in
+                # layout pixels matching width/height already.
+                return w, h
         except Exception as e:
             print(f"[Mouse] hyprctl monitors failed: {e}")
+        return None
+
+    def get_display_size_matching_position(self):
+        """Return (width, height) in the SAME coordinate space as .position.
+
+        Order:
+          1. Hyprland monitors (when hyprctl is used for position)
+          2. xdotool getdisplaygeometry (when xdotool is used for position)
+          3. xdpyinfo (X11 root)
+          4. None  -> caller falls back to Qt/Tk
+        """
+        if self.use_hyprctl:
+            size = self.get_primary_size_hypr()
+            if size:
+                return size
+
+        if self.use_xdotool:
+            try:
+                res = subprocess.run(
+                    ["xdotool", "getdisplaygeometry"],
+                    capture_output=True, text=True, timeout=1
+                )
+                if res.returncode == 0:
+                    parts = res.stdout.strip().split()
+                    if len(parts) >= 2:
+                        return int(parts[0]), int(parts[1])
+            except Exception:
+                pass
+
+        # X11 root window size (matches pynput / XWayland coordinates)
+        try:
+            res = subprocess.run(
+                ["xdpyinfo"],
+                capture_output=True, text=True, timeout=1
+            )
+            if res.returncode == 0:
+                for line in res.stdout.splitlines():
+                    line = line.strip()
+                    if line.startswith("dimensions:"):
+                        # dimensions:    1280x720 pixels (....)
+                        dim = line.split(":", 1)[1].strip().split()[0]
+                        w, h = dim.lower().split("x")
+                        return int(w), int(h)
+        except Exception:
+            pass
+
         return None
 
     @property
