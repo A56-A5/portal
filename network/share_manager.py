@@ -171,6 +171,14 @@ class ShareManager:
             self._stop_hypr_mouse_poller()
         except Exception:
             pass
+        try:
+            self._stop_evdev_reader()
+        except Exception:
+            pass
+        try:
+            self._set_waybar_visible(True)
+        except Exception:
+            pass
         with self.keyboard_listener_lock:
             if self.keyboard_listener:
                 try: self.keyboard_listener.stop()
@@ -381,17 +389,45 @@ class ShareManager:
                 self._mouse_send_json({"type": "scroll", "dx": dx, "dy": dy})
             event.accept()
 
+        def qt_key_to_wire(event):
+            from PyQt5.QtCore import Qt as QtC
+            qt_map = {
+                QtC.Key_Backspace: "Key.backspace",
+                QtC.Key_Return: "Key.enter",
+                QtC.Key_Enter: "Key.enter",
+                QtC.Key_Tab: "Key.tab",
+                QtC.Key_Escape: "Key.esc",
+                QtC.Key_Space: "Key.space",
+                QtC.Key_Delete: "Key.delete",
+                QtC.Key_Left: "Key.left",
+                QtC.Key_Right: "Key.right",
+                QtC.Key_Up: "Key.up",
+                QtC.Key_Down: "Key.down",
+                QtC.Key_Home: "Key.home",
+                QtC.Key_End: "Key.end",
+                QtC.Key_PageUp: "Key.page_up",
+                QtC.Key_PageDown: "Key.page_down",
+                QtC.Key_Shift: "Key.shift",
+                QtC.Key_Control: "Key.ctrl",
+                QtC.Key_Alt: "Key.alt",
+                QtC.Key_Meta: "Key.cmd",
+                QtC.Key_Super_L: "Key.cmd",
+                QtC.Key_Super_R: "Key.cmd_r",
+            }
+            k = event.key()
+            if k in qt_map:
+                return qt_map[k]
+            t = event.text()
+            if t and len(t) == 1 and t.isprintable():
+                return t
+            return f"Key.qt_{int(k)}"
+
         def on_key_press(event):
             if not app_config.active_device or not self.keyboard_socket:
                 return
-            # Prefer text for printable; else key name
-            text = event.text()
-            if text:
-                val = text
-            else:
-                val = event.key()
             try:
-                msg = json.dumps({"type": "key_press", "key": str(val)}) + "\n"
+                val = qt_key_to_wire(event)
+                msg = json.dumps({"type": "key_press", "key": val}) + "\n"
                 self.keyboard_socket.sendall(msg.encode())
             except Exception:
                 pass
@@ -400,10 +436,9 @@ class ShareManager:
         def on_key_release(event):
             if not app_config.active_device or not self.keyboard_socket:
                 return
-            text = event.text()
-            val = text if text else event.key()
             try:
-                msg = json.dumps({"type": "key_release", "key": str(val)}) + "\n"
+                val = qt_key_to_wire(event)
+                msg = json.dumps({"type": "key_release", "key": val}) + "\n"
                 self.keyboard_socket.sendall(msg.encode())
             except Exception:
                 pass
@@ -756,20 +791,24 @@ class ShareManager:
                             self.mouse_listener.start()
                             print("[Input] Mouse listener started (suppress=True)")
 
-                # evdev grab steals devices exclusively — only useful if we
-                # also read those FDs (not implemented for keys yet). Skip
-                # on Hyprland so pynput can still see key events.
-                if not use_hypr:
-                    try:
-                        self._evdev_grab()
-                    except Exception as e:
-                        print(f"[Input] evdev grab failed (need input group?): {e}")
+                # Exclusive keyboard grab so Super/compositor binds never fire.
+                # Reader thread forwards key events to the client.
+                try:
+                    self._evdev_grab()
+                    self._start_evdev_reader()
+                except Exception as e:
+                    print(f"[Input] evdev grab failed (need 'input' group?): {e}")
+
+                # Hide waybar while sharing so overlay covers full screen
+                self._set_waybar_visible(False)
 
             else:
                 try:
+                    self._stop_evdev_reader()
                     self._evdev_release()
                 except Exception:
                     pass
+                self._set_waybar_visible(True)
 
             self._schedule_overlay(to_active)
             self.mouse_controller.position = new_position
@@ -1167,14 +1206,40 @@ class ShareManager:
         """Save socket for the instant handlers"""
         self.keyboard_socket = socket
     
+    def _serialize_key(self, key):
+        """Canonical key wire format: 'Key.backspace', 'Key.enter', or a single char."""
+        from pynput.keyboard import Key, KeyCode
+        if isinstance(key, Key):
+            return f"Key.{key.name}"
+        if isinstance(key, KeyCode):
+            if key.char is not None and isinstance(key.char, str) and len(key.char) == 1:
+                o = ord(key.char)
+                if o == 8:
+                    return "Key.backspace"
+                if o == 9:
+                    return "Key.tab"
+                if o == 13:
+                    return "Key.enter"
+                if o == 27:
+                    return "Key.esc"
+                if o >= 32 and key.char.isprintable():
+                    return key.char
+            vk_map = {8: "Key.backspace", 9: "Key.tab", 13: "Key.enter", 27: "Key.esc", 32: "Key.space", 46: "Key.delete"}
+            if getattr(key, "vk", None) in vk_map:
+                return vk_map[key.vk]
+        s = str(key)
+        if s.startswith("Key."):
+            return s
+        # Bare name already
+        if s.lower() in ("backspace", "enter", "tab", "esc", "space", "delete"):
+            return f"Key.{s.lower()}"
+        return s
+
     def _on_press(self, key):
         if not app_config.active_device or not self.keyboard_socket:
             return
         try:
-            if hasattr(key, 'char') and key.char is not None:
-                val = key.char
-            else:
-                val = str(key)
+            val = self._serialize_key(key)
             msg = json.dumps({"type": "key_press", "key": val}) + "\n"
             self.keyboard_socket.sendall(msg.encode())
         except Exception:
@@ -1184,7 +1249,7 @@ class ShareManager:
         if not app_config.active_device or not self.keyboard_socket:
             return
         try:
-            val = key.char if hasattr(key, 'char') and key.char else str(key)
+            val = self._serialize_key(key)
             msg = json.dumps({"type": "key_release", "key": val}) + "\n"
             self.keyboard_socket.sendall(msg.encode())
         except Exception:
@@ -1271,6 +1336,106 @@ class ShareManager:
     #  (including Super+key Wayland compositor shortcuts) are consumed     #
     #  before the compositor sees them.  Requires user in 'input' group.  #
     # ------------------------------------------------------------------ #
+
+
+    def _set_waybar_visible(self, visible):
+        """Toggle waybar (SIGUSR1) so the overlay can cover the bar area."""
+        if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
+            return
+        try:
+            # waybar toggles visibility on SIGUSR1
+            import signal
+            # Only toggle when state actually changes
+            currently = getattr(self, '_waybar_hidden', False)
+            want_hidden = not visible
+            if want_hidden and not currently:
+                subprocess.run(["pkill", "-USR1", "waybar"], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self._waybar_hidden = True
+                print("[Overlay] waybar hidden (SIGUSR1)")
+            elif visible and currently:
+                subprocess.run(["pkill", "-USR1", "waybar"], check=False,
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                self._waybar_hidden = False
+                print("[Overlay] waybar restored (SIGUSR1)")
+        except Exception as e:
+            print(f"[Overlay] waybar toggle failed: {e}")
+
+    def _start_evdev_reader(self):
+        """Read exclusive-grabbed keyboard FDs and forward keys to client."""
+        self._evdev_reader_stop = threading.Event()
+        stop = self._evdev_reader_stop
+
+        # Linux KEY_* code -> wire name
+        KEYMAP = {
+            1: "Key.esc", 14: "Key.backspace", 15: "Key.tab", 28: "Key.enter",
+            29: "Key.ctrl", 42: "Key.shift", 54: "Key.shift_r", 56: "Key.alt",
+            97: "Key.ctrl_r", 100: "Key.alt_r", 125: "Key.cmd", 126: "Key.cmd_r",
+            57: "Key.space", 111: "Key.delete",
+            103: "Key.up", 108: "Key.down", 105: "Key.left", 106: "Key.right",
+            102: "Key.home", 107: "Key.end", 104: "Key.page_up", 109: "Key.page_down",
+        }
+        # printable: keycode 2-13 digits, 16-25 qwerty row, etc. Use a simple US map
+        US = {
+            2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "7", 9: "8", 10: "9", 11: "0",
+            12: "-", 13: "=", 16: "q", 17: "w", 18: "e", 19: "r", 20: "t", 21: "y", 22: "u",
+            23: "i", 24: "o", 25: "p", 26: "[",", 27: "]", 30: "a", 31: "s", 32: "d", 33: "f",
+            34: "g", 35: "h", 36: "j", 37: "k", 38: "l", 39: ";", 40: "'", 41: "`",
+            43: "\\", 44: "z", 45: "x", 46: "c", 47: "v", 48: "b", 49: "n", 50: "m",
+            51: ",", 52: ".", 53: "/",
+        }
+
+        def reader_loop(stop_ev=stop):
+            import struct, select
+            EVENT_FORMAT = "llHHI"
+            EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
+            print("[Input] evdev keyboard reader started")
+            while not stop_ev.is_set() and app_config.is_running:
+                fds = list(getattr(self, "_evdev_grab_fds", []) or [])
+                if not fds:
+                    time.sleep(0.05)
+                    continue
+                try:
+                    r, _, _ = select.select(fds, [], [], 0.1)
+                except Exception:
+                    time.sleep(0.05)
+                    continue
+                for fd in r:
+                    try:
+                        data = os.read(fd, EVENT_SIZE)
+                        if len(data) < EVENT_SIZE:
+                            continue
+                        _sec, _usec, etype, code, value = struct.unpack(EVENT_FORMAT, data)
+                        # EV_KEY = 1; value 1=press 0=release 2=repeat
+                        if etype != 1 or value == 2:
+                            continue
+                        name = KEYMAP.get(code) or US.get(code)
+                        if not name:
+                            continue
+                        if not self.keyboard_socket or not app_config.active_device:
+                            continue
+                        typ = "key_press" if value == 1 else "key_release"
+                        msg = json.dumps({"type": typ, "key": name}) + "\n"
+                        try:
+                            self.keyboard_socket.sendall(msg.encode())
+                        except Exception:
+                            pass
+                    except Exception:
+                        pass
+            print("[Input] evdev keyboard reader stopped")
+
+        self._evdev_reader_thread = threading.Thread(target=reader_loop, daemon=True)
+        self._evdev_reader_thread.start()
+
+    def _stop_evdev_reader(self):
+        stop = getattr(self, "_evdev_reader_stop", None)
+        if stop is not None:
+            stop.set()
+        t = getattr(self, "_evdev_reader_thread", None)
+        if t is not None and t.is_alive():
+            t.join(timeout=0.5)
+        self._evdev_reader_stop = None
+        self._evdev_reader_thread = None
 
     def _evdev_find_keyboards(self):
         """Return a list of /dev/input/event* paths that have EV_KEY."""
@@ -1693,21 +1858,32 @@ class ShareManager:
     def receive_secondary(self):
         """Receive keyboard events and clipboard"""
         def parse_key(key_str):
+            from pynput.keyboard import Key
+            if not isinstance(key_str, str):
+                return key_str
+            # Canonical "Key.backspace" form
             if key_str.startswith("Key."):
-                from pynput.keyboard import Key
+                key_name = key_str.split(".", 1)[1].lower()
+                # Aliases
+                aliases = {"return": "enter", "escape": "esc", "super": "cmd", "meta": "cmd",
+                           "control": "ctrl", "command": "cmd", "pageup": "page_up", "pagedown": "page_down"}
+                key_name = aliases.get(key_name, key_name)
                 try:
-                    # Extract key name and convert to lowercase (pynput Key attributes are lowercase)
-                    key_name = key_str.split(".", 1)[1].lower()
                     return getattr(Key, key_name)
                 except AttributeError:
-                    # If direct lookup fails, return the normalized string and let KeyboardController handle it
-                    return key_str.split(".", 1)[1].lower()
-            # For regular characters, preserve case (single char) or normalize special strings
-            if isinstance(key_str, str):
-                if len(key_str) == 1:
-                    return key_str  # Preserve case for single characters
-                return key_str.lower()  # Normalize multi-character strings to lowercase
-            return key_str
+                    return key_name  # KeyboardController will map
+            # Bare special names
+            bare = key_str.lower()
+            if bare in ("backspace", "enter", "tab", "esc", "space", "delete", "shift", "ctrl", "alt", "cmd",
+                        "up", "down", "left", "right", "home", "end", "page_up", "page_down"):
+                try:
+                    return getattr(Key, bare)
+                except AttributeError:
+                    return bare
+            # Single character
+            if len(key_str) == 1:
+                return key_str
+            return key_str.lower()
         
         buffer = b""
         while app_config.is_running:
