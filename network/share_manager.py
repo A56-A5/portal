@@ -1346,7 +1346,7 @@ class ShareManager:
 
         def reader_loop(stop_ev=stop):
             import struct, select
-            EVENT_FORMAT = "llHHI"
+            EVENT_FORMAT = "llHHi"
             EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
             EV_KEY, EV_REL, EV_SYN = 1, 2, 0
             REL_X, REL_Y, REL_WHEEL, REL_HWHEEL = 0, 1, 8, 6
@@ -1817,12 +1817,38 @@ class ShareManager:
                     line = line_bytes.decode('utf-8')
                     evt = json.loads(line)
                     if evt["type"] == "move":
-                        # Server now sends relative deltas; apply them to
-                        # wherever the cursor currently is on THIS screen.
-                        cx, cy = self.mouse_controller.position
-                        nx = max(0, min(self.screen_width - 1,  cx + int(evt["dx"])))
-                        ny = max(0, min(self.screen_height - 1, cy + int(evt["dy"])))
-                        self.mouse_controller.position = (nx, ny)
+                        # Track a software cursor — do NOT read back hardware
+                        # position (fails/stuck on Wayland). Apply relative
+                        # deltas to our own running coordinates.
+                        if not hasattr(self, "_client_cursor") or self._client_cursor is None:
+                            self._client_cursor = [
+                                max(0, (self.screen_width or 1920) // 2),
+                                max(0, (self.screen_height or 1080) // 2),
+                            ]
+                        try:
+                            dx = int(evt.get("dx", 0))
+                            dy = int(evt.get("dy", 0))
+                        except (TypeError, ValueError):
+                            continue
+                        # Clamp insane packets (unsigned-overflow leftovers etc.)
+                        if abs(dx) > 300:
+                            dx = 0
+                        if abs(dy) > 300:
+                            dy = 0
+                        w = max(1, self.screen_width or 1920)
+                        h = max(1, self.screen_height or 1080)
+                        self._client_cursor[0] = max(0, min(w - 1, self._client_cursor[0] + dx))
+                        self._client_cursor[1] = max(0, min(h - 1, self._client_cursor[1] + dy))
+                        nx, ny = self._client_cursor[0], self._client_cursor[1]
+                        try:
+                            self.mouse_controller.position = (nx, ny)
+                        except Exception as e:
+                            print(f"[Client] mouse set failed: {e}")
+                        if not hasattr(self, "_client_move_log"):
+                            self._client_move_log = 0
+                        self._client_move_log += 1
+                        if self._client_move_log <= 5 or self._client_move_log % 200 == 0:
+                            print(f"[Client] apply move dx={dx} dy={dy} -> ({nx},{ny}) #{self._client_move_log}")
 
                         # Client edge detection: if cursor hits opposite edge on Client, send edge_return to Server
                         if app_config.active_device and not getattr(self, 'client_edge_cooldown', False):
@@ -1948,6 +1974,26 @@ class ShareManager:
                         if "server_direction" in evt:
                             app_config.server_direction = evt["server_direction"]
                         app_config.save()
+                        # Place cursor on the entry edge when control arrives
+                        if evt["value"]:
+                            w = max(1, self.screen_width or 1920)
+                            h = max(1, self.screen_height or 1080)
+                            direction = getattr(app_config, "server_direction", "Right")
+                            if direction == "Right":
+                                self._client_cursor = [30, h // 2]
+                            elif direction == "Left":
+                                self._client_cursor = [w - 30, h // 2]
+                            elif direction == "Top":
+                                self._client_cursor = [w // 2, h - 30]
+                            else:
+                                self._client_cursor = [w // 2, 30]
+                            try:
+                                self.mouse_controller.position = tuple(self._client_cursor)
+                            except Exception:
+                                pass
+                            print(f"[Client] cursor placed at entry {self._client_cursor}")
+                        else:
+                            self._client_cursor = None
                         if not app_config.active_device:
                             current_clip = self.clipboard_controller.get_clipboard()
                             if self.last_send != current_clip:
