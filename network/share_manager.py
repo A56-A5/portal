@@ -786,15 +786,34 @@ class ShareManager:
                 self._set_waybar_visible(False)
 
             else:
+                # CRITICAL order: stop reader thread first (so it is not in
+                # select/read), THEN ungrab+close FDs. Otherwise the mouse
+                # device can stay exclusively grabbed and the server cursor
+                # never moves again.
                 try:
                     self._stop_evdev_reader()
+                except Exception as e:
+                    print(f"[Input] stop evdev reader: {e}")
+                try:
                     self._evdev_release()
+                except Exception as e:
+                    print(f"[Input] evdev release: {e}")
+                self._set_waybar_visible(True)
+                # Return cursor to a usable spot in the middle of the server
+                # screen (not stuck on the edge warp point).
+                try:
+                    new_position = (
+                        max(50, (self.screen_width or 1280) // 2),
+                        max(50, (self.screen_height or 720) // 2),
+                    )
                 except Exception:
                     pass
-                self._set_waybar_visible(True)
 
             self._schedule_overlay(to_active)
-            self.mouse_controller.position = new_position
+            try:
+                self.mouse_controller.position = new_position
+            except Exception as e:
+                print(f"[Transition] warp failed: {e}")
             print(f"[Transition] active={to_active} warped to {new_position}")
 
             def send_active_state():
@@ -1426,10 +1445,13 @@ class ShareManager:
     def _stop_evdev_reader(self):
         stop = getattr(self, "_evdev_reader_stop", None)
         if stop is not None:
-            stop.set()
+            try:
+                stop.set()
+            except Exception:
+                pass
         t = getattr(self, "_evdev_reader_thread", None)
         if t is not None and t.is_alive():
-            t.join(timeout=0.5)
+            t.join(timeout=1.0)
         self._evdev_reader_stop = None
         self._evdev_reader_thread = None
 
@@ -1501,19 +1523,26 @@ class ShareManager:
             logging.info(f"[evdev] Grabbed {len(new_fds)} input device(s)")
 
     def _evdev_release(self):
-        """Release all evdev keyboard grabs so normal input routing resumes."""
+        """Release exclusive grabs on all input devices (kbd + mouse)."""
         import fcntl
         import struct
         EVIOCGRAB = 0x40044590
+        n = 0
         with self._evdev_grab_lock:
-            for fd in self._evdev_grab_fds:
+            fds = list(self._evdev_grab_fds)
+            self._evdev_grab_fds = []
+            for fd in fds:
                 try:
                     fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 0))
+                except Exception:
+                    pass
+                try:
                     os.close(fd)
                 except Exception:
                     pass
-            self._evdev_grab_fds = []
-        logging.info("[evdev] Released keyboard grabs")
+                n += 1
+        print(f"[evdev] Released {n} input device(s) — local mouse/keyboard restored")
+        logging.info(f"[evdev] Released {n} input device(s)")
 
     def accept_secondary(self):
         """Accept secondary connection (keyboard, clipboard)"""
