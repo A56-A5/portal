@@ -128,6 +128,14 @@ class ShareManager:
                 print(f"[Session] {msg}")
             print(f"[Config] server_direction={app_config.server_direction!r}  mode={app_config.mode!r}")
 
+            # Thread-safe overlay control: worker threads emit, Qt main thread applies
+            from PyQt5.QtCore import QObject, pyqtSignal
+            class _OverlayBridge(QObject):
+                request = pyqtSignal(bool)
+            self._overlay_bridge = _OverlayBridge()
+            self._overlay_bridge.request.connect(self._on_overlay_request)
+            print("[Overlay] Qt signal bridge ready")
+
     def _detect_wayland(self):
         return (
             os.environ.get("XDG_SESSION_TYPE", "").lower() == "wayland"
@@ -249,14 +257,17 @@ class ShareManager:
                 | self.Qt.WindowStaysOnTopHint
                 | self.Qt.Tool
             )
+            # Nearly invisible but NOT click-through: tiny alpha so compositor
+            # still delivers pointer events to this window (blocks local apps).
             overlay.setAttribute(self.Qt.WA_TranslucentBackground, True)
             overlay.setAttribute(self.Qt.WA_NoSystemBackground, True)
-            overlay.setStyleSheet("background: transparent;")
-            
+            overlay.setAttribute(self.Qt.WA_ShowWithoutActivating, False)
             from PyQt5.QtGui import QColor, QPalette
             palette = overlay.palette()
-            palette.setColor(QPalette.Window, QColor(0, 0, 0, 0))
+            # Alpha 1/255 — effectively invisible, still hits tests for input
+            palette.setColor(QPalette.Window, QColor(0, 0, 0, 1))
             overlay.setPalette(palette)
+            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 1);")
 
             overlay.setCursor(self.Qt.BlankCursor)
             ow = getattr(self, 'overlay_width', None) or self.screen_width
@@ -277,6 +288,12 @@ class ShareManager:
             overlay.raise_()
             overlay.activateWindow()
             overlay.setFocus()
+            try:
+                overlay.grabMouse()
+                overlay.grabKeyboard()
+                print("[Overlay] grabMouse + grabKeyboard OK")
+            except Exception as e:
+                print(f"[Overlay] grab failed: {e}")
             if self.gui_app:
                 self.gui_app.processEvents()
 
@@ -409,7 +426,7 @@ class ShareManager:
                     "float 1, match:title portal-overlay",
                     "fullscreen 1, match:title portal-overlay",
                     "pin 1, match:title portal-overlay",
-                    "opacity 0.0 override 0.0 override, match:title portal-overlay",
+                    "opacity 0.01 override 0.01 override, match:title portal-overlay",
                     "float 1, match:title portal-overlay-test",
                     "fullscreen 1, match:title portal-overlay-test",
                     "pin 1, match:title portal-overlay-test",
@@ -477,11 +494,15 @@ class ShareManager:
                     pass
             elif self.os_type == "linux":
                 try:
+                    try:
+                        self.overlay.releaseMouse()
+                        self.overlay.releaseKeyboard()
+                    except Exception:
+                        pass
                     self.overlay.hide()
                     self.overlay.close()
                     if hasattr(self.overlay, 'deleteLater'):
                         self.overlay.deleteLater()
-                    # Process events so the window actually unmaps before we continue
                     if self.gui_app:
                         self.gui_app.processEvents()
                 except Exception as e:
@@ -492,16 +513,30 @@ class ShareManager:
 
     def _schedule_overlay(self, to_active):
         """Schedule overlay creation/destruction on the GUI toolkit's own
-        thread. Both Tk and Qt widgets must only ever be touched from the
-        thread that owns their event loop - this is what makes that safe
-        to call from monitor_mouse_edges()'s background thread."""
+        thread. QTimer.singleShot from a worker thread is NOT delivered on
+        Qt — that is why the overlay never appeared. Use a queued signal
+        (or Tk after_idle) so the real main thread runs create/destroy.
+        """
         if not self.gui_app:
             return
         if self.os_type == "windows":
             self.gui_app.after_idle(lambda: self.create_overlay() if to_active else self.destroy_overlay())
         elif self.os_type == "linux":
-            from PyQt5.QtCore import QTimer
-            QTimer.singleShot(0, lambda: self.create_overlay() if to_active else self.destroy_overlay())
+            bridge = getattr(self, '_overlay_bridge', None)
+            if bridge is None:
+                print("[Overlay] ERROR: bridge not initialized")
+                return
+            bridge.request.emit(bool(to_active))
+
+    def _on_overlay_request(self, to_active):
+        """Runs on the Qt main thread only."""
+        try:
+            if to_active:
+                self.create_overlay()
+            else:
+                self.destroy_overlay()
+        except Exception as e:
+            print(f"[Overlay] apply failed: {e}")
 
     def _force_release_on_disconnect(self):
         """Idempotently force input release, transition out of active_device,
