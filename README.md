@@ -21,6 +21,8 @@ This project aims to provide a simpler, Python-based alternative with audio shar
 - **Log Viewer**: GUI-based log viewer for debugging
 - **Cross-Platform**: Works on Windows and Linux
 
+> **Linux note:** Portal supports both **X11** and **Wayland** sessions. On Wayland, ensure `xdotool` and `wl-clipboard` (or `xclip`) are installed for seamless input sharing and clipboard sync.
+
 ## Open Source
 
 **Portal** is fully open-source and community-driven.  
@@ -58,7 +60,29 @@ If you find a bug, open an **issue** describing:
 
   -  Note: ffmpeg is used internally for capturing and streaming audio across systems. Make sure it's installed and available in your system PATH.
 
-Install Python 3.8+ and then:
+##  Install
+
+### Linux (one-liner)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash
+```
+
+This installs system dependencies (ffmpeg, xdotool, a clipboard tool, PyQt5's Xcb runtime) via your distro's package manager, then installs the `portal` command itself via [pipx](https://pypa.github.io/pipx/) (falling back to `pip install --user` if pipx isn't available). Once it finishes, run `portal` from anywhere.
+
+### Windows (one-liner)
+
+```powershell
+irm https://raw.githubusercontent.com/A56-A5/portal/main/install.ps1 | iex
+```
+
+Run from PowerShell. This installs Python, Git, and ffmpeg via `winget` if they're missing, then installs the `portal` command via pipx the same way the Linux installer does. Requires `winget` (built into Windows 11 and modern Windows 10 - if it's missing, install "App Installer" from the Microsoft Store first).
+
+Both installers are safe to re-run - they upgrade an existing install in place.
+
+### From source (any platform)
+
+Install Python 3.9+ and then:
 
 ```bash
 pip install -r requirements.txt
@@ -84,6 +108,8 @@ sudo apt install xdotool
 python main.py
 ```
 
+Or, if you installed via `pip install .` / the one-line installer, just run `portal` from anywhere - see [Install](#install) above.
+
 ##  Configuration
 
 Update `config.json` or use the GUI to:
@@ -98,7 +124,7 @@ Update `config.json` or use the GUI to:
 
 Run `build.bat`:
 
-- Output: `dist/Portal-v1.0.exe` (single file)
+- Output: `dist/Portal.exe` (single file)
 
 ###  Linux
 
@@ -111,15 +137,19 @@ chmod +x build.sh
 ./build.sh
 ```
 
-- Output: `dist/Portal-v1.0` (single file)
+- Output: `dist/Portal` (single file)
 
 ##  Project Structure
 
 ```
 portal/
 ├── main.py                 # Main entry point
+├── pyproject.toml          # Packaging config (`pip install .` -> `portal` command)
+├── portal.spec             # PyInstaller spec (used by build.sh/build.bat)
 ├── config.json             # Configuration file
 ├── requirements.txt        # Python dependencies
+├── install.sh              # One-line Linux installer (curl | bash)
+├── install.ps1             # One-line Windows installer (irm | iex)
 ├── build.bat              # Windows build script
 ├── build.sh               # Linux build script
 ├── portal.ico             # Application icon
@@ -136,9 +166,7 @@ portal/
 ├── network/              # Network communication modules
 │   ├── __init__.py
 │   ├── share_manager.py      # Main input sharing manager
-│   ├── audio_manager.py      # Audio streaming manager
-│   ├── connection_handler.py # Connection management
-│   └── input_handler.py      # Input event handling
+│   └── audio_manager.py      # Audio streaming manager
 │
 ├── gui/                  # User interface components
 │   ├── __init__.py
@@ -147,7 +175,8 @@ portal/
 │
 └── utils/                # Utility functions
     ├── __init__.py
-    └── config.py           # Configuration management
+    ├── config.py           # Configuration management
+    └── theme.py            # Light/dark theme detection
 ```
 
 ##  Clean Shutdown

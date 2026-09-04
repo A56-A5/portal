@@ -51,11 +51,17 @@ class AudioManager:
         audio_th = threading.Thread(target=audio_thread, daemon=True)
         audio_th.start()
         
-        # Monitor stop flag
-        while app_config.is_running and not app_config.stop_flag:
+        # Monitor stop flag. Same reasoning as ShareManager.monitor_stop:
+        # this process never reloads the full config after startup, so we
+        # refresh just the one flag we need to see the GUI's Stop request.
+        while app_config.is_running:
+            app_config.refresh_control_flags()
+            if app_config.stop_flag:
+                break
             time.sleep(0.5)
         
-        audio_th.join(timeout=1)
+        app_config.is_running = False
+        audio_th.join(timeout=3)
 
 
 if __name__ == "__main__":

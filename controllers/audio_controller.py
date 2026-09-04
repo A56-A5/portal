@@ -10,6 +10,21 @@ import time
 import sounddevice as sd
 import numpy as np
 
+
+def _detached_kwargs():
+    """Popen kwargs that put ffmpeg/ffplay in their own process group.
+
+    Without this, if this (audio) process is ever hard-killed - e.g. the
+    graceful-shutdown fallback in main.py, or the OS killing us directly -
+    the ffmpeg/ffplay grandchild can be orphaned and keep running (and on
+    Linux, keep the system muted since unmute_output() in cleanup() never
+    gets to run). Putting it in its own group lets a tree-kill reach it
+    even when it can't be joined normally.
+    """
+    if platform.system() == "Windows":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
 class AudioController:
     def __init__(self):
         self.os_type = platform.system().lower()
@@ -89,7 +104,7 @@ class AudioController:
         ]
         
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+        process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, **_detached_kwargs())
         
         try:
             while app_config.is_running and not app_config.stop_flag:
@@ -120,7 +135,7 @@ class AudioController:
         ]
         
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE)
+        process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, **_detached_kwargs())
         
         try:
             while app_config.is_running and not app_config.stop_flag:
@@ -181,7 +196,7 @@ class AudioController:
         process = None
         try:
             logging.info(f"[Audio] ffplay start {port}")
-            process = subprocess.Popen(cmd)
+            process = subprocess.Popen(cmd, **_detached_kwargs())
             while app_config.is_running and not app_config.stop_flag:
                 if process.poll() is not None:
                     break

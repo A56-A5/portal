@@ -122,22 +122,37 @@ class ConnectionHandler:
             from PyQt5.QtCore import Qt
             
             overlay = QWidget()
+            overlay.setWindowTitle("portal-overlay")
             overlay.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-            overlay.setAttribute(Qt.WA_TranslucentBackground)
+            overlay.setAttribute(Qt.WA_TranslucentBackground, True)
+            overlay.setStyleSheet("background: rgba(0, 0, 0, 1);")
             overlay.setCursor(Qt.BlankCursor)
-            overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
-            overlay.setWindowOpacity(0.0)
             overlay.show()
             overlay.raise_()
+            overlay.activateWindow()
+            try:
+                overlay.grabMouse()
+                overlay.grabKeyboard()
+            except Exception:
+                pass
             self.overlay = overlay
     
     def destroy_overlay(self):
         """Destroy overlay window"""
         if self.overlay:
             if self.os_type == "windows" and hasattr(self.overlay, 'destroy'):
-                self.overlay.destroy()
+                try:
+                    self.overlay.destroy()
+                except Exception:
+                    pass
             elif self.os_type == "linux" and hasattr(self.overlay, 'close'):
-                self.overlay.close()
+                try:
+                    self.overlay.hide()
+                    self.overlay.close()
+                    if hasattr(self.overlay, 'deleteLater'):
+                        self.overlay.deleteLater()
+                except Exception:
+                    pass
             self.overlay = None
     
     def monitor_mouse_edges(self, client_socket):
@@ -197,11 +212,7 @@ class ConnectionHandler:
             else:
                 self.destroy_overlay()
             
-            import win32api
-            try:
-                win32api.SetCursorPos(new_position)
-            except (NameError, ImportError):
-                self.mouse_controller.position = new_position
+            self.mouse_controller.position = new_position
         
         if hasattr(self, 'secondary_server') and self.secondary_server:
             try:

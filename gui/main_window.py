@@ -14,6 +14,7 @@ import socket
 
 from utils.config import app_config
 from gui.log_viewer import open_log_viewer
+from utils import theme
 
 
 def get_executable(name):
@@ -46,7 +47,16 @@ class MainWindow:
         self.running = False
         self.invis_process = None
         self.audio_process = None
-        
+
+        # Best-effort match the OS/DE's light/dark mode. Tk doesn't do this
+        # on its own, so without this the app always renders light even on
+        # a dark Plasma/GNOME/Windows theme - see utils/theme.py.
+        self.style = ttk.Style()
+        self.is_dark = theme.detect_dark_mode()
+        theme.apply_theme(self.root, self.style, self.is_dark)
+        self.fg_normal = theme.DARK["fg"] if self.is_dark else "black"
+        self.fg_muted = theme.DARK["muted_fg"] if self.is_dark else "grey"
+
         # Create tabs
         self.tab_control = ttk.Notebook(root)
         self.portal_tab = ttk.Frame(self.tab_control)
@@ -110,7 +120,7 @@ class MainWindow:
         server_row.pack(anchor='w', padx=10, pady=2, fill='x')
 
         bold_font = ('TkDefaultFont', 10, 'bold')
-        style = ttk.Style()
+        style = self.style
         style.configure("Bold.TRadiobutton", font=bold_font)
 
         server_rb = ttk.Radiobutton(server_row, text="Server", variable=self.mode, value="server", command=self.toggle_mode, style="Bold.TRadiobutton")
@@ -131,7 +141,7 @@ class MainWindow:
         ip_label.pack(side='left', padx=10)
 
         self.server_direction = tk.StringVar(value=app_config.server_direction)
-        self.server_location_label = tk.Label(mode_frame, text="Choose where the client device is located:", fg='black')
+        self.server_location_label = ttk.Label(mode_frame, text="Choose where the client device is located:", foreground=self.fg_normal)
         self.server_location_label.pack(anchor='w', padx=30, pady=(5, 0))
 
         self.server_top_rb = ttk.Radiobutton(mode_frame, text="Top", variable=self.server_direction, value="Top")
@@ -145,7 +155,7 @@ class MainWindow:
         client_rb = ttk.Radiobutton(mode_frame, text="Client", variable=self.mode, value="client", command=self.toggle_mode, style="Bold.TRadiobutton")
         client_rb.pack(anchor='w', padx=10, pady=10)
 
-        self.client_ip_entry = ttk.Entry(mode_frame, width=35, foreground='grey')
+        self.client_ip_entry = ttk.Entry(mode_frame, width=35, foreground=self.fg_muted)
         self.client_ip_entry.pack(anchor='w', padx=30)
         if app_config.server_ip == "":
             self.client_ip_entry.insert(0, "Enter Server IP")
@@ -188,7 +198,7 @@ class MainWindow:
     def clear_placeholder(self, event):
         if self.client_ip_entry.get() == "Enter Server IP":
             self.client_ip_entry.delete(0, 'end')
-            self.client_ip_entry.config(foreground='black')
+            self.client_ip_entry.config(foreground=self.fg_normal)
 
     def restore_placeholder(self, event):
         if not self.client_ip_entry.get():
@@ -196,7 +206,7 @@ class MainWindow:
                 self.client_ip_entry.insert(0, "Enter Server IP")
             else:
                 self.client_ip_entry.insert(0, app_config.server_ip)
-            self.client_ip_entry.config(foreground='grey')
+            self.client_ip_entry.config(foreground=self.fg_muted)
 
     def toggle_mode(self):
         last_mode = app_config.mode
@@ -208,21 +218,21 @@ class MainWindow:
             self.client_ip_entry.config(state='disabled')
             self.client_ip_entry.delete(0, 'end')
             self.client_ip_entry.insert(0, "Enter Server IP")
-            self.client_ip_entry.config(foreground='grey')
+            self.client_ip_entry.config(foreground=self.fg_muted)
         else:
             self.client_ip_entry.config(state='normal')
             self.client_ip_entry.delete(0, 'end')
             if app_config.server_ip:
                 self.client_ip_entry.insert(0, app_config.server_ip)
-                self.client_ip_entry.config(foreground='black')
+                self.client_ip_entry.config(foreground=self.fg_normal)
             else:
                 self.client_ip_entry.insert(0, "Enter Server IP")
-                self.client_ip_entry.config(foreground='grey')
+                self.client_ip_entry.config(foreground=self.fg_muted)
 
         for rb in [self.server_top_rb, self.server_left_rb, self.server_right_rb, self.server_bottom_rb]:
             rb.config(state=state)
 
-        self.server_location_label.config(fg='black' if is_server else 'grey')
+        self.server_location_label.config(foreground=self.fg_normal if is_server else self.fg_muted)
 
         app_config.mode = current_mode
         app_config.save()
@@ -289,7 +299,12 @@ class MainWindow:
             
             with open(log_path, "r") as f:
                 f.seek(0, 2) # Go to end
-                while self.running:
+                while True:
+                    try:
+                        if not self.root.winfo_exists():
+                            break
+                    except Exception:
+                        break
                     line = f.readline()
                     if not line:
                         time.sleep(0.5)

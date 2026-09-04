@@ -36,7 +36,7 @@ class ClipboardController:
             self.win32con = None
             try:
                 # Strictly require WAYLAND_DISPLAY and a successful wl-paste check
-                if os.environ.get('WAYLAND_DISPLAY'):
+                if os.environ.get('WAYLAND_DISPLAY') or os.environ.get('XDG_SESSION_TYPE', '').lower() == 'wayland':
                     res = subprocess.run(['wl-paste', '--version'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     if res.returncode == 0:
                         self.linux_tool = 'wl-clipboard'
@@ -137,7 +137,9 @@ class ClipboardController:
                     # Text
                     try:
                         text = subprocess.check_output(['wl-paste'], stderr=subprocess.DEVNULL).decode('utf-8')
-                        return f"text:{base64.b64encode(text.encode('utf-8')).decode('utf-8')}"
+                        if text:
+                            return f"text:{base64.b64encode(text.encode('utf-8')).decode('utf-8')}"
+                        return ""
                     except: pass
                 else:
                     # xclip

@@ -120,10 +120,7 @@ class InputHandler:
             x = int(event["x"] * self.connection_handler.screen_width)
             y = int(event["y"] * self.connection_handler.screen_height)
             new_position = (x, y)
-            try:
-                win32api.SetCursorPos(new_position)
-            except (NameError, ImportError):
-                mouse_controller.position = new_position
+            mouse_controller.position = new_position
         
         elif event_type == "click":
             btn = getattr(Button, event['button'])
