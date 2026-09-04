@@ -291,16 +291,27 @@ class ShareManager:
             # Configure WM rules (Hyprland, Sway, i3) before mapping
             self._configure_wm_rules_sync()
 
-            overlay.showFullScreen()
+            # i3: showFullScreen maps to i3 fullscreen which hides other
+            # windows (wallpaper-only view). Use a normal top-level show.
+            if os.environ.get("I3SOCK"):
+                overlay.show()
+            else:
+                overlay.showFullScreen()
             overlay.raise_()
             overlay.activateWindow()
             overlay.setFocus()
+            # Re-apply i3 geometry after map (timing)
+            if os.environ.get("I3SOCK"):
+                try:
+                    self._configure_wm_rules_sync()
+                except Exception:
+                    pass
             # No grabMouse/grabKeyboard — breaks hyprctl position on Wayland
             if self.gui_app:
                 self.gui_app.processEvents()
 
             self.overlay = overlay
-            print(f"[Overlay] CREATED fullscreen transparent {ow}x{oh}")
+            print(f"[Overlay] CREATED transparent {ow}x{oh} (i3={bool(os.environ.get('I3SOCK'))})")
 
 
     def _wire_overlay_input(self, overlay):
@@ -494,12 +505,17 @@ class ShareManager:
                 return
 
             # ── i3 ────────────────────────────────────────────────────────
+            # NEVER use i3 "fullscreen enable" — i3 fullscreen unmaps every
+            # other window, so a transparent overlay only shows the wallpaper.
+            # Use floating + sticky + borderless covering the full geometry.
             if os.environ.get("I3SOCK"):
+                ow = getattr(self, "overlay_width", None) or self.screen_width or 1920
+                oh = getattr(self, "overlay_height", None) or self.screen_height or 1080
                 subprocess.run(
                     ["i3-msg",
-                     '[title="portal-overlay"] floating enable; '
-                     '[title="portal-overlay"] sticky enable; '
-                     '[title="portal-overlay"] fullscreen enable'],
+                     '[title="portal-overlay"] floating enable, '
+                     'sticky enable, border none, '
+                     f'move position 0 0, resize set {int(ow)} {int(oh)}'],
                     check=False, timeout=2,
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )

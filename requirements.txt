@@ -30,3 +30,7 @@ PyQt5; sys_platform == 'linux'
 # psutil is used for a best-effort recursive kill of a hung child's
 # process tree on Stop, so an orphaned ffmpeg/ffplay process can never
 # be left running (or keep audio muted) after the app has been closed.
+
+# i3 users: do NOT run the overlay in i3 fullscreen mode (Portal avoids that).
+# Optional but recommended: a compositor (picom) so transparent overlays
+# composite over other windows instead of the root wallpaper.
