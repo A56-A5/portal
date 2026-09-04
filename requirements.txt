@@ -34,3 +34,9 @@ PyQt5; sys_platform == 'linux'
 # i3 users: do NOT run the overlay in i3 fullscreen mode (Portal avoids that).
 # Optional but recommended: a compositor (picom) so transparent overlays
 # composite over other windows instead of the root wallpaper.
+
+# Wayland client (receiving input): install ydotool + run ydotoold
+#   Arch:  sudo pacman -S ydotool
+#          systemctl --user enable --now ydotoold
+#   Also:  sudo usermod -aG input $USER   # then re-login
+# Without ydotool, clicks/keys on a Hyprland *client* will not reach native apps.

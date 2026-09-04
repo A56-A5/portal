@@ -26,6 +26,14 @@ class AudioManager:
     def run(self):
         """Run the audio manager"""
         app_config.is_running = True
+        logging.info(
+            f"[Audio] mode={app_config.audio_mode!r} ip={app_config.audio_ip!r} "
+            f"port={app_config.audio_port}"
+        )
+        print(
+            f"[Audio] mode={app_config.audio_mode} ip={app_config.audio_ip or '(none)'} "
+            f"port={app_config.audio_port}"
+        )
         
         # Run audio in a separate thread to allow monitoring
         def audio_thread():

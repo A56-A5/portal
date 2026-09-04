@@ -1,13 +1,13 @@
 """
 Mouse Controller - Handles mouse input and position control
 
-On Wayland (especially Hyprland) pynput / xdotool often cannot read or set
-the global cursor position reliably.  We therefore prefer compositor-native
-tools when available:
+On Wayland (especially Hyprland) pynput / xdotool inject via XTest, which
+only reaches XWayland windows — native Wayland clients never see clicks /
+scrolls.  For those we prefer:
 
-  - Hyprland:  hyprctl cursorpos  /  hyprctl dispatch movecursor
-  - fallback:  xdotool getmouselocation / mousemove
-  - last resort: pynput
+  - position: hyprctl dispatch movecursor (Hyprland)
+  - buttons / scroll: ydotool (writes /dev/uinput) or python-evdev UInput
+  - fallback: xdotool / pynput (X11 only)
 """
 import platform
 import subprocess
@@ -18,12 +18,15 @@ import json
 class MouseController:
     def __init__(self):
         self.os_type = platform.system().lower()
-        from pynput.mouse import Controller as PynputController
+        from pynput.mouse import Controller as PynputController, Button
         self._controller = PynputController()
+        self.Button = Button
 
         self._win32api = None
         self.use_xdotool = False
         self.use_hyprctl = False
+        self.use_ydotool = False
+        self._uinput = None
         self._last_good_pos = (0, 0)
 
         if self.os_type == "windows":
@@ -33,7 +36,6 @@ class MouseController:
             except ImportError:
                 pass
         elif self.os_type == "linux":
-            # Prefer Hyprland native cursor control when running under Hyprland
             if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
                 try:
                     res = subprocess.run(
@@ -46,6 +48,45 @@ class MouseController:
                 except Exception:
                     self.use_hyprctl = False
 
+            # ydotool: Wayland-native injection via uinput
+            try:
+                res = subprocess.run(["which", "ydotool"], capture_output=True)
+                if res.returncode == 0:
+                    # Prefer socket presence (ydotoold running)
+                    sock_ok = os.path.exists("/tmp/.ydotool_socket") or os.path.exists(
+                        os.path.expanduser("~/.ydotool_socket")
+                    )
+                    self.use_ydotool = True
+                    print(
+                        "[Mouse] Using ydotool for click/scroll"
+                        + (" (socket OK)" if sock_ok else " (start ydotoold if clicks fail)")
+                    )
+            except Exception:
+                self.use_ydotool = False
+
+            # python-evdev UInput for scroll (and buttons if ydotool missing)
+            try:
+                from evdev import UInput, ecodes
+                self._uinput = UInput(
+                    {
+                        ecodes.EV_KEY: [
+                            ecodes.BTN_LEFT,
+                            ecodes.BTN_RIGHT,
+                            ecodes.BTN_MIDDLE,
+                        ],
+                        ecodes.EV_REL: [
+                            ecodes.REL_WHEEL,
+                            ecodes.REL_HWHEEL,
+                            ecodes.REL_X,
+                            ecodes.REL_Y,
+                        ],
+                    },
+                    name="portal-virtual-mouse",
+                )
+                print("[Mouse] evdev UInput ready for scroll/click fallback")
+            except Exception:
+                self._uinput = None
+
             try:
                 res = subprocess.run(["which", "xdotool"], capture_output=True)
                 self.use_xdotool = res.returncode == 0
@@ -55,10 +96,9 @@ class MouseController:
             if not self.use_hyprctl and self.use_xdotool:
                 print("[Mouse] Using xdotool for cursor position")
             elif not self.use_hyprctl and not self.use_xdotool:
-                print("[Mouse] WARNING: falling back to pynput only - edge detection may fail on Wayland")
+                print("[Mouse] WARNING: pynput-only position — edge detection may fail on Wayland")
 
     def _hypr_get_pos(self):
-        """Return (x, y) from hyprctl cursorpos or None on failure."""
         try:
             res = subprocess.run(
                 ["hyprctl", "cursorpos"],
@@ -73,8 +113,17 @@ class MouseController:
             pass
         return None
 
+    def _hypr_set_pos(self, x, y):
+        try:
+            res = subprocess.run(
+                ["hyprctl", "dispatch", "movecursor", str(int(x)), str(int(y))],
+                capture_output=True, timeout=0.4
+            )
+            return res.returncode == 0
+        except Exception:
+            return False
+
     def _xdotool_get_pos(self):
-        """Return (x, y) from xdotool getmouselocation or None."""
         try:
             res = subprocess.run(
                 ["xdotool", "getmouselocation", "--shell"],
@@ -93,24 +142,8 @@ class MouseController:
             pass
         return None
 
-    def _hypr_set_pos(self, x, y):
-        try:
-            subprocess.run(
-                ["hyprctl", "dispatch", "movecursor", str(int(x)), str(int(y))],
-                capture_output=True, timeout=0.4, check=False
-            )
-            return True
-        except Exception:
-            return False
-
-    def get_primary_size_hypr(self):
-        """Return (width, height) of the focused monitor in the SAME space as cursorpos.
-
-        Hyprland with fractional scaling (e.g. 1.5) reports physical width/height
-        (1920x1080) but hyprctl cursorpos uses logical coordinates
-        (1920/1.5 = 1280). Edge detection must use logical size or the right
-        edge is unreachable and auto-hacks bounce forever.
-        """
+    def get_display_size_matching_position(self):
+        """Logical size matching cursorpos space (Hyprland scale-aware)."""
         if not self.use_hyprctl:
             return None
         try:
@@ -121,12 +154,7 @@ class MouseController:
             if res.returncode != 0:
                 return None
             monitors = json.loads(res.stdout)
-            focused = None
-            for m in monitors:
-                if m.get("focused"):
-                    focused = m
-                    break
-            m = focused or (monitors[0] if monitors else None)
+            m = next((x for x in monitors if x.get("focused")), monitors[0] if monitors else None)
             if not m:
                 return None
             w = float(m.get("width", 0))
@@ -134,77 +162,45 @@ class MouseController:
             scale = float(m.get("scale", 1.0) or 1.0)
             if scale <= 0:
                 scale = 1.0
-            # Logical size = physical / scale (matches cursorpos under frac scale)
             logical_w = int(round(w / scale))
             logical_h = int(round(h / scale))
-            print(f"[Mouse] Hyprland monitor physical={int(w)}x{int(h)} scale={scale} "
-                  f"-> logical={logical_w}x{logical_h}")
+            print(
+                f"[Mouse] Hyprland monitor physical={int(w)}x{int(h)} scale={scale} "
+                f"-> logical={logical_w}x{logical_h}"
+            )
             return logical_w, logical_h
-        except Exception as e:
-            print(f"[Mouse] hyprctl monitors failed: {e}")
-        return None
+        except Exception:
+            return None
 
-    def get_display_size_matching_position(self):
-        """Return (width, height) in the SAME coordinate space as .position.
-
-        Order:
-          1. Hyprland monitors (when hyprctl is used for position)
-          2. xdotool getdisplaygeometry (when xdotool is used for position)
-          3. xdpyinfo (X11 root)
-          4. None  -> caller falls back to Qt/Tk
-        """
-        if self.use_hyprctl:
-            size = self.get_primary_size_hypr()
-            if size:
-                return size
-
-        if self.use_xdotool:
-            try:
-                res = subprocess.run(
-                    ["xdotool", "getdisplaygeometry"],
-                    capture_output=True, text=True, timeout=1
-                )
-                if res.returncode == 0:
-                    parts = res.stdout.strip().split()
-                    if len(parts) >= 2:
-                        return int(parts[0]), int(parts[1])
-            except Exception:
-                pass
-
-        # X11 root window size (matches pynput / XWayland coordinates)
+    def get_display_size(self):
+        size = self.get_display_size_matching_position()
+        if size:
+            return size
         try:
             res = subprocess.run(
-                ["xdpyinfo"],
+                ["xdotool", "getdisplaygeometry"],
                 capture_output=True, text=True, timeout=1
             )
             if res.returncode == 0:
-                for line in res.stdout.splitlines():
-                    line = line.strip()
-                    if line.startswith("dimensions:"):
-                        # dimensions:    1280x720 pixels (....)
-                        dim = line.split(":", 1)[1].strip().split()[0]
-                        w, h = dim.lower().split("x")
-                        return int(w), int(h)
+                parts = res.stdout.strip().split()
+                if len(parts) >= 2:
+                    return int(parts[0]), int(parts[1])
         except Exception:
             pass
-
         return None
 
     @property
     def position(self):
-        """Get current mouse position from the best available source."""
         if self.os_type == "linux" and self.use_hyprctl:
             pos = self._hypr_get_pos()
             if pos is not None:
                 self._last_good_pos = pos
                 return pos
-
         if self.os_type == "linux" and self.use_xdotool:
             pos = self._xdotool_get_pos()
             if pos is not None:
                 self._last_good_pos = pos
                 return pos
-
         try:
             pos = self._controller.position
             if pos:
@@ -212,14 +208,11 @@ class MouseController:
                 return pos
         except Exception:
             pass
-
         return self._last_good_pos
 
     @position.setter
     def position(self, pos):
-        """Set mouse position"""
         x, y = int(pos[0]), int(pos[1])
-
         if self.os_type == "windows" and self._win32api:
             try:
                 self._win32api.SetCursorPos((x, y))
@@ -227,12 +220,10 @@ class MouseController:
                 return
             except Exception:
                 pass
-
         if self.os_type == "linux" and self.use_hyprctl:
             if self._hypr_set_pos(x, y):
                 self._last_good_pos = (x, y)
                 return
-
         if self.os_type == "linux" and self.use_xdotool:
             try:
                 subprocess.run(
@@ -243,21 +234,113 @@ class MouseController:
                 return
             except Exception:
                 pass
-
         try:
             self._controller.position = (x, y)
             self._last_good_pos = (x, y)
         except Exception:
             pass
 
+    def _btn_name(self, button):
+        name = getattr(button, "name", None) or str(button)
+        name = name.lower().replace("button.", "")
+        if "left" in name:
+            return "left"
+        if "right" in name:
+            return "right"
+        if "middle" in name:
+            return "middle"
+        return "left"
+
+    def _ydotool_button(self, button, down: bool):
+        """ydotool click uses bit flags; 0x40 left, 0x41 right, 0x42 middle.
+        High bit 0x80 = release in some versions — use mousedown/mouseup if present.
+        """
+        name = self._btn_name(button)
+        idx = {"left": 0, "right": 1, "middle": 2}.get(name, 0)
+        # Try mousedown/mouseup first (clearer semantics)
+        cmd_down = ["ydotool", "mousedown", str(idx)]
+        cmd_up = ["ydotool", "mouseup", str(idx)]
+        try:
+            if down:
+                r = subprocess.run(cmd_down, capture_output=True, timeout=0.5)
+                if r.returncode == 0:
+                    return True
+            else:
+                r = subprocess.run(cmd_up, capture_output=True, timeout=0.5)
+                if r.returncode == 0:
+                    return True
+        except Exception:
+            pass
+        # Fallback: click with button codes (press+release only useful for click())
+        code = {"left": "0xC0", "right": "0xC1", "middle": "0xC2"}.get(name, "0xC0")
+        if not down:
+            # release-only: many ydotool builds lack this; best-effort click skip
+            return False
+        try:
+            subprocess.run(["ydotool", "click", code], capture_output=True, timeout=0.5)
+            return True
+        except Exception:
+            return False
+
+    def _uinput_button(self, button, down: bool):
+        if not self._uinput:
+            return False
+        try:
+            from evdev import ecodes
+            name = self._btn_name(button)
+            code = {
+                "left": ecodes.BTN_LEFT,
+                "right": ecodes.BTN_RIGHT,
+                "middle": ecodes.BTN_MIDDLE,
+            }.get(name, ecodes.BTN_LEFT)
+            self._uinput.write(ecodes.EV_KEY, code, 1 if down else 0)
+            self._uinput.syn()
+            return True
+        except Exception:
+            return False
+
     def press(self, button):
+        if self.os_type == "linux" and self.use_ydotool:
+            if self._ydotool_button(button, True):
+                return
+        if self.os_type == "linux" and self._uinput:
+            if self._uinput_button(button, True):
+                return
         self._controller.press(button)
 
     def release(self, button):
+        if self.os_type == "linux" and self.use_ydotool:
+            if self._ydotool_button(button, False):
+                return
+        if self.os_type == "linux" and self._uinput:
+            if self._uinput_button(button, False):
+                return
         self._controller.release(button)
 
     def click(self, button):
-        self._controller.click(button)
+        self.press(button)
+        self.release(button)
 
     def scroll(self, dx, dy):
-        self._controller.scroll(dx, dy)
+        if self.os_type == "linux" and self.use_ydotool:
+            # ydotool mousemove --relative for wheel is not universal;
+            # try `ydotool key` wheel isn't standard — use UInput if available
+            pass
+        if self.os_type == "linux" and self._uinput:
+            try:
+                from evdev import ecodes
+                if dy:
+                    self._uinput.write(ecodes.EV_REL, ecodes.REL_WHEEL, int(dy))
+                if dx:
+                    self._uinput.write(ecodes.EV_REL, ecodes.REL_HWHEEL, int(dx))
+                self._uinput.syn()
+                return
+            except Exception:
+                pass
+        if self.os_type == "linux" and self.use_ydotool:
+            # Approximate vertical scroll with repeated button 4/5 if needed — skip
+            pass
+        try:
+            self._controller.scroll(dx, dy)
+        except Exception:
+            pass

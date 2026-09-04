@@ -8,6 +8,7 @@ class KeyboardController:
         self.os_type = platform.system().lower()
         self.use_win32 = False
         self.use_xdotool = False
+        self.use_ydotool = False
         self.subprocess = None
 
         if self.os_type == "windows":
@@ -287,17 +288,19 @@ class KeyboardController:
             self._win32_press(key_str)
             return
         
-        # On Linux, prefer xdotool if available
+        # Wayland: ydotool (uinput) before xdotool/XTest
+        if getattr(self, "use_ydotool", False) and self._ydotool_key(key_str, True):
+            return
+
+        # On Linux X11, prefer xdotool if available
         if self.use_xdotool:
             self._xdotool_keydown(key_str)
             return
         
-        # Fall back to pynput Controller - ensure we have a valid Key object or single char
         try:
             py_key = self._to_pynput_key(key_str)
             self._controller.press(py_key)
         except (ValueError, AttributeError) as e:
-            # If conversion fails, try win32api as last resort on Windows
             if self.os_type == "windows" and self.use_win32 and vk:
                 print(f"[KeyboardController][PRESS] Pynput conversion failed, using win32api fallback: {e}")
                 self._win32_press(key_str)
@@ -313,17 +316,17 @@ class KeyboardController:
             self._win32_release(key_str)
             return
         
-        # On Linux, prefer xdotool if available
+        if getattr(self, "use_ydotool", False) and self._ydotool_key(key_str, False):
+            return
+
         if self.use_xdotool:
             self._xdotool_keyup(key_str)
             return
         
-        # Fall back to pynput Controller - ensure we have a valid Key object or single char
         try:
             py_key = self._to_pynput_key(key_str)
             self._controller.release(py_key)
         except (ValueError, AttributeError) as e:
-            # If conversion fails, try win32api as last resort on Windows
             if self.os_type == "windows" and self.use_win32 and vk:
                 print(f"[KeyboardController][RELEASE] Pynput conversion failed, using win32api fallback: {e}")
                 self._win32_release(key_str)
@@ -339,19 +342,20 @@ class KeyboardController:
             self._win32_tap(key_str)
             return
         
-        # On Linux, prefer xdotool if available
+        if getattr(self, "use_ydotool", False):
+            if self._ydotool_key(key_str, True) and self._ydotool_key(key_str, False):
+                return
+
         if self.use_xdotool:
             self._xdotool_tap(key_str)
             return
         
-        # Fall back to pynput Controller - ensure we have a valid Key object or single char
         try:
             py_key = self._to_pynput_key(key_str)
             self._controller.press(py_key)
             time.sleep(0.01)
             self._controller.release(py_key)
         except (ValueError, AttributeError) as e:
-            # If conversion fails, try win32api as last resort on Windows
             if self.os_type == "windows" and self.use_win32 and vk:
                 print(f"[KeyboardController][TAP] Pynput conversion failed, using win32api fallback: {e}")
                 self._win32_tap(key_str)
