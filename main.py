@@ -79,6 +79,9 @@ class PortalApp:
             app_config.mode = self.main_window.mode.get()
             app_config.audio_enabled = self.main_window.audio_enabled.get()
             app_config.audio_mode = self.main_window.audio_mode.get()
+            # Clear stop so child processes (audio/share) do not exit immediately
+            app_config.stop_flag = False
+            app_config.is_running = True
             app_config.save()
             
             # Start share process
@@ -194,10 +197,13 @@ def main():
     try:
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
         log_path = os.path.join(base_dir, "logs.log")
+        # Parent process truncates the log on every start so each run is clean.
+        # Child roles (--child=...) keep appending to the same file.
+        is_child = any(a.startswith("--child=") for a in sys.argv[1:])
         logging.basicConfig(
             level=logging.INFO,
             filename=log_path,
-            filemode="a",
+            filemode="a" if is_child else "w",
             format="%(levelname)s - %(message)s",
             force=True,
         )

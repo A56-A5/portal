@@ -31,10 +31,9 @@ class AudioManager:
         def audio_thread():
             try:
                 if app_config.audio_mode == "Receive_Audio":
-                    if self.os_type == "linux":
-                        self.audio_controller.receive_audio_ffplay(app_config.audio_port)
-                    elif self.os_type == "windows":
-                        self.audio_controller.receive_audio(app_config.audio_port)
+                    # sounddevice on both OSes — ffplay/ffmpeg device options
+                    # are fragile across builds; UDP + PortAudio is reliable.
+                    self.audio_controller.receive_audio(app_config.audio_port)
                 elif app_config.audio_mode == "Share_Audio":
                     if self.os_type == "linux":
                         self.audio_controller.send_audio_linux(app_config.audio_ip, app_config.audio_port)

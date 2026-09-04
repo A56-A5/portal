@@ -815,15 +815,8 @@ class ShareManager:
                 except Exception as e:
                     print(f"[Input] evdev release: {e}")
                 self._set_waybar_visible(True)
-                # Return cursor to a usable spot in the middle of the server
-                # screen (not stuck on the edge warp point).
-                try:
-                    new_position = (
-                        max(50, (self.screen_width or 1280) // 2),
-                        max(50, (self.screen_height or 720) // 2),
-                    )
-                except Exception:
-                    pass
+                # new_position comes from edge_return / transition caller
+                # (entry edge). Do not force center — that felt wrong.
 
             self._schedule_overlay(to_active)
             try:

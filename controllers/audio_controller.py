@@ -104,18 +104,45 @@ class AudioController:
         ]
         
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        process = subprocess.Popen(ffmpeg_cmd, stdout=subprocess.PIPE, **_detached_kwargs())
-        
         try:
-            while app_config.is_running and not app_config.stop_flag:
-                data = process.stdout.read(self.CHUNK_SIZE)
-                if not data:
-                    break
-                sock.sendto(data, (target_ip, port))
-        except (KeyboardInterrupt, Exception):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1024 * 256)
+        except Exception:
             pass
+        process = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            **_detached_kwargs(),
+        )
+
+        sent = 0
+        read_size = max(self.CHUNK_SIZE, 4096)
+        try:
+            logging.info(f"[Audio] Send linux start -> {target_ip}:{port}")
+            if not target_ip:
+                logging.error("[Audio] audio_ip is empty — set the receiver IP in the UI")
+            while app_config.is_running and not app_config.stop_flag:
+                data = process.stdout.read(read_size)
+                if not data:
+                    if process.poll() is not None:
+                        logging.warning("[Audio] ffmpeg capture exited")
+                        break
+                    continue
+                try:
+                    sock.sendto(data, (target_ip, int(port)))
+                except Exception as e:
+                    logging.warning(f"[Audio] sendto failed: {e}")
+                    time.sleep(0.05)
+                    continue
+                sent += 1
+                if sent == 1:
+                    logging.info(f"[Audio] first packet sent ({len(data)} bytes)")
+                elif sent % 500 == 0:
+                    logging.info(f"[Audio] sending… {sent} packets")
+        except (KeyboardInterrupt, Exception) as e:
+            logging.info(f"[Audio] send interrupted: {e}")
         finally:
-            logging.info(f"[Audio] Send linux stop {target_ip}:{port}")
+            logging.info(f"[Audio] Send linux stop {target_ip}:{port} (sent={sent})")
             self.unmute_output()
             self.cleanup(sock, process)
     
@@ -150,65 +177,151 @@ class AudioController:
             self.cleanup(sock, process)
     
     def receive_audio(self, port: int):
-        """Receive audio using sounddevice"""
+        """Receive s16le stereo UDP and play via PortAudio (sounddevice)."""
         from utils.config import app_config
-        
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1024 * 256)
+        except Exception:
+            pass
         sock.bind(("0.0.0.0", port))
-        sock.settimeout(1.0)  # Timeout for checking stop flag
-        
+        sock.settimeout(1.0)
+
+        # bytes per UDP packet from sender
+        pkt = max(self.CHUNK_SIZE, 4096)
+        frames = max(256, self.CHUNK_SIZE)
+
         stream = sd.OutputStream(
             samplerate=self.RATE,
             channels=self.CHANNELS,
-            dtype='int16',
-            blocksize=self.CHUNK_SIZE
+            dtype="int16",
+            blocksize=frames,
+            latency="low",
         )
-        
+
+        packets = 0
         try:
+            logging.info(f"[Audio] sounddevice receive start {port}")
             with stream:
                 while app_config.is_running and not app_config.stop_flag:
                     try:
-                        data, _ = sock.recvfrom(self.CHUNK_SIZE * self.CHANNELS * 2)
-                        audio_array = np.frombuffer(data, dtype='int16').reshape(-1, self.CHANNELS)
-                        stream.write(audio_array)
+                        data, addr = sock.recvfrom(pkt)
                     except socket.timeout:
                         continue
-        except (KeyboardInterrupt, Exception):
-            pass
+                    except Exception as e:
+                        logging.warning(f"[Audio] recv error: {e}")
+                        continue
+                    if not data:
+                        continue
+                    # pad/trim to whole frames
+                    frame_bytes = self.CHANNELS * 2  # int16
+                    n = len(data) - (len(data) % frame_bytes)
+                    if n <= 0:
+                        continue
+                    audio_array = np.frombuffer(data[:n], dtype="int16").reshape(-1, self.CHANNELS)
+                    try:
+                        stream.write(audio_array)
+                    except Exception as e:
+                        logging.warning(f"[Audio] playback write failed: {e}")
+                        continue
+                    packets += 1
+                    if packets == 1:
+                        logging.info(f"[Audio] first packet from {addr} ({len(data)} bytes)")
+                    elif packets % 500 == 0:
+                        logging.info(f"[Audio] receiving… {packets} packets")
+        except (KeyboardInterrupt, Exception) as e:
+            logging.info(f"[Audio] receive interrupted: {e}")
         finally:
-            logging.info(f"[Audio] Receive stop {port}")
+            logging.info(f"[Audio] Receive stop {port} (packets={packets})")
             self.cleanup(sock)
     
     def receive_audio_ffplay(self, port: int):
-        """Receive audio using ffplay"""
+        """Receive raw s16le UDP audio on Linux.
+
+        Some ffplay builds reject -ac ("Option not found"). Prefer ffmpeg
+        decoding into PulseAudio; fall back to the sounddevice path.
+        """
         from utils.config import app_config
-        
-        cmd = [
-            'ffplay',
-            '-f', self.FORMAT,
-            '-ac', str(self.CHANNELS),
-            '-ar', str(self.RATE),
-            '-i', f'udp://0.0.0.0:{port}',
-            '-autoexit',
-            '-loglevel', 'quiet'
+
+        # ffmpeg: input options MUST come before -i
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "error",
+            "-f", self.FORMAT,
+            "-ar", str(self.RATE),
+            "-ac", str(self.CHANNELS),
+            "-i", f"udp://0.0.0.0:{port}?listen=1",
+            "-f", "pulse",
+            "default",
         ]
-        
+
         process = None
+        use_ffmpeg = True
         try:
-            logging.info(f"[Audio] ffplay start {port}")
-            process = subprocess.Popen(cmd, **_detached_kwargs())
+            # Probe ffmpeg once
+            try:
+                subprocess.run(
+                    ["ffmpeg", "-version"],
+                    capture_output=True,
+                    timeout=3,
+                    check=False,
+                )
+            except FileNotFoundError:
+                use_ffmpeg = False
+                logging.warning("[Audio] ffmpeg not found — using sounddevice receive")
+
+            if not use_ffmpeg:
+                self.receive_audio(port)
+                return
+
+            logging.info(f"[Audio] ffmpeg pulse receive start {port}")
             while app_config.is_running and not app_config.stop_flag:
-                if process.poll() is not None:
+                try:
+                    process = subprocess.Popen(
+                        ffmpeg_cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                        **_detached_kwargs(),
+                    )
+                except Exception as e:
+                    logging.error(f"[Audio] ffmpeg spawn failed: {e} — falling back to sounddevice")
+                    self.receive_audio(port)
+                    return
+
+                while app_config.is_running and not app_config.stop_flag:
+                    code = process.poll()
+                    if code is not None:
+                        err = b""
+                        try:
+                            err = process.stderr.read() if process.stderr else b""
+                        except Exception:
+                            pass
+                        logging.warning(
+                            f"[Audio] ffmpeg exited code={code}"
+                            + (f" err={err[:300]!r}" if err else "")
+                            + " — restarting"
+                        )
+                        break
+                    time.sleep(0.4)
+
+                if process and process.poll() is None:
                     break
-                time.sleep(0.5)
-        except (KeyboardInterrupt, Exception):
-            pass
+                if app_config.is_running and not app_config.stop_flag:
+                    time.sleep(0.5)
+        except (KeyboardInterrupt, Exception) as e:
+            logging.info(f"[Audio] receive interrupted: {e}")
         finally:
-            if process:
+            if process and process.poll() is None:
                 try:
                     process.terminate()
                     process.wait(timeout=2)
-                except:
-                    pass
-            logging.info(f"[Audio] ffplay stop {port}")
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+            logging.info(f"[Audio] ffmpeg pulse receive stop {port}")
 
