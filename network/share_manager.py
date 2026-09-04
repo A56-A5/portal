@@ -285,9 +285,18 @@ class ShareManager:
         """Destroy overlay window (must be called from the GUI main thread)."""
         if self.overlay:
             if self.os_type == "windows":
-                self.overlay.destroy()
+                try:
+                    self.overlay.destroy()
+                except Exception:
+                    pass
             elif self.os_type == "linux":
-                self.overlay.close()
+                try:
+                    self.overlay.hide()
+                    self.overlay.close()
+                    if hasattr(self.overlay, 'deleteLater'):
+                        self.overlay.deleteLater()
+                except Exception as e:
+                    print(f"[Overlay] Error destroying Qt overlay: {e}")
             self.overlay = None
 
     def _schedule_overlay(self, to_active):
@@ -475,9 +484,6 @@ class ShareManager:
                     )
                     self.keyboard_listener.start()
 
-                if self.os_type == "linux":
-                    threading.Thread(target=self._evdev_grab, daemon=True).start()
-
                 # Mouse: suppress=True issues XGrabPointer so local apps
                 # never see clicks or scrolls while input is being shared.
                 # Only needed on the server side (where _mouse_send_json is set).
@@ -485,9 +491,6 @@ class ShareManager:
                     with self.mouse_listener_lock:
                         self.mouse_listener = self._make_mouse_listener(suppress=True)
                         self.mouse_listener.start()
-            else:
-                if self.os_type == "linux":
-                    self._evdev_release()
 
             # Deduplicate
             if app_config.active_device == to_active:
@@ -502,7 +505,11 @@ class ShareManager:
             def send_active_state():
                 if hasattr(self, 'secondary_server') and self.secondary_server:
                     try:
-                        active_msg = {"type": "active_device", "value": to_active}
+                        active_msg = {
+                            "type": "active_device",
+                            "value": to_active,
+                            "server_direction": getattr(app_config, 'server_direction', 'Right')
+                        }
                         self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
                     except Exception as e:
                         print(f"[Transition] Failed to send active_device state: {e}")
@@ -766,6 +773,34 @@ class ShareManager:
             if not app_config.active_device:
                 last_pos[0] = None  # reset so next activation starts clean
                 return
+
+            # Check if physical mouse on Server hit the return edge
+            if app_config.active_device and not self.edge_transition_cooldown:
+                margin = 5
+                warp_buffer = 50
+                direction = getattr(app_config, 'server_direction', 'Right')
+                return_triggered = False
+                return_pos = None
+
+                if direction == "Right" and x <= margin:
+                    return_pos = (self.screen_width - margin - warp_buffer, y)
+                    return_triggered = True
+                elif direction == "Left" and x >= self.screen_width - margin:
+                    return_pos = (margin + warp_buffer, y)
+                    return_triggered = True
+                elif direction == "Top" and y >= self.screen_height - margin:
+                    return_pos = (x, margin + warp_buffer)
+                    return_triggered = True
+                elif direction == "Bottom" and y <= margin:
+                    return_pos = (x, self.screen_height - margin - warp_buffer)
+                    return_triggered = True
+
+                if return_triggered and return_pos:
+                    print(f"[Server] Physical mouse hit return edge -> returning input to server at {return_pos}")
+                    logging.info(f"[Server] Physical mouse hit return edge -> returning input to server at {return_pos}")
+                    threading.Thread(target=lambda: self.transition(False, return_pos), daemon=True).start()
+                    return
+
             if last_pos[0] is None:
                 last_pos[0] = (x, y)
                 return
@@ -1052,6 +1087,25 @@ class ShareManager:
                 print(f"[Status] {evt['msg']}")
                 # Trigger a system notification if possible, or just log
                 logging.info(f"[Remote Status] {evt['msg']}")
+            elif evt["type"] == "edge_return":
+                if app_config.active_device:
+                    margin = 2
+                    warp_buffer = 50
+                    direction = getattr(app_config, 'server_direction', 'Right')
+                    if direction == "Right":
+                        return_pos = (self.screen_width - margin - warp_buffer, evt.get("y", self.screen_height // 2))
+                    elif direction == "Left":
+                        return_pos = (margin + warp_buffer, evt.get("y", self.screen_height // 2))
+                    elif direction == "Top":
+                        return_pos = (evt.get("x", self.screen_width // 2), self.screen_height - margin - warp_buffer)
+                    elif direction == "Bottom":
+                        return_pos = (evt.get("x", self.screen_width // 2), margin + warp_buffer)
+                    else:
+                        return_pos = self.mouse_controller.position
+
+                    print(f"[Server] Client edge return received -> returning input to server at {return_pos}")
+                    logging.info(f"[Server] Client edge return received -> returning input to server at {return_pos}")
+                    threading.Thread(target=lambda: self.transition(False, return_pos), daemon=True).start()
         except Exception as e:
             print(f"[Event Handler] Error: {e}")
 
@@ -1256,6 +1310,44 @@ class ShareManager:
                         nx = max(0, min(self.screen_width - 1,  cx + int(evt["dx"])))
                         ny = max(0, min(self.screen_height - 1, cy + int(evt["dy"])))
                         self.mouse_controller.position = (nx, ny)
+
+                        # Client edge detection: if cursor hits opposite edge on Client, send edge_return to Server
+                        if app_config.active_device and not getattr(self, 'client_edge_cooldown', False):
+                            margin = 5
+                            direction = getattr(app_config, 'server_direction', 'Right')
+                            return_triggered = False
+
+                            if direction == "Right" and nx <= margin:
+                                return_triggered = True
+                            elif direction == "Left" and nx >= self.screen_width - 1 - margin:
+                                return_triggered = True
+                            elif direction == "Top" and ny >= self.screen_height - 1 - margin:
+                                return_triggered = True
+                            elif direction == "Bottom" and ny <= margin:
+                                return_triggered = True
+
+                            if return_triggered:
+                                self.client_edge_cooldown = True
+                                target_socket = getattr(self, 'secondary_client_socket', None) or getattr(self, 'client_socket', None)
+                                if target_socket:
+                                    try:
+                                        msg = json.dumps({"type": "edge_return", "x": nx, "y": ny}) + "\n"
+                                        target_socket.sendall(msg.encode())
+                                        print(f"[Client] Hit return edge ({direction}), sending edge_return to server")
+                                        logging.info(f"[Client] Hit return edge ({direction}), sending edge_return to server")
+                                    except Exception as e:
+                                        print(f"[Client] Failed to send edge_return: {e}")
+
+                        # Cooldown reset when cursor moves into central screen area
+                        if getattr(self, 'client_edge_cooldown', False):
+                            margin = 20
+                            direction = getattr(app_config, 'server_direction', 'Right')
+                            if direction in ("Right", "Left"):
+                                if margin < nx < self.screen_width - margin:
+                                    self.client_edge_cooldown = False
+                            else:
+                                if margin < ny < self.screen_height - margin:
+                                    self.client_edge_cooldown = False
                     elif evt["type"] == "click":
                         btn = getattr(Button, evt['button'])
                         if evt['pressed']:
@@ -1329,6 +1421,8 @@ class ShareManager:
                     elif evt["type"] == "active_device":
                         print(f"[Client] Active device state sync: {evt['value']}")
                         app_config.active_device = evt["value"]
+                        if "server_direction" in evt:
+                            app_config.server_direction = evt["server_direction"]
                         app_config.save()
                         if not app_config.active_device:
                             current_clip = self.clipboard_controller.get_clipboard()

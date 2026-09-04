@@ -141,14 +141,18 @@ class ConnectionHandler:
         """Destroy overlay window"""
         if self.overlay:
             if self.os_type == "windows" and hasattr(self.overlay, 'destroy'):
-                self.overlay.destroy()
-            elif self.os_type == "linux" and hasattr(self.overlay, 'close'):
                 try:
-                    self.overlay.releaseMouse()
-                    self.overlay.releaseKeyboard()
+                    self.overlay.destroy()
                 except Exception:
                     pass
-                self.overlay.close()
+            elif self.os_type == "linux" and hasattr(self.overlay, 'close'):
+                try:
+                    self.overlay.hide()
+                    self.overlay.close()
+                    if hasattr(self.overlay, 'deleteLater'):
+                        self.overlay.deleteLater()
+                except Exception:
+                    pass
             self.overlay = None
     
     def monitor_mouse_edges(self, client_socket):
