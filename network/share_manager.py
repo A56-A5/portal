@@ -235,12 +235,6 @@ class ShareManager:
             overlay.raise_()
             overlay.activateWindow()
 
-            try:
-                overlay.grabMouse()
-                overlay.grabKeyboard()
-            except Exception:
-                pass
-
             self.overlay = overlay
 
     def _configure_wm_rules_sync(self):
@@ -293,11 +287,6 @@ class ShareManager:
             if self.os_type == "windows":
                 self.overlay.destroy()
             elif self.os_type == "linux":
-                try:
-                    self.overlay.releaseMouse()
-                    self.overlay.releaseKeyboard()
-                except Exception:
-                    pass
                 self.overlay.close()
             self.overlay = None
 
@@ -313,6 +302,61 @@ class ShareManager:
         elif self.os_type == "linux":
             from PyQt5.QtCore import QTimer
             QTimer.singleShot(0, lambda: self.create_overlay() if to_active else self.destroy_overlay())
+
+    def _force_release_on_disconnect(self):
+        """Idempotently force input release, transition out of active_device,
+        destroy overlay, and stop application loop when disconnect occurs."""
+        if getattr(self, '_releasing_disconnect', False):
+            return
+        self._releasing_disconnect = True
+        print("[System] Client disconnected, forcing input release and cleanup...")
+        logging.info("[System] Client disconnected, forcing input release and cleanup...")
+
+        def _do_release():
+            try:
+                if app_config.active_device:
+                    self.transition(False, self.mouse_controller.position)
+            except Exception as e:
+                print(f"[Disconnect Cleanup] Transition error: {e}")
+
+            with self.keyboard_listener_lock:
+                if self.keyboard_listener:
+                    try: self.keyboard_listener.stop()
+                    except Exception: pass
+                    self.keyboard_listener = None
+
+            with self.mouse_listener_lock:
+                if self.mouse_listener:
+                    try: self.mouse_listener.stop()
+                    except Exception: pass
+                    self.mouse_listener = None
+
+            if self.os_type == "linux":
+                try: self._evdev_release()
+                except Exception: pass
+
+            self._schedule_overlay(False)
+            app_config.is_running = False
+            app_config.save()
+
+        threading.Thread(target=_do_release, daemon=True).start()
+
+    def _disconnect_watchdog(self, sock):
+        """Poll primary socket with select() + MSG_PEEK to detect EOF or socket disconnect."""
+        import select
+        while app_config.is_running:
+            try:
+                rlist, _, _ = select.select([sock], [], [], 1.0)
+                if rlist:
+                    peek = sock.recv(1, socket.MSG_PEEK)
+                    if not peek:
+                        print("[Watchdog] Primary connection EOF detected")
+                        self._force_release_on_disconnect()
+                        break
+            except Exception as e:
+                print(f"[Watchdog] Socket error: {e}")
+                self._force_release_on_disconnect()
+                break
     
     def monitor_mouse_edges(self):
         """Monitor mouse edges for transitions"""
@@ -699,9 +743,8 @@ class ShareManager:
             try:
                 sock.sendall((json.dumps(data) + "\n").encode())
             except Exception as e:
-                app_config.is_running = False
-                app_config.save()
                 print(f"[Server] Mouse send failed: {e}")
+                self._force_release_on_disconnect()
         self._mouse_send_json = send_json
 
     def _make_mouse_listener(self, suppress=False):
@@ -772,7 +815,8 @@ class ShareManager:
                 val = str(key)
             msg = json.dumps({"type": "key_press", "key": val}) + "\n"
             self.keyboard_socket.sendall(msg.encode())
-        except: pass
+        except Exception:
+            self._force_release_on_disconnect()
 
     def _on_release(self, key):
         if not app_config.active_device or not self.keyboard_socket:
@@ -781,7 +825,8 @@ class ShareManager:
             val = key.char if hasattr(key, 'char') and key.char else str(key)
             msg = json.dumps({"type": "key_release", "key": val}) + "\n"
             self.keyboard_socket.sendall(msg.encode())
-        except: pass
+        except Exception:
+            self._force_release_on_disconnect()
 
     # Server functions
     def start_server(self):
@@ -833,6 +878,20 @@ class ShareManager:
         """Accept primary connection (mouse)"""
         client, addr = self.server_socket.accept()
         client.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        client.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        if hasattr(socket, "TCP_KEEPIDLE"):
+            try: client.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPIDLE, 3)
+            except Exception: pass
+        elif hasattr(socket, "TCP_KEEPALIVE"):
+            try: client.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPALIVE, 3)
+            except Exception: pass
+        if hasattr(socket, "TCP_KEEPINTVL"):
+            try: client.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPINTVL, 2)
+            except Exception: pass
+        if hasattr(socket, "TCP_KEEPCNT"):
+            try: client.setsockopt(socket.IPPROTO_TCP, socket.TCP_KEEPCNT, 3)
+            except Exception: pass
+
         print(f"[Server] Primary connection from: {addr}")
         logging.info(f"[Connection] Primary connection from: {addr}")
         client.sendall(b'CONNECTED\n')
@@ -840,6 +899,7 @@ class ShareManager:
         logging.info("[Connection] Primary handshake sent")
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         self._setup_mouse_sender(client)  # register send callback; listener started by transition()
+        threading.Thread(target=self._disconnect_watchdog, args=(client,), daemon=True).start()
     
     # ------------------------------------------------------------------ #
     #  evdev kernel-level keyboard grab                                    #
