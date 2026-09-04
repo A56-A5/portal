@@ -104,7 +104,13 @@ class MouseController:
             return False
 
     def get_primary_size_hypr(self):
-        """Return (width, height) of the focused/primary monitor from hyprctl, or None."""
+        """Return (width, height) of the focused monitor in the SAME space as cursorpos.
+
+        Hyprland with fractional scaling (e.g. 1.5) reports physical width/height
+        (1920x1080) but hyprctl cursorpos uses logical coordinates
+        (1920/1.5 = 1280). Edge detection must use logical size or the right
+        edge is unreachable and auto-hacks bounce forever.
+        """
         if not self.use_hyprctl:
             return None
         try:
@@ -121,13 +127,19 @@ class MouseController:
                     focused = m
                     break
             m = focused or (monitors[0] if monitors else None)
-            if m:
-                # Prefer layout/transformed size if present; else width/height
-                w = int(m.get("width", 0))
-                h = int(m.get("height", 0))
-                # Some hyprctl builds expose scale; cursorpos is usually in
-                # layout pixels matching width/height already.
-                return w, h
+            if not m:
+                return None
+            w = float(m.get("width", 0))
+            h = float(m.get("height", 0))
+            scale = float(m.get("scale", 1.0) or 1.0)
+            if scale <= 0:
+                scale = 1.0
+            # Logical size = physical / scale (matches cursorpos under frac scale)
+            logical_w = int(round(w / scale))
+            logical_h = int(round(h / scale))
+            print(f"[Mouse] Hyprland monitor physical={int(w)}x{int(h)} scale={scale} "
+                  f"-> logical={logical_w}x{logical_h}")
+            return logical_w, logical_h
         except Exception as e:
             print(f"[Mouse] hyprctl monitors failed: {e}")
         return None

@@ -423,17 +423,8 @@ class ShareManager:
     
     def monitor_mouse_edges(self):
         """Monitor mouse edges for transitions"""
-        # Wider margin so high-DPI / slight coordinate mismatch still triggers
-        margin = 8
+        margin = 5
         last_debug = 0.0
-        # Runtime calibration for scale mismatch (Qt 1920 vs real 1280 coords).
-        # Only shrink when the cursor has been *stuck* at the same max X for a
-        # while — that means the user is pressed against the physical edge.
-        observed_max_x = 0
-        observed_max_y = 0
-        stuck_count = 0
-        last_stuck_x = -1
-        calibrated = False
         
         while app_config.is_running:
             # If input sharing is disabled, ensure inactive and skip transitions
@@ -443,39 +434,10 @@ class ShareManager:
                 time.sleep(0.05)
                 continue
             x, y = self.mouse_controller.position
-            warp_buffer = 50 
-            grace_period = 0.25  # prevent bounce after transition
-
-            if x > observed_max_x:
-                observed_max_x = x
-                stuck_count = 0
-            if y > observed_max_y:
-                observed_max_y = y
-
-            # Detect "jammed against right edge": same high X for many ticks
-            if not calibrated and x >= observed_max_x and observed_max_x > 200:
-                if x == last_stuck_x:
-                    stuck_count += 1
-                else:
-                    stuck_count = 1
-                    last_stuck_x = x
-                # ~0.5s of being stuck at a max that is far below reported width
-                if stuck_count >= 40 and observed_max_x < self.screen_width - 40:
-                    new_w = observed_max_x + 1
-                    # Keep aspect roughly; prefer observed y max if sensible
-                    if observed_max_y > 200:
-                        new_h = observed_max_y + 1
-                    else:
-                        new_h = int(round(new_w * self.screen_height / max(self.screen_width, 1)))
-                    print(f"[Screen] Auto-calibrated size {self.screen_width}x{self.screen_height} "
-                          f"-> {new_w}x{new_h} (cursor stuck at max {observed_max_x},{observed_max_y})")
-                    self.screen_width = new_w
-                    self.screen_height = new_h
-                    calibrated = True
-            else:
-                stuck_count = 0
+            warp_buffer = 40
+            grace_period = 0.35  # longer to stop bounce after warp
             
-            # Throttled debug so you can see whether position is actually updating
+            # Throttled debug
             now = time.time()
             if now - last_debug > 2.0:
                 last_debug = now
@@ -645,7 +607,7 @@ class ShareManager:
 
             logging.info(f"[System] Device {'Activated' if to_active else 'Deactivated'} at {new_position}")
             app_config.save()
-            time.sleep(0.2)
+            time.sleep(0.35)
         finally:
             self._transition_lock.release()
 
