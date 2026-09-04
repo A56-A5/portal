@@ -6,12 +6,13 @@ the global cursor position reliably.  We therefore prefer compositor-native
 tools when available:
 
   - Hyprland:  hyprctl cursorpos  /  hyprctl dispatch movecursor
-  - fallback:  xdotool (X11 / XWayland)
+  - fallback:  xdotool getmouselocation / mousemove
   - last resort: pynput
 """
 import platform
 import subprocess
 import os
+import json
 
 
 class MouseController:
@@ -23,6 +24,7 @@ class MouseController:
         self._win32api = None
         self.use_xdotool = False
         self.use_hyprctl = False
+        self._last_good_pos = (0, 0)
 
         if self.os_type == "windows":
             try:
@@ -40,25 +42,29 @@ class MouseController:
                     )
                     if res.returncode == 0 and res.stdout.strip():
                         self.use_hyprctl = True
+                        print("[Mouse] Using hyprctl for cursor position (Hyprland)")
                 except Exception:
                     self.use_hyprctl = False
 
-            if not self.use_hyprctl:
-                try:
-                    res = subprocess.run(["which", "xdotool"], capture_output=True)
-                    self.use_xdotool = res.returncode == 0
-                except Exception:
-                    self.use_xdotool = False
+            try:
+                res = subprocess.run(["which", "xdotool"], capture_output=True)
+                self.use_xdotool = res.returncode == 0
+            except Exception:
+                self.use_xdotool = False
+
+            if not self.use_hyprctl and self.use_xdotool:
+                print("[Mouse] Using xdotool for cursor position")
+            elif not self.use_hyprctl and not self.use_xdotool:
+                print("[Mouse] WARNING: falling back to pynput only - edge detection may fail on Wayland")
 
     def _hypr_get_pos(self):
         """Return (x, y) from hyprctl cursorpos or None on failure."""
         try:
             res = subprocess.run(
                 ["hyprctl", "cursorpos"],
-                capture_output=True, text=True, timeout=0.5
+                capture_output=True, text=True, timeout=0.4
             )
             if res.returncode == 0:
-                # Output is typically "1234, 567" or "1234 567"
                 text = res.stdout.strip().replace(",", " ")
                 parts = text.split()
                 if len(parts) >= 2:
@@ -67,25 +73,84 @@ class MouseController:
             pass
         return None
 
+    def _xdotool_get_pos(self):
+        """Return (x, y) from xdotool getmouselocation or None."""
+        try:
+            res = subprocess.run(
+                ["xdotool", "getmouselocation", "--shell"],
+                capture_output=True, text=True, timeout=0.4
+            )
+            if res.returncode == 0:
+                x = y = None
+                for line in res.stdout.splitlines():
+                    if line.startswith("X="):
+                        x = int(line.split("=", 1)[1])
+                    elif line.startswith("Y="):
+                        y = int(line.split("=", 1)[1])
+                if x is not None and y is not None:
+                    return x, y
+        except Exception:
+            pass
+        return None
+
     def _hypr_set_pos(self, x, y):
         try:
             subprocess.run(
                 ["hyprctl", "dispatch", "movecursor", str(int(x)), str(int(y))],
-                capture_output=True, timeout=0.5, check=False
+                capture_output=True, timeout=0.4, check=False
             )
             return True
         except Exception:
             return False
 
+    def get_primary_size_hypr(self):
+        """Return (width, height) of the focused/primary monitor from hyprctl, or None."""
+        if not self.use_hyprctl:
+            return None
+        try:
+            res = subprocess.run(
+                ["hyprctl", "monitors", "-j"],
+                capture_output=True, text=True, timeout=1
+            )
+            if res.returncode != 0:
+                return None
+            monitors = json.loads(res.stdout)
+            focused = None
+            for m in monitors:
+                if m.get("focused"):
+                    focused = m
+                    break
+            m = focused or (monitors[0] if monitors else None)
+            if m:
+                return int(m["width"]), int(m["height"])
+        except Exception as e:
+            print(f"[Mouse] hyprctl monitors failed: {e}")
+        return None
+
     @property
     def position(self):
-        """Get current mouse position"""
+        """Get current mouse position from the best available source."""
         if self.os_type == "linux" and self.use_hyprctl:
             pos = self._hypr_get_pos()
             if pos is not None:
+                self._last_good_pos = pos
                 return pos
-        # Fallback (works on X11 and often on XWayland)
-        return self._controller.position
+
+        if self.os_type == "linux" and self.use_xdotool:
+            pos = self._xdotool_get_pos()
+            if pos is not None:
+                self._last_good_pos = pos
+                return pos
+
+        try:
+            pos = self._controller.position
+            if pos:
+                self._last_good_pos = pos
+                return pos
+        except Exception:
+            pass
+
+        return self._last_good_pos
 
     @position.setter
     def position(self, pos):
@@ -95,42 +160,41 @@ class MouseController:
         if self.os_type == "windows" and self._win32api:
             try:
                 self._win32api.SetCursorPos((x, y))
+                self._last_good_pos = (x, y)
                 return
             except Exception:
                 pass
 
         if self.os_type == "linux" and self.use_hyprctl:
             if self._hypr_set_pos(x, y):
+                self._last_good_pos = (x, y)
                 return
 
         if self.os_type == "linux" and self.use_xdotool:
             try:
                 subprocess.run(
-                    ["xdotool", "mousemove", str(x), str(y)],
-                    check=False, timeout=0.5
+                    ["xdotool", "mousemove", "--", str(x), str(y)],
+                    check=False, timeout=0.4
                 )
+                self._last_good_pos = (x, y)
                 return
             except Exception:
                 pass
 
-        # Last resort
         try:
             self._controller.position = (x, y)
+            self._last_good_pos = (x, y)
         except Exception:
             pass
 
     def press(self, button):
-        """Press mouse button"""
         self._controller.press(button)
 
     def release(self, button):
-        """Release mouse button"""
         self._controller.release(button)
 
     def click(self, button):
-        """Click mouse button"""
         self._controller.click(button)
 
     def scroll(self, dx, dy):
-        """Scroll mouse"""
         self._controller.scroll(dx, dy)

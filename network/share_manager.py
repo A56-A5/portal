@@ -97,13 +97,18 @@ class ShareManager:
             self.Qt = Qt
             self.QWidget = QWidget
             self.gui_app = QApplication(sys.argv)
-            # Use primary screen only — the full virtual desktop spans all
-            # monitors combined, which makes normalization wrong when server
-            # and client have different multi-monitor layouts.
-            primary = self.gui_app.primaryScreen()
-            geom = primary.geometry()
-            self.screen_width = geom.width()
-            self.screen_height = geom.height()
+
+            # Prefer Hyprland monitor size so it matches hyprctl cursorpos coordinates
+            hypr_size = self.mouse_controller.get_primary_size_hypr()
+            if hypr_size:
+                self.screen_width, self.screen_height = hypr_size
+                print(f"[Screen] Hyprland primary monitor: {self.screen_width}x{self.screen_height}")
+            else:
+                primary = self.gui_app.primaryScreen()
+                geom = primary.geometry()
+                self.screen_width = geom.width()
+                self.screen_height = geom.height()
+                print(f"[Screen] Qt primary geometry: {self.screen_width}x{self.screen_height}")
 
             self._wayland = self._detect_wayland()
             self._compositor_available = self._detect_compositor()
@@ -113,6 +118,7 @@ class ShareManager:
                 msg = ("Wayland session detected - running with X11 compatibility layer for overlay & input sharing.")
                 logging.info(f"[Remote Status] {msg}")
                 print(f"[Session] {msg}")
+            print(f"[Config] server_direction={app_config.server_direction!r}  mode={app_config.mode!r}")
 
     def _detect_wayland(self):
         return (
@@ -414,7 +420,9 @@ class ShareManager:
     
     def monitor_mouse_edges(self):
         """Monitor mouse edges for transitions"""
-        margin = 2
+        # Wider margin so high-DPI / slight coordinate mismatch still triggers
+        margin = 8
+        last_debug = 0.0
         
         while app_config.is_running:
             # If input sharing is disabled, ensure inactive and skip transitions
@@ -425,24 +433,36 @@ class ShareManager:
                 continue
             x, y = self.mouse_controller.position
             warp_buffer = 50 
-            grace_period = 0.2 # Snappy but prevents velocity bounces
+            grace_period = 0.25  # prevent bounce after transition
+            
+            # Throttled debug so you can see whether position is actually updating
+            now = time.time()
+            if now - last_debug > 2.0:
+                last_debug = now
+                direction = getattr(app_config, 'server_direction', 'Right')
+                print(f"[Edge] pos=({x},{y}) size={self.screen_width}x{self.screen_height} "
+                      f"dir={direction!r} active={app_config.active_device} cooldown={self.edge_transition_cooldown}")
             
             # Skip if we just transitioned (hard bounce protection)
-            if time.time() - self.last_transition_time < grace_period:
+            if now - self.last_transition_time < grace_period:
                 time.sleep(0.01)
                 continue
 
             if not app_config.active_device and not self.edge_transition_cooldown:
                 if app_config.server_direction == "Right" and x >= self.screen_width - margin:
+                    print(f"[Edge] RIGHT edge hit at x={x} -> activating client")
                     self.transition(True, (margin + warp_buffer, y))
                     continue
                 elif app_config.server_direction == "Left" and x <= margin:
+                    print(f"[Edge] LEFT edge hit at x={x} -> activating client")
                     self.transition(True, (self.screen_width - margin - warp_buffer, y))
                     continue
                 elif app_config.server_direction == "Top" and y <= margin:
+                    print(f"[Edge] TOP edge hit at y={y} -> activating client")
                     self.transition(True, (x, self.screen_height - margin - warp_buffer))
                     continue
                 elif app_config.server_direction == "Bottom" and y >= self.screen_height - margin:
+                    print(f"[Edge] BOTTOM edge hit at y={y} -> activating client")
                     self.transition(True, (x, margin + warp_buffer))
                     continue
             
@@ -977,6 +997,8 @@ class ShareManager:
         client.sendall(b'CONNECTED\n')
         print("[Server] Primary handshake sent")
         logging.info("[Connection] Primary handshake sent")
+        print(f"[Server] Starting edge monitor  direction={app_config.server_direction!r}  "
+              f"screen={self.screen_width}x{self.screen_height}")
         threading.Thread(target=self.monitor_mouse_edges, daemon=True).start()
         self._setup_mouse_sender(client)  # register send callback; listener started by transition()
         threading.Thread(target=self._disconnect_watchdog, args=(client,), daemon=True).start()
@@ -1087,11 +1109,13 @@ class ShareManager:
         threading.Thread(target=read_clipboard, daemon=True).start()
 
     def accept_tertiary(self):
-        """Accept tertiary connection (large data)"""
+        """Accept tertiary connection (large data / clipboard images / files)"""
+        print("[Server] Waiting for tertiary (large-data) connection on port", self.tertiary_port)
         ter_socket, ter_addr = self.tertiary_server_socket.accept()
         ter_socket.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         ter_socket.settimeout(1.0) # Prevent transition hangs
         print(f"[Server] Tertiary connection from: {ter_addr}")
+        logging.info(f"[Connection] Tertiary connection from: {ter_addr}")
         self.tertiary_server = ter_socket
         self.tertiary_connected = True
         
