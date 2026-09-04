@@ -264,6 +264,11 @@ class ShareManager:
             if ow and oh:
                 overlay.setGeometry(0, 0, ow, oh)
             overlay.setMouseTracking(True)
+            overlay.setFocusPolicy(self.Qt.StrongFocus)
+
+            # Capture mouse/keyboard on the overlay itself (critical on Wayland
+            # where pynput global hooks do not receive events).
+            self._wire_overlay_input(overlay)
 
             # Configure WM rules (Hyprland, Sway, i3) before mapping
             self._configure_wm_rules_sync()
@@ -271,11 +276,128 @@ class ShareManager:
             overlay.showFullScreen()
             overlay.raise_()
             overlay.activateWindow()
+            overlay.setFocus()
             if self.gui_app:
                 self.gui_app.processEvents()
 
             self.overlay = overlay
             print(f"[Overlay] CREATED fullscreen {ow}x{oh}")
+
+
+    def _wire_overlay_input(self, overlay):
+        """Forward Qt mouse/key events from the overlay to the client.
+
+        On Wayland/Hyprland global pynput hooks often see nothing. The
+        fullscreen overlay is the reliable event source for clicks and
+        can also supply moves if the compositor delivers them to the window.
+        """
+        from PyQt5.QtCore import Qt as QtCore
+
+        last = [None]  # last local pos for relative deltas
+
+        def send_move(x, y):
+            if not self._mouse_send_json or not app_config.active_device:
+                return
+            # Map overlay (physical/Qt) coords into edge/logical space for deltas
+            # Prefer relative deltas from last point in overlay space.
+            if last[0] is None:
+                last[0] = (x, y)
+                return
+            dx = int(x - last[0][0])
+            dy = int(y - last[0][1])
+            last[0] = (x, y)
+            if dx or dy:
+                # Scale overlay pixels -> logical if sizes differ
+                ow = getattr(self, 'overlay_width', None) or self.screen_width or 1
+                oh = getattr(self, 'overlay_height', None) or self.screen_height or 1
+                sx = self.screen_width / float(ow)
+                sy = self.screen_height / float(oh)
+                self._mouse_send_json({
+                    "type": "move",
+                    "dx": int(round(dx * sx)),
+                    "dy": int(round(dy * sy)),
+                })
+
+        def on_move(event):
+            if not app_config.active_device:
+                return
+            send_move(event.x(), event.y())
+            event.accept()
+
+        def btn_name(button):
+            if button == QtCore.LeftButton:
+                return "left"
+            if button == QtCore.RightButton:
+                return "right"
+            if button == QtCore.MiddleButton:
+                return "middle"
+            return "left"
+
+        def on_press(event):
+            if not app_config.active_device or not self._mouse_send_json:
+                return
+            self._mouse_send_json({
+                "type": "click",
+                "button": btn_name(event.button()),
+                "pressed": True,
+            })
+            print(f"[Overlay] click press {btn_name(event.button())}")
+            event.accept()
+
+        def on_release(event):
+            if not app_config.active_device or not self._mouse_send_json:
+                return
+            self._mouse_send_json({
+                "type": "click",
+                "button": btn_name(event.button()),
+                "pressed": False,
+            })
+            event.accept()
+
+        def on_wheel(event):
+            if not app_config.active_device or not self._mouse_send_json:
+                return
+            delta = event.angleDelta()
+            dy = 1 if delta.y() > 0 else (-1 if delta.y() < 0 else 0)
+            dx = 1 if delta.x() > 0 else (-1 if delta.x() < 0 else 0)
+            if dx or dy:
+                self._mouse_send_json({"type": "scroll", "dx": dx, "dy": dy})
+            event.accept()
+
+        def on_key_press(event):
+            if not app_config.active_device or not self.keyboard_socket:
+                return
+            # Prefer text for printable; else key name
+            text = event.text()
+            if text:
+                val = text
+            else:
+                val = event.key()
+            try:
+                msg = json.dumps({"type": "key_press", "key": str(val)}) + "\n"
+                self.keyboard_socket.sendall(msg.encode())
+            except Exception:
+                pass
+            event.accept()
+
+        def on_key_release(event):
+            if not app_config.active_device or not self.keyboard_socket:
+                return
+            text = event.text()
+            val = text if text else event.key()
+            try:
+                msg = json.dumps({"type": "key_release", "key": str(val)}) + "\n"
+                self.keyboard_socket.sendall(msg.encode())
+            except Exception:
+                pass
+            event.accept()
+
+        overlay.mouseMoveEvent = on_move
+        overlay.mousePressEvent = on_press
+        overlay.mouseReleaseEvent = on_release
+        overlay.wheelEvent = on_wheel
+        overlay.keyPressEvent = on_key_press
+        overlay.keyReleaseEvent = on_key_release
 
     def _configure_wm_rules_sync(self):
         """Synchronously register WM-specific float+fullscreen+pin rules for the
@@ -561,48 +683,58 @@ class ShareManager:
 
             time.sleep(0.05)  # Give X11 a moment to release grabs
 
-            # Stop any previous hyprctl poller
+            # Stop any previous hyprctl poller before flipping state
             self._stop_hypr_mouse_poller()
+
+            # Set active state FIRST so any poller/listener that checks
+            # app_config.active_device sees the correct value immediately.
+            app_config.active_device = to_active
+            app_config.save()
+
+            use_hypr = getattr(self.mouse_controller, 'use_hyprctl', False)
 
             if to_active:
                 from pynput import keyboard
+                # On pure Wayland, suppress=True often fails or freezes input.
+                # Use suppress only when NOT on Hyprland; on Hyprland rely on
+                # overlay + hypr poller + non-suppress listeners.
+                kb_suppress = not use_hypr
                 with self.keyboard_listener_lock:
                     self.keyboard_listener = keyboard.Listener(
                         on_press=self._on_press,
                         on_release=self._on_release,
-                        suppress=True
+                        suppress=kb_suppress
                     )
                     self.keyboard_listener.start()
-                    print("[Input] Keyboard listener started (suppress=True)")
+                    print(f"[Input] Keyboard listener started (suppress={kb_suppress})")
 
-                # Mouse: pynput suppress works on X11; on Wayland it is flaky.
-                # Always start it for clicks/scrolls; movement is also driven
-                # by the hyprctl poller below when available.
                 if self._mouse_send_json is not None:
-                    with self.mouse_listener_lock:
-                        self.mouse_listener = self._make_mouse_listener(suppress=True)
-                        self.mouse_listener.start()
-                        print("[Input] Mouse listener started (suppress=True)")
+                    if use_hypr:
+                        # Hyprland: movement via hyprctl poller; clicks via
+                        # overlay Qt events. Do NOT start pynput mouse with
+                        # suppress — it freezes the pointer under XWayland.
+                        print("[Input] Skipping pynput mouse grab (Hyprland path)")
+                        self._start_hypr_mouse_poller()
+                    else:
+                        with self.mouse_listener_lock:
+                            self.mouse_listener = self._make_mouse_listener(suppress=True)
+                            self.mouse_listener.start()
+                            print("[Input] Mouse listener started (suppress=True)")
 
-                # Wayland/Hyprland: reliable relative mouse via hyprctl polling
-                if getattr(self.mouse_controller, 'use_hyprctl', False) and self._mouse_send_json is not None:
-                    self._start_hypr_mouse_poller()
-
-                # Exclusive keyboard grab so compositor shortcuts don't fire
-                try:
-                    self._evdev_grab()
-                except Exception as e:
-                    print(f"[Input] evdev grab failed (need input group?): {e}")
+                # evdev grab steals devices exclusively — only useful if we
+                # also read those FDs (not implemented for keys yet). Skip
+                # on Hyprland so pynput can still see key events.
+                if not use_hypr:
+                    try:
+                        self._evdev_grab()
+                    except Exception as e:
+                        print(f"[Input] evdev grab failed (need input group?): {e}")
 
             else:
-                # Deactivating: release evdev
                 try:
                     self._evdev_release()
                 except Exception:
                     pass
-
-            app_config.active_device = to_active
-            app_config.save()
 
             self._schedule_overlay(to_active)
             self.mouse_controller.position = new_position
@@ -851,25 +983,33 @@ class ShareManager:
         pynput under Wayland often receives no global pointer events, so
         input sharing would appear completely dead. This poller is the
         reliable path on Hyprland.
+
+        Loop is controlled ONLY by the stop event (and is_running). Do not
+        gate on active_device here — that caused an immediate exit when the
+        poller was started before active_device was set to True.
         """
         self._hypr_poller_stop = threading.Event()
 
         def poll_loop():
             last = None
+            moves_sent = 0
             print("[Input] Hyprland mouse poller started")
-            while not self._hypr_poller_stop.is_set() and app_config.is_running and app_config.active_device:
+            while not self._hypr_poller_stop.is_set() and app_config.is_running:
                 try:
                     pos = self.mouse_controller.position
                     if last is not None and self._mouse_send_json is not None:
-                        dx = pos[0] - last[0]
-                        dy = pos[1] - last[1]
+                        dx = int(pos[0] - last[0])
+                        dy = int(pos[1] - last[1])
                         if dx or dy:
-                            self._mouse_send_json({"type": "move", "dx": int(dx), "dy": int(dy)})
+                            self._mouse_send_json({"type": "move", "dx": dx, "dy": dy})
+                            moves_sent += 1
+                            if moves_sent <= 3 or moves_sent % 50 == 0:
+                                print(f"[Input] sent move dx={dx} dy={dy} (#{moves_sent})")
                     last = pos
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"[Input] hypr poller error: {e}")
                 time.sleep(0.008)  # ~125 Hz
-            print("[Input] Hyprland mouse poller stopped")
+            print(f"[Input] Hyprland mouse poller stopped (sent {moves_sent} moves)")
 
         self._hypr_poller_thread = threading.Thread(target=poll_loop, daemon=True)
         self._hypr_poller_thread.start()
