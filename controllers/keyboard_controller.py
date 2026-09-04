@@ -22,11 +22,35 @@ class KeyboardController:
         elif self.os_type == "linux":
             try:
                 import subprocess
+                import os as _os
                 self.subprocess = subprocess
+                # Prefer ydotool on Wayland (uinput); xdotool is XTest-only
+                r = subprocess.run(["which", "ydotool"], capture_output=True)
+                if r.returncode == 0:
+                    self.use_ydotool = True
+                    print("[Keyboard] ydotool available for key injection")
                 result = subprocess.run(["which", "xdotool"], capture_output=True)
-                self.use_xdotool = result.returncode == 0
-            except:
+                self.use_xdotool = result.returncode == 0 and not self.use_ydotool
+                if self.use_xdotool:
+                    print("[Keyboard] Using xdotool (X11)")
+            except Exception:
                 pass
+            # UInput virtual keyboard — works on Hyprland without ydotool
+            self._kb_uinput = None
+            try:
+                from evdev import UInput, ecodes
+                # Grab a wide KEY_* range for letters/modifiers
+                keys = list(range(1, 128)) + [
+                    125, 126,  # Super
+                ]
+                self._kb_uinput = UInput(
+                    {ecodes.EV_KEY: keys},
+                    name="portal-virtual-keyboard",
+                )
+                print("[Keyboard] evdev UInput virtual keyboard ready")
+            except Exception as e:
+                print(f"[Keyboard] UInput unavailable: {e}")
+                self._kb_uinput = None
 
     def _normalize_key(self, key):
         """Normalize key to a string representation"""
@@ -279,6 +303,32 @@ class KeyboardController:
         return vk_map.get(key_str, None)
 
     # ---------------- Public API ----------------
+
+    def _keycode(self, key_str):
+        s = str(key_str)
+        if s.startswith("Key."):
+            s = s.split(".", 1)[1]
+        if len(s) == 1 and s.isalpha():
+            s = s.lower()
+        else:
+            s = s.lower()
+        return self._YDOTOOL_SPECIAL.get(s)
+
+    def _uinput_key(self, key_str, down: bool):
+        ui = getattr(self, "_kb_uinput", None)
+        if ui is None:
+            return False
+        code = self._keycode(key_str) if hasattr(self, "_keycode") else self._ydotool_keycode(key_str)
+        if code is None:
+            return False
+        try:
+            from evdev import ecodes
+            ui.write(ecodes.EV_KEY, code, 1 if down else 0)
+            ui.syn()
+            return True
+        except Exception:
+            return False
+
     def press(self, key):
         key_str = self._normalize_key(key)
         vk = self._key_to_vk(key_str)
@@ -288,11 +338,12 @@ class KeyboardController:
             self._win32_press(key_str)
             return
         
-        # Wayland: ydotool (uinput) before xdotool/XTest
+        # Wayland: UInput / ydotool before xdotool/XTest
+        if self._uinput_key(key_str, True):
+            return
         if getattr(self, "use_ydotool", False) and self._ydotool_key(key_str, True):
             return
 
-        # On Linux X11, prefer xdotool if available
         if self.use_xdotool:
             self._xdotool_keydown(key_str)
             return
@@ -316,6 +367,8 @@ class KeyboardController:
             self._win32_release(key_str)
             return
         
+        if self._uinput_key(key_str, False):
+            return
         if getattr(self, "use_ydotool", False) and self._ydotool_key(key_str, False):
             return
 
@@ -342,6 +395,9 @@ class KeyboardController:
             self._win32_tap(key_str)
             return
         
+        if self._uinput_key(key_str, True):
+            self._uinput_key(key_str, False)
+            return
         if getattr(self, "use_ydotool", False):
             if self._ydotool_key(key_str, True) and self._ydotool_key(key_str, False):
                 return

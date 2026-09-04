@@ -39,9 +39,12 @@ class AudioManager:
         def audio_thread():
             try:
                 if app_config.audio_mode == "Receive_Audio":
-                    # sounddevice on both OSes — ffplay/ffmpeg device options
-                    # are fragile across builds; UDP + PortAudio is reliable.
-                    self.audio_controller.receive_audio(app_config.audio_port)
+                    if self.os_type == "linux":
+                        # ffmpeg → Pulse/PipeWire is more reliable than PortAudio
+                        # for continuous UDP receive on Linux.
+                        self.audio_controller.receive_audio_pulse(app_config.audio_port)
+                    else:
+                        self.audio_controller.receive_audio(app_config.audio_port)
                 elif app_config.audio_mode == "Share_Audio":
                     if self.os_type == "linux":
                         self.audio_controller.send_audio_linux(app_config.audio_ip, app_config.audio_port)

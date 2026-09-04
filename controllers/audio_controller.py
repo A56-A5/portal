@@ -197,7 +197,7 @@ class AudioController:
             samplerate=self.RATE,
             channels=self.CHANNELS,
             dtype="int16",
-            blocksize=frames,
+            blocksize=0,
             latency="low",
         )
 
@@ -237,6 +237,82 @@ class AudioController:
             logging.info(f"[Audio] Receive stop {port} (packets={packets})")
             self.cleanup(sock)
     
+
+    def receive_audio_pulse(self, port: int):
+        """Linux: UDP s16le → ffmpeg → PulseAudio/PipeWire default sink.
+
+        sounddevice often opens a device but produces silence under PipeWire;
+        ffmpeg -f pulse default is the path that actually plays.
+        """
+        from utils.config import app_config
+
+        port = int(port)
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-hide_banner",
+            "-loglevel", "warning",
+            "-f", self.FORMAT,
+            "-ar", str(self.RATE),
+            "-ac", str(self.CHANNELS),
+            "-i", f"udp://0.0.0.0:{port}?listen=1&fifo_size=1048576&overrun_nonfatal=1",
+            "-f", "pulse",
+            "-device", "default",
+            "portal-audio",
+        ]
+
+        process = None
+        try:
+            logging.info(f"[Audio] pulse receive start (ffmpeg) port={port}")
+            print(f"[Audio] pulse receive start port={port}")
+            while app_config.is_running and not app_config.stop_flag:
+                try:
+                    process = subprocess.Popen(
+                        ffmpeg_cmd,
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.PIPE,
+                        **_detached_kwargs(),
+                    )
+                except FileNotFoundError:
+                    logging.error("[Audio] ffmpeg missing — falling back to sounddevice")
+                    self.receive_audio(port)
+                    return
+                except Exception as e:
+                    logging.error(f"[Audio] ffmpeg spawn failed: {e}")
+                    time.sleep(1)
+                    continue
+
+                while app_config.is_running and not app_config.stop_flag:
+                    code = process.poll()
+                    if code is not None:
+                        err = b""
+                        try:
+                            err = process.stderr.read() if process.stderr else b""
+                        except Exception:
+                            pass
+                        logging.warning(
+                            f"[Audio] ffmpeg exited code={code} err={err[:300]!r} — restart"
+                        )
+                        break
+                    time.sleep(0.5)
+
+                if process and process.poll() is None:
+                    break
+                if app_config.is_running and not app_config.stop_flag:
+                    time.sleep(0.3)
+        except (KeyboardInterrupt, Exception) as e:
+            logging.info(f"[Audio] pulse receive interrupted: {e}")
+        finally:
+            if process and process.poll() is None:
+                try:
+                    process.terminate()
+                    process.wait(timeout=2)
+                except Exception:
+                    try:
+                        process.kill()
+                    except Exception:
+                        pass
+            logging.info(f"[Audio] pulse receive stop port={port}")
+
     def receive_audio_ffplay(self, port: int):
         """Receive raw s16le UDP audio on Linux.
 
