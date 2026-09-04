@@ -765,19 +765,17 @@ class ShareManager:
 
                 if self._mouse_send_json is not None:
                     if use_hypr:
-                        # Hyprland: movement via hyprctl poller; clicks via
-                        # overlay Qt events. Do NOT start pynput mouse with
-                        # suppress — it freezes the pointer under XWayland.
-                        print("[Input] Skipping pynput mouse grab (Hyprland path)")
-                        self._start_hypr_mouse_poller()
+                        # Hyprland: absolute cursorpos freezes under the overlay.
+                        # Use evdev relative mouse deltas instead (same path as kb).
+                        print("[Input] Hyprland mouse via evdev relative (not hyprctl)")
                     else:
                         with self.mouse_listener_lock:
                             self.mouse_listener = self._make_mouse_listener(suppress=True)
                             self.mouse_listener.start()
                             print("[Input] Mouse listener started (suppress=True)")
 
-                # Exclusive keyboard grab so Super/compositor binds never fire.
-                # Reader thread forwards key events to the client.
+                # Exclusive grab keyboards + mice; reader forwards keys and
+                # relative mouse motion / buttons / wheel to the client.
                 try:
                     self._evdev_grab()
                     self._start_evdev_reader()
@@ -1350,40 +1348,77 @@ class ShareManager:
             import struct, select
             EVENT_FORMAT = "llHHI"
             EVENT_SIZE = struct.calcsize(EVENT_FORMAT)
-            print("[Input] evdev keyboard reader started")
+            EV_KEY, EV_REL, EV_SYN = 1, 2, 0
+            REL_X, REL_Y, REL_WHEEL, REL_HWHEEL = 0, 1, 8, 6
+            BTN_LEFT, BTN_RIGHT, BTN_MIDDLE = 0x110, 0x111, 0x112
+            pending_dx = 0
+            pending_dy = 0
+            moves = 0
+            print("[Input] evdev keyboard+mouse reader started")
             while not stop_ev.is_set() and app_config.is_running:
                 fds = list(getattr(self, "_evdev_grab_fds", []) or [])
                 if not fds:
                     time.sleep(0.05)
                     continue
                 try:
-                    r, _, _ = select.select(fds, [], [], 0.1)
+                    r, _, _ = select.select(fds, [], [], 0.05)
                 except Exception:
                     time.sleep(0.05)
                     continue
                 for fd in r:
                     try:
-                        data = os.read(fd, EVENT_SIZE)
-                        if len(data) < EVENT_SIZE:
-                            continue
-                        _sec, _usec, etype, code, value = struct.unpack(EVENT_FORMAT, data)
-                        # EV_KEY = 1; value 1=press 0=release 2=repeat
-                        if etype != 1 or value == 2:
-                            continue
-                        name = KEYMAP.get(code) or US.get(code)
-                        if not name:
-                            continue
-                        if not self.keyboard_socket or not app_config.active_device:
-                            continue
-                        typ = "key_press" if value == 1 else "key_release"
-                        msg = json.dumps({"type": typ, "key": name}) + "\n"
-                        try:
-                            self.keyboard_socket.sendall(msg.encode())
-                        except Exception:
-                            pass
+                        # Drain all pending events on this fd
+                        while True:
+                            data = os.read(fd, EVENT_SIZE)
+                            if len(data) < EVENT_SIZE:
+                                break
+                            _sec, _usec, etype, code, value = struct.unpack(EVENT_FORMAT, data)
+                            if etype == EV_REL:
+                                if code == REL_X:
+                                    pending_dx += int(value)
+                                elif code == REL_Y:
+                                    pending_dy += int(value)
+                                elif code == REL_WHEEL and self._mouse_send_json and app_config.active_device:
+                                    self._mouse_send_json({"type": "scroll", "dx": 0, "dy": int(value)})
+                                elif code == REL_HWHEEL and self._mouse_send_json and app_config.active_device:
+                                    self._mouse_send_json({"type": "scroll", "dx": int(value), "dy": 0})
+                            elif etype == EV_KEY and value != 2:
+                                # Mouse buttons
+                                if code in (BTN_LEFT, BTN_RIGHT, BTN_MIDDLE) and self._mouse_send_json and app_config.active_device:
+                                    btn = {BTN_LEFT: "left", BTN_RIGHT: "right", BTN_MIDDLE: "middle"}[code]
+                                    self._mouse_send_json({"type": "click", "button": btn, "pressed": value == 1})
+                                    if moves < 5:
+                                        print(f"[Input] evdev click {btn} pressed={value==1}")
+                                else:
+                                    # Keyboard keys
+                                    name = KEYMAP.get(code) or US.get(code)
+                                    if name and self.keyboard_socket and app_config.active_device:
+                                        typ = "key_press" if value == 1 else "key_release"
+                                        msg = json.dumps({"type": typ, "key": name}) + "\n"
+                                        try:
+                                            self.keyboard_socket.sendall(msg.encode())
+                                        except Exception:
+                                            pass
+                            elif etype == EV_SYN:
+                                # Sync: flush accumulated relative motion
+                                if (pending_dx or pending_dy) and self._mouse_send_json and app_config.active_device:
+                                    self._mouse_send_json({"type": "move", "dx": pending_dx, "dy": pending_dy})
+                                    moves += 1
+                                    if moves <= 5 or moves % 100 == 0:
+                                        print(f"[Input] evdev move dx={pending_dx} dy={pending_dy} (#{moves})")
+                                    pending_dx = 0
+                                    pending_dy = 0
+                    except BlockingIOError:
+                        pass
                     except Exception:
                         pass
-            print("[Input] evdev keyboard reader stopped")
+                # Flush any pending motion even without SYN (some devices)
+                if (pending_dx or pending_dy) and self._mouse_send_json and app_config.active_device:
+                    self._mouse_send_json({"type": "move", "dx": pending_dx, "dy": pending_dy})
+                    moves += 1
+                    pending_dx = 0
+                    pending_dy = 0
+            print(f"[Input] evdev keyboard+mouse reader stopped (moves={moves})")
 
         self._evdev_reader_thread = threading.Thread(target=reader_loop, daemon=True)
         self._evdev_reader_thread.start()
@@ -1399,7 +1434,7 @@ class ShareManager:
         self._evdev_reader_thread = None
 
     def _evdev_find_keyboards(self):
-        """Return a list of /dev/input/event* paths that have EV_KEY."""
+        """Return /dev/input/event* paths that report EV_KEY (keyboards)."""
         import glob
         import fcntl
         EV_KEY = 0x01
@@ -1417,13 +1452,33 @@ class ShareManager:
                 pass
         return devices
 
+    def _evdev_find_mice(self):
+        """Return /dev/input/event* paths that report EV_REL (mice / trackpads)."""
+        import glob
+        import fcntl
+        EV_REL = 0x02
+        EVIOCGBIT_0 = 0x80204520
+        devices = []
+        for path in sorted(glob.glob("/dev/input/event*")):
+            try:
+                fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                buf = bytearray(32)
+                fcntl.ioctl(fd, EVIOCGBIT_0, buf)
+                os.close(fd)
+                if buf[EV_REL // 8] & (1 << (EV_REL % 8)):
+                    devices.append(path)
+            except Exception:
+                pass
+        return devices
+
     def _evdev_grab(self):
-        """Open keyboard devices and issue EVIOCGRAB to take exclusive ownership."""
+        """Open keyboard + mouse devices and EVIOCGRAB for exclusive ownership."""
         import fcntl
         import struct
         EVIOCGRAB = 0x40044590
+        paths = list(dict.fromkeys(self._evdev_find_keyboards() + self._evdev_find_mice()))
         new_fds = []
-        for path in self._evdev_find_keyboards():
+        for path in paths:
             try:
                 fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
                 fcntl.ioctl(fd, EVIOCGRAB, struct.pack('i', 1))
@@ -1442,7 +1497,8 @@ class ShareManager:
                     pass
             self._evdev_grab_fds = new_fds
         if new_fds:
-            logging.info(f"[evdev] Grabbed {len(new_fds)} keyboard device(s)")
+            print(f"[evdev] Grabbed {len(new_fds)} input device(s) (kbd+mouse)")
+            logging.info(f"[evdev] Grabbed {len(new_fds)} input device(s)")
 
     def _evdev_release(self):
         """Release all evdev keyboard grabs so normal input routing resumes."""
