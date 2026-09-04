@@ -680,19 +680,28 @@ class ShareManager:
                     self.transition(True, (x, margin + warp_buffer))
                     continue
             
-            elif app_config.active_device and not self.edge_transition_cooldown:
-                if app_config.server_direction == "Right" and x <= margin:
-                    self.transition(False, (self.screen_width - margin - warp_buffer, y))
-                    continue
-                elif app_config.server_direction == "Left" and x >= self.screen_width - margin:
-                    self.transition(False, (margin + warp_buffer, y))
-                    continue
-                elif app_config.server_direction == "Top" and y >= self.screen_height - margin:
-                    self.transition(False, (x, margin + warp_buffer))
-                    continue
-                elif app_config.server_direction == "Bottom" and y <= margin:
-                    self.transition(False, (x, self.screen_height - margin - warp_buffer))
-                    continue
+            # While active: do NOT use the server physical cursor for return-edge.
+            # Relative control must be free to move across the whole client screen.
+            # Return only happens via client edge_return (or hotkey / disconnect).
+            elif app_config.active_device:
+                # Keep physical cursor away from the entry edge so it doesn't
+                # drift into a confusing place; clamp to a safe band.
+                try:
+                    cx, cy = x, y
+                    safe = 80
+                    nx, ny = cx, cy
+                    if app_config.server_direction == "Right" and cx < safe:
+                        nx = safe
+                    elif app_config.server_direction == "Left" and cx > self.screen_width - safe:
+                        nx = self.screen_width - safe
+                    elif app_config.server_direction == "Top" and cy > self.screen_height - safe:
+                        ny = self.screen_height - safe
+                    elif app_config.server_direction == "Bottom" and cy < safe:
+                        ny = safe
+                    if (nx, ny) != (cx, cy):
+                        self.mouse_controller.position = (nx, ny)
+                except Exception:
+                    pass
             
             # Cooldown reset — Clear when cursor moves away from the trigger axis.
             if not self._transition_lock.locked():
@@ -1140,32 +1149,8 @@ class ShareManager:
                 last_pos[0] = None  # reset so next activation starts clean
                 return
 
-            # Check if physical mouse on Server hit the return edge
-            if app_config.active_device and not self.edge_transition_cooldown:
-                margin = 5
-                warp_buffer = 50
-                direction = getattr(app_config, 'server_direction', 'Right')
-                return_triggered = False
-                return_pos = None
-
-                if direction == "Right" and x <= margin:
-                    return_pos = (self.screen_width - margin - warp_buffer, y)
-                    return_triggered = True
-                elif direction == "Left" and x >= self.screen_width - margin:
-                    return_pos = (margin + warp_buffer, y)
-                    return_triggered = True
-                elif direction == "Top" and y >= self.screen_height - margin:
-                    return_pos = (x, margin + warp_buffer)
-                    return_triggered = True
-                elif direction == "Bottom" and y <= margin:
-                    return_pos = (x, self.screen_height - margin - warp_buffer)
-                    return_triggered = True
-
-                if return_triggered and return_pos:
-                    print(f"[Server] Physical mouse hit return edge -> returning input to server at {return_pos}")
-                    logging.info(f"[Server] Physical mouse hit return edge -> returning input to server at {return_pos}")
-                    threading.Thread(target=lambda: self.transition(False, return_pos), daemon=True).start()
-                    return
+            # Return-edge is client-driven only (edge_return message). Do not
+            # abort sharing when the physical server cursor crosses a margin.
 
             if last_pos[0] is None:
                 last_pos[0] = (x, y)
@@ -1379,9 +1364,9 @@ class ShareManager:
         US = {
             2: "1", 3: "2", 4: "3", 5: "4", 6: "5", 7: "6", 8: "7", 9: "8", 10: "9", 11: "0",
             12: "-", 13: "=", 16: "q", 17: "w", 18: "e", 19: "r", 20: "t", 21: "y", 22: "u",
-            23: "i", 24: "o", 25: "p", 26: "[",", 27: "]", 30: "a", 31: "s", 32: "d", 33: "f",
-            34: "g", 35: "h", 36: "j", 37: "k", 38: "l", 39: ";", 40: "'", 41: "`",
-            43: "\\", 44: "z", 45: "x", 46: "c", 47: "v", 48: "b", 49: "n", 50: "m",
+            23: "i", 24: "o", 25: "p", 26: chr(91), 27: chr(93), 30: "a", 31: "s", 32: "d", 33: "f",
+            34: "g", 35: "h", 36: "j", 37: "k", 38: "l", 39: ";", 40: chr(39), 41: "`",
+            43: chr(92), 44: "z", 45: "x", 46: "c", 47: "v", 48: "b", 49: "n", 50: "m",
             51: ",", 52: ".", 53: "/",
         }
 
