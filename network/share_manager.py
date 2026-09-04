@@ -265,17 +265,16 @@ class ShareManager:
                 | self.Qt.WindowStaysOnTopHint
                 | self.Qt.Tool
             )
-            # Nearly invisible but NOT click-through: tiny alpha so compositor
-            # still delivers pointer events to this window (blocks local apps).
+            # Fully transparent overlay (user is invisible).
+            # Do NOT grabMouse under Wayland/XWayland — that freezes hyprctl
+            # cursorpos and kills relative mouse sharing.
             overlay.setAttribute(self.Qt.WA_TranslucentBackground, True)
             overlay.setAttribute(self.Qt.WA_NoSystemBackground, True)
-            overlay.setAttribute(self.Qt.WA_ShowWithoutActivating, False)
             from PyQt5.QtGui import QColor, QPalette
             palette = overlay.palette()
-            # Alpha 1/255 — effectively invisible, still hits tests for input
-            palette.setColor(QPalette.Window, QColor(0, 0, 0, 1))
+            palette.setColor(QPalette.Window, QColor(0, 0, 0, 0))
             overlay.setPalette(palette)
-            overlay.setStyleSheet("background-color: rgba(0, 0, 0, 1);")
+            overlay.setStyleSheet("background: transparent;")
 
             overlay.setCursor(self.Qt.BlankCursor)
             ow = getattr(self, 'overlay_width', None) or self.screen_width
@@ -296,17 +295,12 @@ class ShareManager:
             overlay.raise_()
             overlay.activateWindow()
             overlay.setFocus()
-            try:
-                overlay.grabMouse()
-                overlay.grabKeyboard()
-                print("[Overlay] grabMouse + grabKeyboard OK")
-            except Exception as e:
-                print(f"[Overlay] grab failed: {e}")
+            # No grabMouse/grabKeyboard — breaks hyprctl position on Wayland
             if self.gui_app:
                 self.gui_app.processEvents()
 
             self.overlay = overlay
-            print(f"[Overlay] CREATED fullscreen {ow}x{oh}")
+            print(f"[Overlay] CREATED fullscreen transparent {ow}x{oh}")
 
 
     def _wire_overlay_input(self, overlay):
@@ -461,7 +455,7 @@ class ShareManager:
                     "float 1, match:title portal-overlay",
                     "fullscreen 1, match:title portal-overlay",
                     "pin 1, match:title portal-overlay",
-                    "opacity 0.01 override 0.01 override, match:title portal-overlay",
+                    "opacity 0.0 override 0.0 override, match:title portal-overlay",
                     "float 1, match:title portal-overlay-test",
                     "fullscreen 1, match:title portal-overlay-test",
                     "pin 1, match:title portal-overlay-test",
@@ -680,28 +674,10 @@ class ShareManager:
                     self.transition(True, (x, margin + warp_buffer))
                     continue
             
-            # While active: do NOT use the server physical cursor for return-edge.
-            # Relative control must be free to move across the whole client screen.
-            # Return only happens via client edge_return (or hotkey / disconnect).
+            # While active: no server-side return-edge (client sends edge_return).
+            # Physical cursor must move freely so hyprctl poller can emit deltas.
             elif app_config.active_device:
-                # Keep physical cursor away from the entry edge so it doesn't
-                # drift into a confusing place; clamp to a safe band.
-                try:
-                    cx, cy = x, y
-                    safe = 80
-                    nx, ny = cx, cy
-                    if app_config.server_direction == "Right" and cx < safe:
-                        nx = safe
-                    elif app_config.server_direction == "Left" and cx > self.screen_width - safe:
-                        nx = self.screen_width - safe
-                    elif app_config.server_direction == "Top" and cy > self.screen_height - safe:
-                        ny = self.screen_height - safe
-                    elif app_config.server_direction == "Bottom" and cy < safe:
-                        ny = safe
-                    if (nx, ny) != (cx, cy):
-                        self.mouse_controller.position = (nx, ny)
-                except Exception:
-                    pass
+                pass
             
             # Cooldown reset — Clear when cursor moves away from the trigger axis.
             if not self._transition_lock.locked():
