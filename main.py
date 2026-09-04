@@ -1,14 +1,15 @@
 """
 Main entry point for Portal application
 """
+import os
+os.environ["QT_QPA_PLATFORM"] = "xcb"
+import sys
 import tkinter as tk
 from gui.main_window import MainWindow
 from utils.config import app_config
 import threading
 import subprocess
 import time
-import sys
-import os
 import platform
 import logging
 

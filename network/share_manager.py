@@ -224,9 +224,16 @@ class ShareManager:
             overlay.setAttribute(self.Qt.WA_TranslucentBackground, True)
             overlay.setAttribute(self.Qt.WA_NoSystemBackground, True)
             overlay.setStyleSheet("background: transparent;")
+            
+            from PyQt5.QtGui import QColor, QPalette
+            palette = overlay.palette()
+            palette.setColor(QPalette.Window, QColor(0, 0, 0, 0))
+            overlay.setPalette(palette)
+
             overlay.setCursor(self.Qt.BlankCursor)
             if self.screen_width and self.screen_height:
                 overlay.setGeometry(0, 0, self.screen_width, self.screen_height)
+            overlay.setMouseTracking(True)
 
             # Configure WM rules (Hyprland, Sway, i3) before mapping
             self._configure_wm_rules_sync()
@@ -248,10 +255,27 @@ class ShareManager:
                     "fullscreen 1, match:title portal-overlay",
                     "pin 1, match:title portal-overlay",
                     "opacity 0.0 override 0.0 override, match:title portal-overlay",
+                    "float 1, match:title portal-overlay-test",
+                    "fullscreen 1, match:title portal-overlay-test",
+                    "pin 1, match:title portal-overlay-test",
+                    "opacity 0.0 override 0.0 override, match:title portal-overlay-test",
                 ]
                 for rule in rules:
                     subprocess.run(
                         ["hyprctl", "keyword", "windowrule", rule],
+                        check=False, timeout=2,
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+
+                rules_v2 = [
+                    "float, title:^(portal-overlay.*)$",
+                    "fullscreen, title:^(portal-overlay.*)$",
+                    "pin, title:^(portal-overlay.*)$",
+                    "opacity 0.0 override 0.0 override, title:^(portal-overlay.*)$",
+                ]
+                for rule in rules_v2:
+                    subprocess.run(
+                        ["hyprctl", "keyword", "windowrulev2", rule],
                         check=False, timeout=2,
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                     )
