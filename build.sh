@@ -2,10 +2,17 @@
 set -e
 echo "🔧 Building Portal for Linux..."
 
-# Build using the tracked spec file (see portal.spec - this used to
-# reference a gitignored, never-committed "Portal-v1.0.spec" and would
-# fail immediately on a fresh clone)
-pyinstaller --noconfirm portal.spec
+# Simple one-file build (no portal.spec is shipped in the repo).
+# If you later add a portal.spec you can switch back to:
+#   pyinstaller --noconfirm portal.spec
+pyinstaller --noconfirm \
+    --onefile \
+    --windowed \
+    --name Portal \
+    --icon portal.ico \
+    --add-data "portal.png:." \
+    --add-data "portal.ico:." \
+    main.py
 
 # Make sure it is executable
 chmod +x dist/Portal

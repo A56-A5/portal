@@ -10,10 +10,22 @@ wheel
 pywin32; sys_platform == 'win32'
 PyQt5; sys_platform == 'linux'
 
-
-
-# Linux system packages required for keyboard input in secure contexts:
-# sudo apt install xdotool
+# ------------------------------------------------------------------
+# System packages (NOT pip) required / strongly recommended on Linux:
+#
+#   Debian / Ubuntu:
+#     sudo apt install ffmpeg xdotool wl-clipboard
+#
+#   Arch:
+#     sudo pacman -S ffmpeg xdotool wl-clipboard
+#
+# Hyprland users already have `hyprctl` (used for reliable cursor
+# position under Wayland). No extra package needed.
+#
+# For exclusive keyboard grab via /dev/input (Wayland compositor
+# shortcuts such as Super+key):
+#     sudo usermod -aG input $USER
+#     # then log out and back in
 #
 # psutil is used for a best-effort recursive kill of a hung child's
 # process tree on Stop, so an orphaned ffmpeg/ffplay process can never

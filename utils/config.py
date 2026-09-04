@@ -51,10 +51,8 @@ class AppConfig:
                     self.config.update(data)
             except Exception as e:
                 print(f"[Config] Failed to load config: {e}")
-        # Always force runtime transient flags to False on startup/load
+        # Always force active_device to False on startup/load
         self.config["active_device"] = False
-        self.config["is_running"] = False
-        self.config["stop_flag"] = False
 
     def refresh_control_flags(self):
         """Re-read ONLY the cross-process control flags from disk.
@@ -86,8 +84,6 @@ class AppConfig:
         try:
             save_data = dict(self.config)
             save_data["active_device"] = False
-            save_data["is_running"] = False
-            save_data["stop_flag"] = False
             with open(self.config_path, "w") as f:
                 json.dump(save_data, f, indent=4)
         except Exception as e:

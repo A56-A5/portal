@@ -199,7 +199,17 @@ class ShareManager:
         - it must run on the GUI toolkit's own thread (Tk's mainloop
         thread on Windows, Qt's main thread on Linux). Building a Qt/Tk
         widget from any other thread is undefined behaviour and was the
-        root cause of the old GTK-overlay-in-a-background-thread crashes."""
+        root cause of the old GTK-overlay-in-a-background-thread crashes.
+
+        Overlay is ONLY created when transitioning TO active_device=True
+        (input is being sent to the client). It must be destroyed when
+        returning control to the server. Never leave it up permanently.
+        """
+        # Always tear down any existing overlay first so we never stack them
+        # and never leave a stale one visible.
+        if self.overlay is not None:
+            self.destroy_overlay()
+
         if self.os_type == "windows":
             overlay = self.tk.Toplevel(self.gui_app)
             overlay.overrideredirect(True)
@@ -306,8 +316,15 @@ class ShareManager:
             pass
 
     def destroy_overlay(self):
-        """Destroy overlay window (must be called from the GUI main thread)."""
-        if self.overlay:
+        """Destroy overlay window (must be called from the GUI main thread).
+
+        This is the only place that should clear the fullscreen grab window.
+        Called on every transition back to the server (active_device=False)
+        and on cleanup / disconnect.
+        """
+        if self.overlay is None:
+            return
+        try:
             if self.os_type == "windows":
                 try:
                     self.overlay.destroy()
@@ -319,8 +336,12 @@ class ShareManager:
                     self.overlay.close()
                     if hasattr(self.overlay, 'deleteLater'):
                         self.overlay.deleteLater()
+                    # Process events so the window actually unmaps before we continue
+                    if self.gui_app:
+                        self.gui_app.processEvents()
                 except Exception as e:
                     print(f"[Overlay] Error destroying Qt overlay: {e}")
+        finally:
             self.overlay = None
 
     def _schedule_overlay(self, to_active):
@@ -516,10 +537,10 @@ class ShareManager:
                         self.mouse_listener = self._make_mouse_listener(suppress=True)
                         self.mouse_listener.start()
 
-            # Deduplicate
-            if app_config.active_device == to_active:
-                return
-
+            # Always keep overlay in sync with the desired active state.
+            # Previously an early return when state already matched could leave
+            # a stale overlay visible (or missing) if a prior destroy/create
+            # had raced or failed under Wayland.
             app_config.active_device = to_active
             app_config.save()
 
