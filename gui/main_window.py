@@ -192,14 +192,27 @@ class MainWindow:
         self.status_label = ttk.Label(control_frame, text="Portal is not running", foreground="red")
         self.status_label.grid(row=0, column=0, columnspan=2, pady=5)
 
+        # Persistent, classified connection status (Connecting/Connected/
+        # Disconnected/Audio Connected/etc.) - separate from status_label
+        # above, which only ever says "running"/"not running" and was too
+        # coarse to tell what's actually happening. Updated by
+        # check_log_for_status() below, which already tails logs.log for
+        # [Remote Status] lines - this just also classifies them into a
+        # short code instead of only flashing the raw message for 3s.
+        self.connection_status_label = ttk.Label(control_frame, text="Idle", foreground="gray")
+        self.connection_status_label.grid(row=1, column=0, columnspan=2, pady=2)
+
+        self.audio_status_label = ttk.Label(control_frame, text="", foreground="gray")
+        self.audio_status_label.grid(row=2, column=0, columnspan=2, pady=2)
+
         self.status_notify_label = ttk.Label(control_frame, text="", foreground="#007bff", font=("Helvetica", 12, "bold"))
-        self.status_notify_label.grid(row=2, column=0, columnspan=2, pady=10)
+        self.status_notify_label.grid(row=3, column=0, columnspan=2, pady=10)
 
         self.reload_button = ttk.Button(control_frame, text="Reload", command=lambda: self.on_start_stop("reload"))
-        self.reload_button.grid(row=1, column=0, padx=5)
+        self.reload_button.grid(row=4, column=0, padx=5)
 
         self.start_stop_button = ttk.Button(control_frame, text="Start", command=lambda: self.on_start_stop("start"))
-        self.start_stop_button.grid(row=1, column=1, padx=5)
+        self.start_stop_button.grid(row=4, column=1, padx=5)
 
         self.toggle_mode()
         self.toggle_audio()
@@ -282,6 +295,57 @@ class MainWindow:
         self.status_label.config(text="Portal is not running", foreground="red")
         self.start_stop_button.config(text="Start")
         self.status_notify_label.config(text="")
+        self.connection_status_label.config(text="Idle", foreground="gray")
+        self.audio_status_label.config(text="", foreground="gray")
+
+    # Ordered (specific-first) substring -> (short status code, color).
+    # Matched against the raw [Remote Status] message text. First match
+    # wins, so put more specific phrases before their more generic
+    # cousins (e.g. "Failed to connect" before a bare "connect").
+    _CONNECTION_STATUS_RULES = [
+        ("waiting for client", ("Waiting for Client", "orange")),
+        ("connecting to", ("Connecting…", "orange")),
+        ("failed to connect", ("Connection Failed", "red")),
+        ("connection failed", ("Connection Failed", "red")),
+        ("invalid server ip", ("Connection Failed", "red")),
+        ("port conflict", ("Error", "red")),
+        ("failed to start server", ("Error", "red")),
+        ("successfully connected", ("Connected", "green")),
+        ("disconnected", ("Disconnected", "red")),
+    ]
+    _AUDIO_STATUS_RULES = [
+        ("audio connected", ("Audio: Connected", "#007bff")),
+        ("audio disconnected", ("Audio: Disconnected", "gray")),
+        ("audio failed", ("Audio: Failed", "red")),
+    ]
+
+    def _classify_status(self, msg, rules):
+        low = msg.lower()
+        for phrase, result in rules:
+            if phrase in low:
+                return result
+        return None
+
+    def _update_connection_status(self, msg):
+        """Classify a raw [Remote Status] line into a short status code
+        and update the persistent labels. Runs on the Tk main thread
+        (scheduled via root.after from check_log_for_status)."""
+        audio_result = self._classify_status(msg, self._AUDIO_STATUS_RULES)
+        if audio_result:
+            text, color = audio_result
+            try:
+                self.audio_status_label.config(text=text, foreground=color)
+            except Exception:
+                pass
+            return  # audio lines are classified separately, not as connection state
+
+        result = self._classify_status(msg, self._CONNECTION_STATUS_RULES)
+        if result:
+            text, color = result
+            try:
+                self.connection_status_label.config(text=text, foreground=color)
+            except Exception:
+                pass
 
     def show_notification(self, message, duration=3):
         """Show a temporary notification in the UI"""
@@ -328,6 +392,7 @@ class MainWindow:
                         try:
                             if self.root.winfo_exists():
                                 self.root.after(0, lambda m=msg: self.show_notification(m))
+                                self.root.after(0, lambda m=msg: self._update_connection_status(m))
                         except: break
         except:
             pass

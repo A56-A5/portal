@@ -597,6 +597,7 @@ class ShareManager:
         self._releasing_disconnect = True
         print("[System] Client disconnected, forcing input release and cleanup...")
         logging.info("[System] Client disconnected, forcing input release and cleanup...")
+        logging.warning("[Remote Status] Disconnected")
 
         def _do_release():
             try:

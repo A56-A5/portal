@@ -150,12 +150,15 @@ class AudioController:
                 sent += 1
                 if sent == 1:
                     logging.info(f"[Audio] first packet sent ({len(data)} bytes)")
+                    logging.info("[Remote Status] Audio Connected")
                 elif sent % 500 == 0:
                     logging.info(f"[Audio] sending… {sent} packets")
         except (KeyboardInterrupt, Exception) as e:
             logging.info(f"[Audio] send interrupted: {e}")
         finally:
             logging.info(f"[Audio] Send linux stop {target_ip}:{port} (sent={sent})")
+            if sent > 0:
+                logging.info("[Remote Status] Audio Disconnected")
             self.unmute_output()
             self.cleanup(sock, process)
     
@@ -242,12 +245,15 @@ class AudioController:
                     packets += 1
                     if packets == 1:
                         logging.info(f"[Audio] first packet from {addr} ({len(data)} bytes)")
+                        logging.info("[Remote Status] Audio Connected")
                     elif packets % 500 == 0:
                         logging.info(f"[Audio] receiving… {packets} packets")
         except (KeyboardInterrupt, Exception) as e:
             logging.info(f"[Audio] receive interrupted: {e}")
         finally:
             logging.info(f"[Audio] Receive stop {port} (packets={packets})")
+            if packets > 0:
+                logging.info("[Remote Status] Audio Disconnected")
             self.cleanup(sock)
     
 
@@ -279,9 +285,9 @@ class AudioController:
         ]
 
         process = None
+        announced_connected = False
         try:
             logging.info(f"[Audio] pulse receive start (ffmpeg) port={port}")
-            print(f"[Audio] pulse receive start port={port}")
             while app_config.is_running and not app_config.stop_flag:
                 try:
                     process = subprocess.Popen(
@@ -292,12 +298,23 @@ class AudioController:
                     )
                 except FileNotFoundError:
                     logging.error("[Audio] ffmpeg missing — falling back to sounddevice")
+                    logging.warning("[Remote Status] Audio Failed: ffmpeg not installed")
                     self.receive_audio(port)
                     return
                 except Exception as e:
                     logging.error(f"[Audio] ffmpeg spawn failed: {e}")
+                    logging.warning(f"[Remote Status] Audio Failed: {e}")
                     time.sleep(1)
                     continue
+
+                # A quick liveness check: if ffmpeg is still running a
+                # moment after spawn, treat that as "connected" - a bad
+                # URL/argument (like the old listen=1 bug) makes it die
+                # near-instantly, so this reliably distinguishes the two.
+                time.sleep(0.3)
+                if process.poll() is None and not announced_connected:
+                    logging.info("[Remote Status] Audio Connected")
+                    announced_connected = True
 
                 while app_config.is_running and not app_config.stop_flag:
                     code = process.poll()
@@ -310,6 +327,13 @@ class AudioController:
                         logging.warning(
                             f"[Audio] ffmpeg exited code={code} err={err[:300]!r} — restart"
                         )
+                        if not announced_connected:
+                            logging.warning(
+                                f"[Remote Status] Audio Failed: ffmpeg exited code={code} {err[:150]!r}"
+                            )
+                        else:
+                            logging.warning("[Remote Status] Audio Disconnected")
+                        announced_connected = False
                         break
                     time.sleep(0.5)
 

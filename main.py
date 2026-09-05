@@ -67,6 +67,8 @@ class PortalApp:
             app_config.is_running = True
             self.main_window.status_label.config(text="Portal is running", foreground="green")
             self.main_window.start_stop_button.config(text="Stop")
+            self.main_window.connection_status_label.config(text="Starting…", foreground="orange")
+            self.main_window.audio_status_label.config(text="", foreground="gray")
             
             # Update configuration from UI
             app_config.server_direction = self.main_window.server_direction.get()
