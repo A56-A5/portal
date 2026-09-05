@@ -74,11 +74,20 @@ class MainWindow:
             base_dir = os.getcwd()
         log_path = os.path.join(base_dir, "logs.log")
         
+        # NOTE: in the normal launch path, main.py's own basicConfig(force=True)
+        # already runs before this window is constructed, so this call is a
+        # no-op there (logging.basicConfig only takes effect once per process
+        # unless force=True). Kept as a defensive fallback — with a
+        # StreamHandler added — in case this window is ever constructed
+        # standalone (e.g. in tests) without going through main.py first, so
+        # terminal output still stays in sync with logs.log either way.
         logging.basicConfig(
             level=logging.INFO,
-            filename=log_path,
-            filemode="a",
-            format="%(levelname)s - %(message)s"
+            format="%(levelname)s - %(message)s",
+            handlers=[
+                logging.FileHandler(log_path, mode="a"),
+                logging.StreamHandler(),
+            ],
         )
         
         self.tab_control.bind("<<NotebookTabChanged>>", self.on_tab_changed)
@@ -102,7 +111,7 @@ class MainWindow:
                 img = PhotoImage(file="portal.png")
                 self.root.iconphoto(False, img)
             except Exception as e:
-                print("Failed to set icon:", e)
+                logging.warning(f"Failed to set icon: {e}")
     
     def on_tab_changed(self, event):
         selected_tab = event.widget.tab(event.widget.index("current"))["text"]

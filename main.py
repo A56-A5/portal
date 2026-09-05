@@ -39,7 +39,7 @@ def run_child_role(name):
         from gui.log_viewer import main as log_main
         log_main()
     else:
-        print(f"Unknown child role: {name}")
+        logging.error(f"Unknown child role: {name}")
 
 
 class PortalApp:
@@ -59,7 +59,7 @@ class PortalApp:
         
         if mode == "start" and not self.running:
             if getattr(self.main_window, 'portal_thread', None) and self.main_window.portal_thread.is_alive():
-                print("Portal is already running")
+                logging.warning("Portal is already running")
                 return
             
             app_config.stop_flag = False
@@ -88,14 +88,14 @@ class PortalApp:
             try:
                 self.invis_process = subprocess.Popen(get_executable("share_manager"))
             except Exception as e:
-                print(f"Failed to launch share_manager: {e}")
+                logging.error(f"Failed to launch share_manager: {e}")
             
             # Start audio process if enabled
             if app_config.audio_enabled:
                 try:
                     self.audio_process = subprocess.Popen(get_executable("audio"))
                 except Exception as e:
-                    print(f"Failed to launch audio: {e}")
+                    logging.error(f"Failed to launch audio: {e}")
         
         elif self.running and mode != "reload":
             self._begin_stop(then_restart=False)
@@ -136,10 +136,10 @@ class PortalApp:
             except subprocess.TimeoutExpired:
                 pass
             except Exception as e:
-                print(f"[Shutdown] Error waiting for pid {getattr(proc, 'pid', '?')}: {e}")
+                logging.warning(f"[Shutdown] Error waiting for pid {getattr(proc, 'pid', '?')}: {e}")
                 continue
 
-            print(f"[Shutdown] pid {proc.pid} did not exit within {graceful_timeout}s, forcing termination")
+            logging.warning(f"[Shutdown] pid {proc.pid} did not exit within {graceful_timeout}s, forcing termination")
             self._kill_process_tree(proc)
 
         if then_restart:
@@ -171,7 +171,7 @@ class PortalApp:
             except psutil.NoSuchProcess:
                 pass
         except ImportError:
-            print("[Shutdown] psutil not installed - only the direct child will be killed, "
+            logging.warning("[Shutdown] psutil not installed - only the direct child will be killed, "
                   "any ffmpeg/ffplay grandchild may be orphaned")
 
         try:
@@ -181,9 +181,9 @@ class PortalApp:
             try:
                 proc.kill()
             except Exception as e:
-                print(f"[Shutdown] Failed to kill pid {proc.pid}: {e}")
+                logging.error(f"[Shutdown] Failed to kill pid {proc.pid}: {e}")
         except Exception as e:
-            print(f"[Shutdown] Failed to terminate pid {proc.pid}: {e}")
+            logging.error(f"[Shutdown] Failed to terminate pid {proc.pid}: {e}")
     
     def run(self):
         """Run the application"""
