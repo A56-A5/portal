@@ -280,7 +280,13 @@ class AudioController:
             # the terminal).
             "-i", f"udp://0.0.0.0:{port}?fifo_size=1048576&overrun_nonfatal=1",
             "-f", "pulse",
-            "-device", "default",
+            # NOTE: previously had "-device", "default" here. "default" is
+            # not a real PulseAudio/PipeWire sink name (real sink names look
+            # like "alsa_output.pci-..."), so this was asking ffmpeg to
+            # target a device that doesn't exist. Omitting -device entirely
+            # makes ffmpeg's pulse output resolve to whatever the system's
+            # actual default sink is - the documented, portable behaviour.
+            # This is the fix for "packets receiving, no sound" on Ubuntu.
             "portal-audio",
         ]
 

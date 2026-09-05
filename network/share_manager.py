@@ -832,6 +832,27 @@ class ShareManager:
                 print(f"[Transition] warp failed: {e}")
             print(f"[Transition] active={to_active} warped to {new_position}")
 
+            # Preserve the exact crossing point across the boundary, like a
+            # real side-by-side monitor, instead of always re-centering on
+            # the client (the old behaviour). Sent as a 0.0-1.0 FRACTION of
+            # this machine's own axis dimension at the moment of crossing -
+            # not a raw pixel value - so it still lines up correctly even
+            # when the two machines have different resolutions or Hyprland's
+            # fractional scaling is involved. Only meaningful when
+            # activating (to_active=True); the direction determines which
+            # axis of new_position is the "along the edge" coordinate.
+            axis_fraction = None
+            if to_active:
+                direction = getattr(app_config, 'server_direction', 'Right')
+                try:
+                    if direction in ("Right", "Left"):
+                        axis_fraction = new_position[1] / float(self.screen_height or 1)
+                    else:
+                        axis_fraction = new_position[0] / float(self.screen_width or 1)
+                    axis_fraction = min(1.0, max(0.0, axis_fraction))
+                except Exception:
+                    axis_fraction = None
+
             def send_active_state():
                 if hasattr(self, 'secondary_server') and self.secondary_server:
                     try:
@@ -840,6 +861,8 @@ class ShareManager:
                             "value": to_active,
                             "server_direction": getattr(app_config, 'server_direction', 'Right')
                         }
+                        if axis_fraction is not None:
+                            active_msg["axis_fraction"] = axis_fraction
                         self.secondary_server.sendall((json.dumps(active_msg) + "\n").encode())
                     except Exception as e:
                         print(f"[Transition] Failed to send active_device state: {e}")
@@ -1650,14 +1673,30 @@ class ShareManager:
                     margin = 2
                     warp_buffer = 50
                     direction = getattr(app_config, 'server_direction', 'Right')
+                    # Prefer the resolution-independent fraction (0.0-1.0) if
+                    # the peer sent one; fall back to the old raw-pixel value
+                    # (interpreted in OUR OWN screen space, which is wrong if
+                    # the two machines differ in resolution, but matches the
+                    # previous behaviour) only for compatibility with an
+                    # older, unpatched client that doesn't send axis_fraction.
+                    frac = evt.get("axis_fraction")
+                    if frac is not None:
+                        try:
+                            frac = min(1.0, max(0.0, float(frac)))
+                        except (TypeError, ValueError):
+                            frac = None
                     if direction == "Right":
-                        return_pos = (self.screen_width - margin - warp_buffer, evt.get("y", self.screen_height // 2))
+                        along = int(frac * self.screen_height) if frac is not None else evt.get("y", self.screen_height // 2)
+                        return_pos = (self.screen_width - margin - warp_buffer, along)
                     elif direction == "Left":
-                        return_pos = (margin + warp_buffer, evt.get("y", self.screen_height // 2))
+                        along = int(frac * self.screen_height) if frac is not None else evt.get("y", self.screen_height // 2)
+                        return_pos = (margin + warp_buffer, along)
                     elif direction == "Top":
-                        return_pos = (evt.get("x", self.screen_width // 2), self.screen_height - margin - warp_buffer)
+                        along = int(frac * self.screen_width) if frac is not None else evt.get("x", self.screen_width // 2)
+                        return_pos = (along, self.screen_height - margin - warp_buffer)
                     elif direction == "Bottom":
-                        return_pos = (evt.get("x", self.screen_width // 2), margin + warp_buffer)
+                        along = int(frac * self.screen_width) if frac is not None else evt.get("x", self.screen_width // 2)
+                        return_pos = (along, margin + warp_buffer)
                     else:
                         return_pos = self.mouse_controller.position
 
@@ -1915,7 +1954,25 @@ class ShareManager:
                                 target_socket = getattr(self, 'secondary_client_socket', None) or getattr(self, 'client_socket', None)
                                 if target_socket:
                                     try:
-                                        msg = json.dumps({"type": "edge_return", "x": nx, "y": ny}) + "\n"
+                                        # Send the crossing point as a 0.0-1.0
+                                        # FRACTION of this (client) machine's
+                                        # own axis dimension, not a raw pixel
+                                        # value - the server has a different
+                                        # resolution/scale, so a raw pixel
+                                        # coordinate from here doesn't mean
+                                        # the same point over there. See the
+                                        # matching fix on the server->client
+                                        # direction in transition().
+                                        if direction in ("Right", "Left"):
+                                            axis_fraction = ny / float(h)
+                                        else:
+                                            axis_fraction = nx / float(w)
+                                        axis_fraction = min(1.0, max(0.0, axis_fraction))
+                                        msg = json.dumps({
+                                            "type": "edge_return",
+                                            "x": nx, "y": ny,  # kept for older-peer compatibility
+                                            "axis_fraction": axis_fraction,
+                                        }) + "\n"
                                         target_socket.sendall(msg.encode())
                                         print(f"[Client] Hit return edge ({direction}), sending edge_return to server")
                                         logging.info(f"[Client] Hit return edge ({direction}), sending edge_return to server")
@@ -2024,14 +2081,33 @@ class ShareManager:
                             w = max(1, self.screen_width or 1920)
                             h = max(1, self.screen_height or 1080)
                             direction = getattr(app_config, "server_direction", "Right")
+                            # Preserve the exact point the cursor crossed on
+                            # the server, like a real side-by-side monitor,
+                            # instead of always snapping to the center of the
+                            # edge (the old behaviour). axis_fraction is a
+                            # 0.0-1.0 fraction of the SERVER's own axis
+                            # dimension at the moment of crossing, so we
+                            # scale it by OUR OWN dimension here rather than
+                            # using it as a raw pixel value - that's what
+                            # keeps this correct across differing
+                            # resolutions/scaling between the two machines.
+                            frac = evt.get("axis_fraction")
+                            try:
+                                frac = min(1.0, max(0.0, float(frac))) if frac is not None else None
+                            except (TypeError, ValueError):
+                                frac = None
                             if direction == "Right":
-                                self._client_cursor = [30, h // 2]
+                                along = int(frac * h) if frac is not None else h // 2
+                                self._client_cursor = [30, along]
                             elif direction == "Left":
-                                self._client_cursor = [w - 30, h // 2]
+                                along = int(frac * h) if frac is not None else h // 2
+                                self._client_cursor = [w - 30, along]
                             elif direction == "Top":
-                                self._client_cursor = [w // 2, h - 30]
+                                along = int(frac * w) if frac is not None else w // 2
+                                self._client_cursor = [along, h - 30]
                             else:
-                                self._client_cursor = [w // 2, 30]
+                                along = int(frac * w) if frac is not None else w // 2
+                                self._client_cursor = [along, 30]
                             try:
                                 self.mouse_controller.position = tuple(self._client_cursor)
                             except Exception:
