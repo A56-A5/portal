@@ -74,19 +74,72 @@ class AudioController:
             pass
     
     def get_monitor_source(self):
-        """Get monitor source for Linux"""
+        """Get the monitor source for the CURRENT default sink on Linux.
+
+        Do not just take the first ".monitor" line from `pactl list short
+        sources` - a machine can have several audio-capable outputs
+        registered simultaneously (HDMI x N, built-in speakers, Bluetooth,
+        USB DACs, etc.), all showing up as separate monitor sources
+        regardless of which one is actually in use. Taking "the first one"
+        silently captures whatever that first-listed output happens to be
+        - often an idle/suspended one - while real audio plays out a
+        completely different sink. That produces a fully "working" pipeline
+        (real packets flow, nothing errors) that's actually just streaming
+        silence, which is indistinguishable from a network/receive-side bug
+        until you check exactly this.
+
+        Fix: ask PulseAudio/PipeWire what the default sink actually is
+        right now, and target THAT sink's monitor specifically. Only fall
+        back to "first monitor found" if the exact match isn't present,
+        for setups where that lookup itself fails for some reason - it's
+        a safety net, not the primary strategy.
+        """
         if self.os_type != "linux":
             raise RuntimeError("Method only available on Linux")
-        
-        result = subprocess.run(
-            ['pactl', 'list', 'short', 'sources'], 
-            capture_output=True, 
+
+        sources_result = subprocess.run(
+            ['pactl', 'list', 'short', 'sources'],
+            capture_output=True,
             text=True
         )
-        for line in result.stdout.strip().split('\n'):
-            if '.monitor' in line:
-                return line.split('\t')[1]
-        raise RuntimeError("❌ No monitor source found.")
+        monitor_lines = [
+            line for line in sources_result.stdout.strip().split('\n') if '.monitor' in line
+        ]
+        if not monitor_lines:
+            raise RuntimeError("❌ No monitor source found.")
+
+        # Ask for the actual default sink and look for its exact monitor.
+        try:
+            default_result = subprocess.run(
+                ['pactl', 'get-default-sink'],
+                capture_output=True,
+                text=True,
+                timeout=2,
+            )
+            default_sink = default_result.stdout.strip()
+        except Exception as e:
+            default_sink = None
+            logging.warning(f"[Audio] Could not query default sink: {e}")
+
+        if default_sink:
+            expected = f"{default_sink}.monitor"
+            for line in monitor_lines:
+                name = line.split('\t')[1]
+                if name == expected:
+                    logging.info(f"[Audio] Using monitor of default sink: {name}")
+                    return name
+            logging.warning(
+                f"[Audio] Default sink is {default_sink!r} but no matching "
+                f"{expected!r} source was found — falling back to the first "
+                f"monitor source found. This may capture the wrong output; "
+                f"run `pactl list short sources | grep monitor` to check."
+            )
+
+        # Fallback: previous behaviour, kept only for the case where the
+        # default-sink lookup above failed or has no matching monitor.
+        fallback = monitor_lines[0].split('\t')[1]
+        logging.warning(f"[Audio] Falling back to first monitor source found: {fallback}")
+        return fallback
     
     def mute_output(self):
         """Mute output (Linux only)"""
