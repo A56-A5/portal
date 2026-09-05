@@ -66,11 +66,17 @@ class ShareManager:
         
         self.os_type = platform.system().lower()
         
+        # StreamHandler added alongside the file handler so any
+        # logging.info/warning/error call in this process also shows in
+        # the terminal, not just logs.log — same reasoning as the fix in
+        # controllers/audio_controller.py.
         logging.basicConfig(
             level=logging.INFO,
-            filename="logs.log",
-            filemode="a",
-            format="%(levelname)s - %(message)s"
+            format="%(levelname)s - %(message)s",
+            handlers=[
+                logging.FileHandler("logs.log", mode="a"),
+                logging.StreamHandler(),
+            ],
         )
         
         app_config.load()

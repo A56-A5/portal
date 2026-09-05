@@ -304,24 +304,58 @@ class KeyboardController:
 
     # ---------------- Public API ----------------
 
+    # Linux KEY_* numeric codes, keyed by the same lowercase name strings
+    # _normalize_key()/_keycode() produce. This mirrors the two lookup
+    # tables in network/share_manager.py's evdev reader (KEYMAP + US),
+    # just inverted (name -> code instead of code -> name), so capture
+    # and injection always agree on what a given code means. If you add
+    # a new key there, add it here too.
+    _KEYCODE_MAP = {
+        # Special keys (from share_manager.py's KEYMAP)
+        "esc": 1, "backspace": 14, "tab": 15, "enter": 28,
+        "ctrl": 29, "ctrl_l": 29, "shift": 42, "shift_l": 42, "shift_r": 54,
+        "alt": 56, "alt_l": 56, "ctrl_r": 97, "alt_r": 100,
+        "cmd": 125, "cmd_r": 126,
+        "space": 57, "delete": 111,
+        "up": 103, "down": 108, "left": 105, "right": 106,
+        "home": 102, "end": 107, "page_up": 104, "page_down": 109,
+        # Printable US layout (from share_manager.py's US map)
+        "1": 2, "2": 3, "3": 4, "4": 5, "5": 6, "6": 7, "7": 8, "8": 9, "9": 10, "0": 11,
+        "-": 12, "=": 13, "q": 16, "w": 17, "e": 18, "r": 19, "t": 20, "y": 21, "u": 22,
+        "i": 23, "o": 24, "p": 25, "[": 26, "]": 27, "a": 30, "s": 31, "d": 32, "f": 33,
+        "g": 34, "h": 35, "j": 36, "k": 37, "l": 38, ";": 39, "'": 40, "`": 41,
+        "\\": 43, "z": 44, "x": 45, "c": 46, "v": 47, "b": 48, "n": 49, "m": 50,
+        ",": 51, ".": 52, "/": 53,
+    }
+
     def _keycode(self, key_str):
         s = str(key_str)
         if s.startswith("Key."):
             s = s.split(".", 1)[1]
-        if len(s) == 1 and s.isalpha():
-            s = s.lower()
-        else:
-            s = s.lower()
-        return self._YDOTOOL_SPECIAL.get(s)
+        s = s.lower()
+        return self._KEYCODE_MAP.get(s)
+
+    def _ydotool_key(self, key_str, down: bool):
+        code = self._keycode(key_str)
+        if code is None:
+            return False
+        try:
+            self.subprocess.run(
+                ["ydotool", "key", f"{code}:{1 if down else 0}"],
+                capture_output=True, timeout=2,
+            )
+            return True
+        except Exception:
+            return False
 
     def _uinput_key(self, key_str, down: bool):
         ui = getattr(self, "_kb_uinput", None)
         if ui is None:
             return False
-        code = self._keycode(key_str) if hasattr(self, "_keycode") else self._ydotool_keycode(key_str)
-        if code is None:
-            return False
         try:
+            code = self._keycode(key_str)
+            if code is None:
+                return False
             from evdev import ecodes
             ui.write(ecodes.EV_KEY, code, 1 if down else 0)
             ui.syn()

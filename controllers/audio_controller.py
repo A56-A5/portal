@@ -36,11 +36,24 @@ class AudioController:
         # Windows-specific input device
         self.INPUT = 'audio=Stereo Mix (Realtek(R) Audio)'
         
+        # NOTE: this is the FIRST logging.basicConfig() call in the audio
+        # subprocess (AudioController is constructed before AudioManager
+        # calls its own basicConfig), so this is the config that actually
+        # sticks for the whole process — later basicConfig() calls
+        # elsewhere are no-ops. Previously this only attached a file
+        # handler, so anything logged via logging.warning/error (like the
+        # ffmpeg exit-code diagnostics) went to logs.log ONLY and never
+        # appeared in the terminal, which is exactly what hid the
+        # "listen=1" ffmpeg bug. Adding a StreamHandler here means every
+        # existing logging.* call in this file (and anything else in this
+        # process) now shows in both places automatically.
         logging.basicConfig(
-            level=logging.INFO, 
-            filename="logs.log", 
-            filemode="a", 
-            format="[Audio] - %(message)s"
+            level=logging.INFO,
+            format="[Audio] - %(message)s",
+            handlers=[
+                logging.FileHandler("logs.log", mode="a"),
+                logging.StreamHandler(),
+            ],
         )
     
     def cleanup(self, sock=None, process=None):
@@ -254,7 +267,12 @@ class AudioController:
             "-f", self.FORMAT,
             "-ar", str(self.RATE),
             "-ac", str(self.CHANNELS),
-            "-i", f"udp://0.0.0.0:{port}?listen=1&fifo_size=1048576&overrun_nonfatal=1",
+            # NOTE: "listen=1" is a TCP-only ffmpeg URL option; UDP has no
+            # connection handshake, so it isn't valid here and made ffmpeg
+            # fail to parse the URL, dying immediately after spawn (only
+            # visible via logging.warning in logs.log, never printed to
+            # the terminal).
+            "-i", f"udp://0.0.0.0:{port}?fifo_size=1048576&overrun_nonfatal=1",
             "-f", "pulse",
             "-device", "default",
             "portal-audio",
@@ -329,7 +347,7 @@ class AudioController:
             "-f", self.FORMAT,
             "-ar", str(self.RATE),
             "-ac", str(self.CHANNELS),
-            "-i", f"udp://0.0.0.0:{port}?listen=1",
+            "-i", f"udp://0.0.0.0:{port}",
             "-f", "pulse",
             "default",
         ]

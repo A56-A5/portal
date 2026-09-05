@@ -200,11 +200,23 @@ def main():
         # Parent process truncates the log on every start so each run is clean.
         # Child roles (--child=...) keep appending to the same file.
         is_child = any(a.startswith("--child=") for a in sys.argv[1:])
+        # Every --child=... role (share_manager, audio) is a fresh
+        # subprocess that re-runs this same main(), so this is the
+        # basicConfig call that actually wins for all of them (force=True
+        # means it overrides anything a child's own __init__ tries to set
+        # up later, since those don't also pass force=True). Previously
+        # this only wrote to logs.log, so any logging.info/warning/error
+        # call anywhere in the app - including the one that reported the
+        # ffmpeg exit code/error that turned out to be the actual audio
+        # bug - was invisible in the terminal no matter what. Adding a
+        # StreamHandler here fixes that everywhere at once.
         logging.basicConfig(
             level=logging.INFO,
-            filename=log_path,
-            filemode="a" if is_child else "w",
             format="%(levelname)s - %(message)s",
+            handlers=[
+                logging.FileHandler(log_path, mode="a" if is_child else "w"),
+                logging.StreamHandler(),
+            ],
             force=True,
         )
     except Exception:

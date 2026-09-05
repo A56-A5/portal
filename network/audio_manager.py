@@ -27,10 +27,6 @@ class AudioManager:
         """Run the audio manager"""
         app_config.is_running = True
         logging.info(
-            f"[Audio] mode={app_config.audio_mode!r} ip={app_config.audio_ip!r} "
-            f"port={app_config.audio_port}"
-        )
-        print(
             f"[Audio] mode={app_config.audio_mode} ip={app_config.audio_ip or '(none)'} "
             f"port={app_config.audio_port}"
         )
@@ -51,11 +47,11 @@ class AudioManager:
                     elif self.os_type == "windows":
                         self.audio_controller.send_audio_windows(app_config.audio_ip, app_config.audio_port)
                     else:
-                        print(f"❌ Unsupported OS: {self.os_type}")
+                        logging.error(f"❌ Unsupported OS: {self.os_type}")
                 else:
-                    print("❌ Invalid audio_mode in config.")
+                    logging.error("❌ Invalid audio_mode in config.")
             except Exception as e:
-                print(f"Audio error: {e}")
+                logging.error(f"Audio error: {e}")
         
         # Start audio thread
         audio_th = threading.Thread(target=audio_thread, daemon=True)
