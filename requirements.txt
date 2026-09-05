@@ -40,3 +40,7 @@ PyQt5; sys_platform == 'linux'
 #          systemctl --user enable --now ydotoold
 #   Also:  sudo usermod -aG input $USER   # then re-login
 # Without ydotool, clicks/keys on a Hyprland *client* will not reach native apps.
+
+# Hyprland / Omarchy: real overlay above waybar (no waybar toggle):
+#   sudo pacman -S gtk-layer-shell python-gobject gtk3
+# Without these, Portal falls back to the Qt overlay + SIGUSR1 waybar hide.

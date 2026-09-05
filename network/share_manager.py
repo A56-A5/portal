@@ -263,6 +263,35 @@ class ShareManager:
             overlay.update_idletasks()
             self.overlay = overlay
         elif self.os_type == "linux":
+            # Hyprland / wlroots: prefer real wlr-layer-shell surface so we
+            # stack ABOVE waybar without SIGUSR1-toggling it every transition.
+            self._use_layer_shell = False
+            if os.environ.get("HYPRLAND_INSTANCE_SIGNATURE") or os.environ.get("SWAYSOCK"):
+                try:
+                    from utils.layer_shell_overlay import (
+                        layer_shell_available,
+                        LayerShellOverlay,
+                    )
+                    if layer_shell_available():
+                        ls = LayerShellOverlay()
+                        ls.create(opaque_test=False)
+                        # Pump GTK from the Qt event loop
+                        try:
+                            from PyQt5.QtCore import QTimer
+                            ls.start_qt_pump(QTimer)
+                        except Exception as e:
+                            print(f"[Overlay] GTK pump timer failed: {e}")
+                        self.overlay = ls
+                        self._layer_shell = ls
+                        self._use_layer_shell = True
+                        ow = getattr(self, "overlay_width", None) or self.screen_width
+                        oh = getattr(self, "overlay_height", None) or self.screen_height
+                        print(f"[Overlay] layer-shell active {ow}x{oh}")
+                        return
+                except Exception as e:
+                    print(f"[Overlay] layer-shell fallback to Qt: {e}")
+                    self._use_layer_shell = False
+
             overlay = self.QWidget()
             overlay.setWindowTitle("portal-overlay")
 
@@ -545,19 +574,27 @@ class ShareManager:
                     pass
             elif self.os_type == "linux":
                 try:
-                    try:
-                        self.overlay.releaseMouse()
-                        self.overlay.releaseKeyboard()
-                    except Exception:
-                        pass
-                    self.overlay.hide()
-                    self.overlay.close()
-                    if hasattr(self.overlay, 'deleteLater'):
-                        self.overlay.deleteLater()
-                    if self.gui_app:
-                        self.gui_app.processEvents()
+                    if getattr(self, "_use_layer_shell", False):
+                        try:
+                            self.overlay.destroy()  # LayerShellOverlay.destroy
+                        except Exception as e:
+                            print(f"[Overlay] layer-shell destroy: {e}")
+                        self._layer_shell = None
+                        self._use_layer_shell = False
+                    else:
+                        try:
+                            self.overlay.releaseMouse()
+                            self.overlay.releaseKeyboard()
+                        except Exception:
+                            pass
+                        self.overlay.hide()
+                        self.overlay.close()
+                        if hasattr(self.overlay, "deleteLater"):
+                            self.overlay.deleteLater()
+                        if self.gui_app:
+                            self.gui_app.processEvents()
                 except Exception as e:
-                    print(f"[Overlay] Error destroying Qt overlay: {e}")
+                    print(f"[Overlay] Error destroying overlay: {e}")
         finally:
             self.overlay = None
             print("[Overlay] DESTROYED")
@@ -805,8 +842,18 @@ class ShareManager:
                 except Exception as e:
                     print(f"[Input] evdev grab failed (need 'input' group?): {e}")
 
-                # Hide waybar while sharing so overlay covers full screen
-                self._set_waybar_visible(False)
+                # Hide waybar only when falling back to Qt/XWayland overlay
+                # (layer-shell covers waybar without killing it).
+                try:
+                    from utils.layer_shell_overlay import layer_shell_available
+                    if not (
+                        (os.environ.get("HYPRLAND_INSTANCE_SIGNATURE")
+                         or os.environ.get("SWAYSOCK"))
+                        and layer_shell_available()
+                    ):
+                        self._set_waybar_visible(False)
+                except Exception:
+                    self._set_waybar_visible(False)
 
             else:
                 # CRITICAL order: stop reader thread first (so it is not in
@@ -821,6 +868,7 @@ class ShareManager:
                     self._evdev_release()
                 except Exception as e:
                     print(f"[Input] evdev release: {e}")
+                # Restore waybar only if we hid it (Qt fallback path)
                 self._set_waybar_visible(True)
                 # new_position comes from edge_return / transition caller
                 # (entry edge). Do not force center — that felt wrong.
@@ -1356,7 +1404,13 @@ class ShareManager:
 
 
     def _set_waybar_visible(self, visible):
-        """Toggle waybar (SIGUSR1) so the overlay can cover the bar area."""
+        """Toggle waybar (SIGUSR1) so a Qt/XWayland overlay can cover the bar.
+
+        When the real wlr-layer-shell overlay is in use it already sits on the
+        OVERLAY layer above waybar, so toggling is unnecessary and disruptive.
+        """
+        if getattr(self, "_use_layer_shell", False):
+            return
         if not os.environ.get("HYPRLAND_INSTANCE_SIGNATURE"):
             return
         try:
