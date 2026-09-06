@@ -60,7 +60,7 @@ If you find a bug, open an **issue** describing:
 
   -  Note: ffmpeg is used internally for capturing and streaming audio across systems. Make sure it's installed and available in your system PATH.
 
-##  Install
+## Install
 
 ### Linux (one-liner)
 
@@ -68,7 +68,9 @@ If you find a bug, open an **issue** describing:
 curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash
 ```
 
-This installs system dependencies (ffmpeg, xdotool, a clipboard tool, PyQt5's Xcb runtime) via your distro's package manager, then installs the `portal` command itself via [pipx](https://pypa.github.io/pipx/) (falling back to `pip install --user` if pipx isn't available). Once it finishes, run `portal` from anywhere.
+Installs system dependencies (ffmpeg, xdotool, clipboard tools, etc.) then the
+`portal` command via [pipx](https://pypa.github.io/pipx/) (falls back to
+`pip install --user`).
 
 ### Windows (one-liner)
 
@@ -76,68 +78,54 @@ This installs system dependencies (ffmpeg, xdotool, a clipboard tool, PyQt5's Xc
 irm https://raw.githubusercontent.com/A56-A5/portal/main/install.ps1 | iex
 ```
 
-Run from PowerShell. This installs Python, Git, and ffmpeg via `winget` if they're missing, then installs the `portal` command via pipx the same way the Linux installer does. Requires `winget` (built into Windows 11 and modern Windows 10 - if it's missing, install "App Installer" from the Microsoft Store first).
+Run in PowerShell. Installs Python / Git / ffmpeg via `winget` if needed, then
+the `portal` command via pipx. Needs `winget` (Windows 11 / modern Windows 10;
+install **App Installer** from the Microsoft Store if missing).
 
-Both installers are safe to re-run - they upgrade an existing install in place.
+Both installers are safe to re-run (upgrade in place).
+
+### Launch & uninstall
+
+```bash
+portal              # start Portal (GUI)
+portal uninstall    # remove Portal from this machine
+portal --help
+```
+
+On Windows, use the same commands in PowerShell or Command Prompt after install.
 
 ### From source (any platform)
 
-Install Python 3.9+ and then:
-
 ```bash
+git clone https://github.com/A56-A5/portal.git
+cd portal
 pip install -r requirements.txt
+pip install .
+portal
 ```
 
-### Windows-only dependencies:
+Windows also needs: `pip install pywin32`  
+Linux extras (if not using install.sh): `ffmpeg`, `xdotool`, `xclip` or `wl-clipboard`, and on Hyprland optionally `gtk-layer-shell` + `ydotool`.
+
+### Release builds (maintainers)
 
 ```bash
-pip install pywin32
+# Linux one-file binary
+chmod +x build.sh && ./build.sh
+# → dist/Portal
+
+# Windows one-file binary
+build.bat
+# → dist\Portal.exe
 ```
 
-### Linux-only packages:
+Tag a release on GitHub after merging to `main`. Users install with the
+one-liners above (they track `main` or set `PORTAL_REF=vX.Y.Z`).
 
 ```bash
-sudo apt install ffmpeg xclip pactl
-# For better keyboard support in secure contexts:
-sudo apt install xdotool
+# install a specific tag
+PORTAL_REF=v1.2.0 curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash
 ```
-
-##  Running the App
-
-```bash
-python main.py
-```
-
-Or, if you installed via `pip install .` / the one-line installer, just run `portal` from anywhere - see [Install](#install) above.
-
-##  Configuration
-
-Update `config.json` or use the GUI to:
-- Set Server / Client mode  
-- Set audio to Share / Receive  
-- Define client direction (Top / Left / Right / Bottom)  
-- Enter audio receiver IP
-
-##  Building Executables
-
-###  Windows
-
-Run `build.bat`:
-
-- Output: `dist/Portal.exe` (single file)
-
-###  Linux
-
-Run `build.sh`:
-
-Make it executable and run:
-
-```bash
-chmod +x build.sh
-./build.sh
-```
-
-- Output: `dist/Portal` (single file)
 
 ##  Project Structure
 

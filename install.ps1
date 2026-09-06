@@ -150,7 +150,8 @@ if (Test-Command "pipx") {
 # ---------------------------------------------------------------------------
 Update-SessionPath
 if (Test-Command "portal") {
-    Write-Info "Done. Run it with: portal"
+    Write-Info "Done. Run: portal"
+    Write-Info "Uninstall later with: portal uninstall"
 } else {
     Write-Warn2 "Installed, but 'portal' isn't on PATH in this session yet. Close and reopen your terminal, then run 'portal'."
 }

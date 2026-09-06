@@ -119,7 +119,8 @@ install_portal() {
 verify_install() {
     export PATH="$HOME/.local/bin:$PATH"
     if command -v portal >/dev/null 2>&1; then
-        info "Done. Run it with: ${c_bold}portal${c_reset}"
+        info "Done. Run: ${c_bold}portal${c_reset}"
+        info "Uninstall later with: ${c_bold}portal uninstall${c_reset}"
     else
         warn "Installed, but 'portal' isn't on your PATH yet."
         echo "Add this to your ~/.bashrc or ~/.zshrc, then restart your terminal:"

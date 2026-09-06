@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "portal-kvm"
-version = "1.1.0"
+version = "1.2.0"
 description = "Cross-platform software KVM: share mouse, keyboard, and clipboard between two computers over the network."
 readme = "README.md"
 requires-python = ">=3.9"

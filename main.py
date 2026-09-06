@@ -192,9 +192,89 @@ class PortalApp:
         self.root.mainloop()
 
 
+def _cmd_uninstall():
+    """Remove the portal-kvm install (pipx preferred, then pip)."""
+    import shutil
+    import subprocess
+
+    print("Uninstalling Portal...")
+    removed = False
+
+    # pipx
+    if shutil.which("pipx"):
+        r = subprocess.run(
+            ["pipx", "uninstall", "portal-kvm"],
+            capture_output=True,
+            text=True,
+        )
+        if r.returncode == 0:
+            print("Removed via pipx (portal-kvm).")
+            removed = True
+        else:
+            # Older installs might have used a different name
+            r2 = subprocess.run(
+                ["pipx", "uninstall", "portal"],
+                capture_output=True,
+                text=True,
+            )
+            if r2.returncode == 0:
+                print("Removed via pipx (portal).")
+                removed = True
+
+    # pip --user / pip
+    if not removed:
+        for pip_cmd in (
+            [sys.executable, "-m", "pip", "uninstall", "-y", "portal-kvm"],
+            [sys.executable, "-m", "pip", "uninstall", "-y", "portal"],
+        ):
+            r = subprocess.run(pip_cmd, capture_output=True, text=True)
+            if r.returncode == 0:
+                print(f"Removed via pip ({pip_cmd[-1]}).")
+                removed = True
+                break
+
+    # Optional: leave config; mention path
+    try:
+        from utils.config import app_config
+        cfg = getattr(app_config, "config_path", None) or "config.json"
+        print(f"Note: config/data files (e.g. {cfg}, logs.log) were left in place.")
+    except Exception:
+        print("Note: config.json / logs.log in your working directory were left in place.")
+
+    if not removed:
+        print(
+            "Could not auto-remove. Try manually:\n"
+            "  pipx uninstall portal-kvm\n"
+            "  # or:  python -m pip uninstall -y portal-kvm"
+        )
+        sys.exit(1)
+    print("Portal uninstalled.")
+    sys.exit(0)
+
+
 def main():
     """Entry point - used both by `python main.py` and by the `portal`
-    console script installed via pyproject.toml (`pip install .`)."""
+    console script installed via pyproject.toml (`pip install .`).
+
+    Usage:
+      portal              Launch the GUI
+      portal uninstall    Remove the Portal install from this machine
+    """
+    # Lightweight CLI (before GUI / logging side effects)
+    args = [a for a in sys.argv[1:] if not a.startswith("--child=")]
+    if args and args[0] in ("uninstall", "--uninstall"):
+        _cmd_uninstall()
+        return
+    if args and args[0] in ("-h", "--help", "help"):
+        print(
+            "Portal — software KVM\n\n"
+            "Usage:\n"
+            "  portal              Launch Portal\n"
+            "  portal uninstall    Uninstall Portal from this machine\n"
+            "  portal --help       Show this help\n"
+        )
+        return
+
     # Configure logging early and consistently for both parent and child roles
     try:
         base_dir = os.path.dirname(sys.executable) if getattr(sys, 'frozen', False) else os.getcwd()
