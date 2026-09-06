@@ -836,11 +836,17 @@ class ShareManager:
 
                 # Exclusive grab keyboards + mice; reader forwards keys and
                 # relative mouse motion / buttons / wheel to the client.
-                try:
-                    self._evdev_grab()
-                    self._start_evdev_reader()
-                except Exception as e:
-                    print(f"[Input] evdev grab failed (need 'input' group?): {e}")
+                # Linux-only: EVIOCGRAB needs the `fcntl` module, which
+                # doesn't exist on Windows. Without this guard, every
+                # transition on Windows raised "No module named 'fcntl'"
+                # here (harmlessly caught below, but printed a confusing,
+                # Linux-specific-sounding error on every single transition).
+                if self.os_type == "linux":
+                    try:
+                        self._evdev_grab()
+                        self._start_evdev_reader()
+                    except Exception as e:
+                        print(f"[Input] evdev grab failed (need 'input' group?): {e}")
 
                 # Hide waybar only when falling back to Qt/XWayland overlay
                 # (layer-shell covers waybar without killing it).
@@ -859,15 +865,17 @@ class ShareManager:
                 # CRITICAL order: stop reader thread first (so it is not in
                 # select/read), THEN ungrab+close FDs. Otherwise the mouse
                 # device can stay exclusively grabbed and the server cursor
-                # never moves again.
-                try:
-                    self._stop_evdev_reader()
-                except Exception as e:
-                    print(f"[Input] stop evdev reader: {e}")
-                try:
-                    self._evdev_release()
-                except Exception as e:
-                    print(f"[Input] evdev release: {e}")
+                # never moves again. Linux-only for the same reason as the
+                # grab call above (fcntl doesn't exist on Windows).
+                if self.os_type == "linux":
+                    try:
+                        self._stop_evdev_reader()
+                    except Exception as e:
+                        print(f"[Input] stop evdev reader: {e}")
+                    try:
+                        self._evdev_release()
+                    except Exception as e:
+                        print(f"[Input] evdev release: {e}")
                 # Restore waybar only if we hid it (Qt fallback path)
                 self._set_waybar_visible(True)
                 # new_position comes from edge_return / transition caller
