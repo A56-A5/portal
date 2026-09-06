@@ -1,7 +1,7 @@
 <#
     Portal installer for Windows.
 
-        irm https://raw.githubusercontent.com/A56-A5/portal/main/install.ps1 | iex
+        irm https://github.com/A56-A5/portal/releases/latest/download/install.ps1 | iex
 
     Installs Git, ffmpeg, and Python (via winget) if missing, then installs
     the `portal` command itself in an isolated environment via pipx
@@ -64,7 +64,7 @@ if (-not $PortalRef) {
 # Platform check
 # ---------------------------------------------------------------------------
 if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -ge 6) {
-    Write-Fail "This installer is for Windows only. On Linux, use: curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash"
+    Write-Fail "This installer is for Windows only. On Linux, use: curl -fsSL https://github.com/A56-A5/portal/releases/latest/download/install.sh | bash"
 }
 
 # ---------------------------------------------------------------------------

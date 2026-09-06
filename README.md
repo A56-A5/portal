@@ -65,7 +65,7 @@ If you find a bug, open an **issue** describing:
 ### Linux (one-liner)
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash
+curl -fsSL https://github.com/A56-A5/portal/releases/latest/download/install.sh | bash
 ```
 
 Installs system dependencies (ffmpeg, xdotool, clipboard tools, etc.) then the
@@ -75,7 +75,7 @@ Installs system dependencies (ffmpeg, xdotool, clipboard tools, etc.) then the
 ### Windows (one-liner)
 
 ```powershell
-irm https://raw.githubusercontent.com/A56-A5/portal/main/install.ps1 | iex
+irm https://github.com/A56-A5/portal/releases/latest/download/install.ps1 | iex
 ```
 
 Run in PowerShell. Installs Python / Git / ffmpeg via `winget` if needed, then
@@ -119,12 +119,35 @@ build.bat
 # → dist\Portal.exe
 ```
 
-Tag a release on GitHub after merging to `main`. Users install with the
-one-liners above (they track `main` or set `PORTAL_REF=vX.Y.Z`).
+**Important — required step, not optional:** the public one-liners fetch
+`install.sh`/`install.ps1` from
+`.../releases/latest/download/<file>`, which serves whatever is attached
+as an **asset** on the latest published release — not whatever is
+currently on `main`. This is deliberate: pulling the installer script
+itself from a mutable branch tip means any broken/WIP commit to it
+immediately breaks the public one-liner for everyone, with no version
+pinning able to save you (it affects the script content itself, not
+just which app version it installs). Anyone can push a bad commit to
+`install.sh` on `main` between releases; the one-liner should never be
+able to see it until it's been through an actual review + release.
+
+So every release **must** explicitly upload both scripts as assets, or
+the one-liners will 404:
+
+```bash
+gh release create vX.Y.Z --title "vX.Y.Z" --notes-file release_notes.md \
+    install.sh install.ps1
+# or, if the release already exists:
+gh release upload vX.Y.Z install.sh install.ps1 --clobber
+```
+
+The `PORTAL_REF` env var still exists to control which **application**
+version gets installed (independent of which release's installer
+script you happened to fetch):
 
 ```bash
 # install a specific tag
-PORTAL_REF=v1.2.0 curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash
+PORTAL_REF=v1.2.0 curl -fsSL https://github.com/A56-A5/portal/releases/latest/download/install.sh | bash
 ```
 
 ##  Project Structure

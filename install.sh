@@ -2,7 +2,7 @@
 #
 # Portal installer.
 #
-#   curl -fsSL https://raw.githubusercontent.com/A56-A5/portal/main/install.sh | bash
+#   curl -fsSL https://github.com/A56-A5/portal/releases/latest/download/install.sh | bash
 #
 # Installs Portal's system dependencies (ffmpeg, xdotool, clipboard tool,
 # PyQt5's Xcb runtime library) via your distro's package manager, then
@@ -36,7 +36,7 @@ trap 'error "Install failed on line $LINENO. Nothing after that point was applie
 # ---------------------------------------------------------------------------
 os_name="$(uname -s)"
 if [ "$os_name" != "Linux" ]; then
-    die "This installer is for Linux only (detected: $os_name). On Windows, run in PowerShell: irm https://raw.githubusercontent.com/A56-A5/portal/main/install.ps1 | iex"
+    die "This installer is for Linux only (detected: $os_name). On Windows, run in PowerShell: irm https://github.com/A56-A5/portal/releases/latest/download/install.ps1 | iex"
 fi
 
 if [ "$(id -u)" -eq 0 ]; then
