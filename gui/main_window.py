@@ -310,6 +310,7 @@ class MainWindow:
         ("invalid server ip", ("Connection Failed", "red")),
         ("port conflict", ("Error", "red")),
         ("failed to start server", ("Error", "red")),
+        ("client connected", ("Connected", "green")),
         ("successfully connected", ("Connected", "green")),
         ("disconnected", ("Disconnected", "red")),
     ]

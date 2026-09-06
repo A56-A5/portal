@@ -830,9 +830,23 @@ class ShareManager:
                         print("[Input] Hyprland mouse via evdev relative (not hyprctl)")
                     else:
                         with self.mouse_listener_lock:
-                            self.mouse_listener = self._make_mouse_listener(suppress=True)
-                            self.mouse_listener.start()
-                            print("[Input] Mouse listener started (suppress=True)")
+                            # Linux/X11: suppress=True works (grab still reports motion).
+                            # Windows: suppress=True FREEZES the cursor at the
+                            # transition warp point so dx is always 0.
+                            # Use suppress=False + relative dx/dy (same wire
+                            # format as Linux client expects).
+                            if self.os_type == "windows":
+                                self.mouse_listener = self._make_mouse_listener(
+                                    suppress=False
+                                )
+                                self.mouse_listener.start()
+                                print("[Input] Mouse listener started (Windows abs x/y, suppress=False)")
+                            else:
+                                self.mouse_listener = self._make_mouse_listener(
+                                    suppress=True
+                                )
+                                self.mouse_listener.start()
+                                print("[Input] Mouse listener started (suppress=True)")
 
                 # Exclusive grab keyboards + mice; reader forwards keys and
                 # relative mouse motion / buttons / wheel to the client.
@@ -1218,54 +1232,77 @@ class ShareManager:
         self._mouse_send_json = send_json
 
     def _make_mouse_listener(self, suppress=False):
-        """Build a mouse.Listener that sends relative deltas.
+        """Mouse capture while this machine is the active server.
 
-        suppress=True issues XGrabPointer so local apps never see the
-        events (clicks, scrolls, movement) while input is shared.
+        Linux/X11 (suppress=True): relative {"dx","dy"} — Linux→Linux.
 
-        Rate is capped at 125 Hz: at high DPI a fast sweep generates
-        1000+ events/second which floods the TCP channel and causes the
-        client receive loop to fall behind (perceived as lag). 8 ms
-        batching is imperceptible to humans but keeps the pipe clear.
+        Windows (suppress=False): EXACT pre-9e52b81 protocol —
+        normalized screen position {"x": 0..1, "y": 0..1}. Client maps
+        that to its own resolution. suppress must stay False on Windows
+        or the cursor freezes at the transition warp and nothing moves.
         """
-        last_pos    = [None]   # (x, y) of previous move sample
-        last_t      = [0.0]   # monotonic timestamp of last sent move
-        MIN_INTERVAL = 1.0 / 125  # 125 Hz cap
+        last_pos = [None]
+        last_t = [0.0]
+        MIN_INTERVAL = 1.0 / 125
+        is_windows = self.os_type == "windows"
 
         def on_move(x, y):
             if not app_config.active_device:
-                last_pos[0] = None  # reset so next activation starts clean
+                last_pos[0] = None
                 return
 
-            # Return-edge is client-driven only (edge_return message). Do not
-            # abort sharing when the physical server cursor crosses a margin.
+            x, y = int(x), int(y)
 
+            # --- Windows: absolute normalized (pre-9e52b81) ---
+            # 125 Hz cap — unthrottled high-DPI mice flood TCP/client (#2800+).
+            if is_windows:
+                now = time.monotonic()
+                if now - last_t[0] < MIN_INTERVAL:
+                    return
+                if last_pos[0] is not None and last_pos[0] == (x, y):
+                    return
+                last_t[0] = now
+                last_pos[0] = (x, y)
+                w = float(self.screen_width or 0)
+                h = float(self.screen_height or 0)
+                if w <= 0 or h <= 0:
+                    return
+                if hasattr(self, "_mouse_send_json"):
+                    self._mouse_send_json({
+                        "type": "move",
+                        "x": x / w,
+                        "y": y / h,
+                    })
+                return
+
+            # --- Linux: relative dx/dy ---
+            now = time.monotonic()
             if last_pos[0] is None:
                 last_pos[0] = (x, y)
                 return
-            now = time.monotonic()
             if now - last_t[0] < MIN_INTERVAL:
-                # Still accumulate position so the next sent delta is correct
                 last_pos[0] = (x, y)
                 return
+            last_t[0] = now
             dx = x - last_pos[0][0]
             dy = y - last_pos[0][1]
             last_pos[0] = (x, y)
-            last_t[0]   = now
-            if (dx or dy) and hasattr(self, '_mouse_send_json'):
-                self._mouse_send_json({"type": "move", "dx": dx, "dy": dy})
+            if (dx or dy) and hasattr(self, "_mouse_send_json"):
+                self._mouse_send_json({"type": "move", "dx": int(dx), "dy": int(dy)})
 
         def on_click(x, y, button, pressed):
             if not app_config.active_device:
                 return
-            btn_name = button.name if hasattr(button, 'name') else str(button)
-            if hasattr(self, '_mouse_send_json'):
-                self._mouse_send_json({"type": "click", "button": btn_name, "pressed": pressed})
+            btn_name = button.name if hasattr(button, "name") else str(button)
+            if hasattr(self, "_mouse_send_json"):
+                self._mouse_send_json(
+                    {"type": "click", "button": btn_name, "pressed": pressed}
+                )
 
         def on_scroll(x, y, dx, dy):
             if not app_config.active_device:
                 return
-            if hasattr(self, '_mouse_send_json'):
+            if hasattr(self, "_mouse_send_json"):
                 self._mouse_send_json({"type": "scroll", "dx": dx, "dy": dy})
 
         return mouse.Listener(
@@ -1274,6 +1311,7 @@ class ShareManager:
             on_scroll=on_scroll,
             suppress=suppress,
         )
+
 
     def send_keyboard_events(self, socket):
         """Save socket for the instant handlers"""
@@ -1394,6 +1432,9 @@ class ShareManager:
 
         print(f"[Server] Primary connection from: {addr}")
         logging.info(f"[Connection] Primary connection from: {addr}")
+        # UI only watches [Remote Status] lines — without this the label
+        # stays on "Waiting for Client" forever even though we are connected.
+        logging.info(f"[Remote Status] Client connected from {addr[0]}")
         client.sendall(b'CONNECTED\n')
         print("[Server] Primary handshake sent")
         logging.info("[Connection] Primary handshake sent")
@@ -1945,63 +1986,128 @@ class ShareManager:
             threading.Thread(target=self.receive_tertiary, daemon=True).start()
 
     def receive_primary(self):
-        """Receive mouse events (relative deltas from server)."""
+        """Receive mouse events from server.
+
+        Absolute moves (Windows: x/y 0..1) use latest-wins coalescing: if the
+        socket delivered a backlog of positions, only the newest is applied so
+        the cursor never "catches up" through stale points. Relative dx/dy
+        (Linux) are summed across the backlog so motion is not lost.
+        """
         buffer = b""
         while app_config.is_running:
             try:
                 data = self.client_socket.recv(4096)
             except Exception:
                 break
-            
+
             if not data:
                 break
-            
+
             buffer += data
+
+            # Drain all complete lines this read
+            raw_lines = []
             while b"\n" in buffer:
                 line_bytes, buffer = buffer.split(b"\n", 1)
+                raw_lines.append(line_bytes)
+
+            if not raw_lines:
+                continue
+
+            # Parse + coalesce before applying
+            events = []
+            for line_bytes in raw_lines:
                 try:
-                    line = line_bytes.decode('utf-8')
-                    evt = json.loads(line)
-                    if evt["type"] == "move":
-                        # Track a software cursor — do NOT read back hardware
-                        # position (fails/stuck on Wayland). Apply relative
-                        # deltas to our own running coordinates.
-                        if not hasattr(self, "_client_cursor") or self._client_cursor is None:
-                            self._client_cursor = [
-                                max(0, (self.screen_width or 1920) // 2),
-                                max(0, (self.screen_height or 1080) // 2),
-                            ]
+                    evt = json.loads(line_bytes.decode("utf-8"))
+                except Exception:
+                    continue
+                if not isinstance(evt, dict) or "type" not in evt:
+                    continue
+
+                if evt["type"] == "move" and "x" in evt and "y" in evt:
+                    # Absolute: keep only the latest in a run
+                    if (
+                        events
+                        and events[-1].get("type") == "move"
+                        and "x" in events[-1]
+                        and "y" in events[-1]
+                    ):
+                        events[-1] = evt
+                    else:
+                        events.append(evt)
+                elif evt["type"] == "move" and ("dx" in evt or "dy" in evt):
+                    # Relative: sum consecutive deltas
+                    if (
+                        events
+                        and events[-1].get("type") == "move"
+                        and ("dx" in events[-1] or "dy" in events[-1])
+                        and "x" not in events[-1]
+                    ):
                         try:
-                            dx = int(evt.get("dx", 0))
-                            dy = int(evt.get("dy", 0))
+                            events[-1]["dx"] = int(events[-1].get("dx", 0)) + int(
+                                evt.get("dx", 0)
+                            )
+                            events[-1]["dy"] = int(events[-1].get("dy", 0)) + int(
+                                evt.get("dy", 0)
+                            )
                         except (TypeError, ValueError):
-                            continue
-                        # Clamp insane packets (unsigned-overflow leftovers etc.)
-                        if abs(dx) > 300:
-                            dx = 0
-                        if abs(dy) > 300:
-                            dy = 0
+                            events.append(evt)
+                    else:
+                        events.append(evt)
+                else:
+                    events.append(evt)
+
+            for evt in events:
+                try:
+                    if evt["type"] == "move":
                         w = max(1, self.screen_width or 1920)
                         h = max(1, self.screen_height or 1080)
-                        self._client_cursor[0] = max(0, min(w - 1, self._client_cursor[0] + dx))
-                        self._client_cursor[1] = max(0, min(h - 1, self._client_cursor[1] + dy))
-                        nx, ny = self._client_cursor[0], self._client_cursor[1]
-                        try:
-                            self.mouse_controller.position = (nx, ny)
-                        except Exception as e:
-                            print(f"[Client] mouse set failed: {e}")
-                        if not hasattr(self, "_client_move_log"):
-                            self._client_move_log = 0
-                        self._client_move_log += 1
-                        if self._client_move_log <= 5 or self._client_move_log % 200 == 0:
-                            print(f"[Client] apply move dx={dx} dy={dy} -> ({nx},{ny}) #{self._client_move_log}")
+                        if "x" in evt and "y" in evt:
+                            try:
+                                nx = int(float(evt["x"]) * w)
+                                ny = int(float(evt["y"]) * h)
+                            except (TypeError, ValueError):
+                                continue
+                            nx = max(0, min(w - 1, nx))
+                            ny = max(0, min(h - 1, ny))
+                            self._client_cursor = [nx, ny]
+                            try:
+                                self.mouse_controller.position = (nx, ny)
+                            except Exception as e:
+                                print(f"[Client] mouse set failed: {e}")
+                        else:
+                            if not hasattr(self, "_client_cursor") or self._client_cursor is None:
+                                self._client_cursor = [w // 2, h // 2]
+                            try:
+                                dx = int(evt.get("dx", 0))
+                                dy = int(evt.get("dy", 0))
+                            except (TypeError, ValueError):
+                                continue
+                            if abs(dx) > 2000:
+                                dx = 0
+                            if abs(dy) > 2000:
+                                dy = 0
+                            self._client_cursor[0] = max(
+                                0, min(w - 1, self._client_cursor[0] + dx)
+                            )
+                            self._client_cursor[1] = max(
+                                0, min(h - 1, self._client_cursor[1] + dy)
+                            )
+                            nx, ny = self._client_cursor[0], self._client_cursor[1]
+                            try:
+                                self.mouse_controller.position = (nx, ny)
+                            except Exception as e:
+                                print(f"[Client] mouse set failed: {e}")
 
-                        # Client edge detection: if cursor hits opposite edge on Client, send edge_return to Server
-                        if app_config.active_device and not getattr(self, 'client_edge_cooldown', False):
+                        # Edge return (client → server)
+                        if app_config.active_device and not getattr(
+                            self, "client_edge_cooldown", False
+                        ):
                             margin = 5
-                            direction = getattr(app_config, 'server_direction', 'Right')
+                            direction = getattr(
+                                app_config, "server_direction", "Right"
+                            )
                             return_triggered = False
-
                             if direction == "Right" and nx <= margin:
                                 return_triggered = True
                             elif direction == "Left" and nx >= self.screen_width - 1 - margin:
@@ -2013,55 +2119,63 @@ class ShareManager:
 
                             if return_triggered:
                                 self.client_edge_cooldown = True
-                                target_socket = getattr(self, 'secondary_client_socket', None) or getattr(self, 'client_socket', None)
+                                target_socket = getattr(
+                                    self, "secondary_client_socket", None
+                                ) or getattr(self, "client_socket", None)
                                 if target_socket:
                                     try:
-                                        # Send the crossing point as a 0.0-1.0
-                                        # FRACTION of this (client) machine's
-                                        # own axis dimension, not a raw pixel
-                                        # value - the server has a different
-                                        # resolution/scale, so a raw pixel
-                                        # coordinate from here doesn't mean
-                                        # the same point over there. See the
-                                        # matching fix on the server->client
-                                        # direction in transition().
                                         if direction in ("Right", "Left"):
                                             axis_fraction = ny / float(h)
                                         else:
                                             axis_fraction = nx / float(w)
                                         axis_fraction = min(1.0, max(0.0, axis_fraction))
-                                        msg = json.dumps({
-                                            "type": "edge_return",
-                                            "x": nx, "y": ny,  # kept for older-peer compatibility
-                                            "axis_fraction": axis_fraction,
-                                        }) + "\n"
+                                        msg = (
+                                            json.dumps(
+                                                {
+                                                    "type": "edge_return",
+                                                    "x": nx,
+                                                    "y": ny,
+                                                    "axis_fraction": axis_fraction,
+                                                }
+                                            )
+                                            + "\n"
+                                        )
                                         target_socket.sendall(msg.encode())
-                                        print(f"[Client] Hit return edge ({direction}), sending edge_return to server")
-                                        logging.info(f"[Client] Hit return edge ({direction}), sending edge_return to server")
+                                        print(
+                                            f"[Client] Hit return edge ({direction}), sending edge_return"
+                                        )
+                                        logging.info(
+                                            f"[Client] Hit return edge ({direction}), sending edge_return"
+                                        )
                                     except Exception as e:
                                         print(f"[Client] Failed to send edge_return: {e}")
 
-                        # Cooldown reset when cursor moves into central screen area
-                        if getattr(self, 'client_edge_cooldown', False):
+                        if getattr(self, "client_edge_cooldown", False):
                             margin = 20
-                            direction = getattr(app_config, 'server_direction', 'Right')
+                            direction = getattr(
+                                app_config, "server_direction", "Right"
+                            )
                             if direction in ("Right", "Left"):
                                 if margin < nx < self.screen_width - margin:
                                     self.client_edge_cooldown = False
                             else:
                                 if margin < ny < self.screen_height - margin:
                                     self.client_edge_cooldown = False
+
                     elif evt["type"] == "click":
-                        btn = getattr(Button, evt['button'])
-                        if evt['pressed']:
+                        from pynput.mouse import Button
+
+                        btn = getattr(Button, evt["button"])
+                        if evt["pressed"]:
                             self.mouse_controller.press(btn)
                         else:
                             self.mouse_controller.release(btn)
                     elif evt["type"] == "scroll":
-                        self.mouse_controller.scroll(evt['dx'], evt['dy'])
-                except Exception as e:
-                    pass # Noise
-    
+                        self.mouse_controller.scroll(evt["dx"], evt["dy"])
+                except Exception:
+                    pass  # Noise
+
+
     def receive_secondary(self):
         """Receive keyboard events and clipboard"""
         def parse_key(key_str):
@@ -2158,18 +2272,27 @@ class ShareManager:
                                 frac = min(1.0, max(0.0, float(frac))) if frac is not None else None
                             except (TypeError, ValueError):
                                 frac = None
+                            # Inset well past the return-edge margin (5px) so the
+                            # first noisy server deltas cannot immediately trip
+                            # edge_return. Also arm a short cooldown.
+                            inset = 80
                             if direction == "Right":
                                 along = int(frac * h) if frac is not None else h // 2
-                                self._client_cursor = [30, along]
+                                self._client_cursor = [inset, along]
                             elif direction == "Left":
                                 along = int(frac * h) if frac is not None else h // 2
-                                self._client_cursor = [w - 30, along]
+                                self._client_cursor = [w - 1 - inset, along]
                             elif direction == "Top":
                                 along = int(frac * w) if frac is not None else w // 2
-                                self._client_cursor = [along, h - 30]
+                                self._client_cursor = [along, h - 1 - inset]
                             else:
                                 along = int(frac * w) if frac is not None else w // 2
-                                self._client_cursor = [along, 30]
+                                self._client_cursor = [along, inset]
+                            self.client_edge_cooldown = True
+                            def _clear_edge_cd():
+                                time.sleep(0.45)
+                                self.client_edge_cooldown = False
+                            threading.Thread(target=_clear_edge_cd, daemon=True).start()
                             try:
                                 self.mouse_controller.position = tuple(self._client_cursor)
                             except Exception:
