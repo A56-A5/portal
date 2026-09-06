@@ -106,7 +106,19 @@ install_portal() {
 
     if command -v pipx >/dev/null 2>&1; then
         info "Installing Portal via pipx from ${PORTAL_REPO}@${PORTAL_REF}..."
-        pipx install --force "$target"
+        # --system-site-packages: pipx's venv is otherwise fully isolated,
+        # which silently breaks the Hyprland/Sway layer-shell overlay -
+        # python-gobject (the `gi` module) + gtk-layer-shell are SYSTEM
+        # packages (installed via pacman/apt, linked against system GTK)
+        # and cannot be meaningfully pip-installed into an isolated venv.
+        # Without this flag, `import gi` fails inside the installed app
+        # even when it works fine from a system-Python terminal, causing
+        # Portal to silently fall back to hiding waybar via SIGUSR1 on
+        # every transition instead of using the real layer-shell overlay.
+        # This does not risk collisions: packages Portal actually pip-
+        # installs (pynput, PyQt5, etc.) still take precedence over any
+        # same-named system package inside the venv.
+        pipx install --force --system-site-packages "$target"
     else
         warn "pipx unavailable - falling back to 'pip install --user'. This is fine, but Portal's dependencies will share your user site-packages instead of an isolated environment."
         python3 -m pip install --user --upgrade "$target"
