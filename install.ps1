@@ -11,7 +11,8 @@
     install step is idempotent (reinstalls/upgrades in place).
 
     Override via environment variables before piping, e.g.:
-        $env:PORTAL_REF = "v1.1.0"; irm .../install.ps1 | iex
+        $env:PORTAL_REF = "main"; irm .../install.ps1 | iex
+    (default: latest published GitHub release, resolved automatically)
 
     Written to run under both Windows PowerShell 5.1 and PowerShell 7+ -
     no ternary/null-coalescing operators, no param() block (doesn't play
@@ -21,11 +22,43 @@
 $ErrorActionPreference = "Stop"
 
 $PortalRepo = if ($env:PORTAL_REPO) { $env:PORTAL_REPO } else { "https://github.com/A56-A5/portal.git" }
-$PortalRef  = if ($env:PORTAL_REF)  { $env:PORTAL_REF }  else { "main" }
 
 function Write-Info    { param($msg) Write-Host "==> $msg" -ForegroundColor Cyan }
 function Write-Warn2   { param($msg) Write-Warning $msg }
 function Write-Fail    { param($msg) Write-Host "error: $msg" -ForegroundColor Red; exit 1 }
+
+# ---------------------------------------------------------------------------
+# Resolve which ref to install. Defaults to the latest published GitHub
+# release (NOT the main branch tip) - a public installer pulling straight
+# from a branch's HEAD installs whatever the most recent commit happens to
+# be, including anything mid-debug or broken, with zero warning to whoever
+# is running it. $env:PORTAL_REF still overrides this explicitly (e.g. set
+# it to "main") for anyone who deliberately wants the bleeding edge.
+# ---------------------------------------------------------------------------
+function Resolve-LatestReleaseTag {
+    try {
+        # Older Windows PowerShell 5.1 can default to TLS 1.0/1.1, which
+        # GitHub's API rejects outright - force 1.2 before the call so this
+        # doesn't silently fail on anything but the newest Windows installs.
+        [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
+        $release = Invoke-RestMethod -Uri "https://api.github.com/repos/A56-A5/portal/releases/latest" -ErrorAction Stop
+        return $release.tag_name
+    } catch {
+        return $null
+    }
+}
+
+$PortalRef = $env:PORTAL_REF
+if (-not $PortalRef) {
+    $LatestTag = Resolve-LatestReleaseTag
+    if ($LatestTag) {
+        $PortalRef = $LatestTag
+        Write-Info "Installing latest release: $PortalRef"
+    } else {
+        $PortalRef = "main"
+        Write-Warn2 "Could not reach GitHub's API to determine the latest release - falling back to the main branch, which may be unstable. Set `$env:PORTAL_REF to a specific tag (e.g. v1.2.0) to pin a known-good version instead."
+    }
+}
 
 # ---------------------------------------------------------------------------
 # Platform check
